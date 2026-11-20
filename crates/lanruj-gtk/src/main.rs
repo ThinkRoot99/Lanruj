@@ -3,6 +3,7 @@
 
 mod migrare;
 mod page;
+mod setari;
 
 use adw::prelude::*;
 use chrono::{Datelike, Duration, Local, NaiveDate};
@@ -59,6 +60,7 @@ pub struct App {
     migrate_button: gtk::Button,
     nav: gtk::ListBox,
     nav_rows: Vec<gtk::ListBoxRow>,
+    pub settings: RefCell<setari::Settings>,
 }
 
 /// Ce ecran se vede.
@@ -579,6 +581,133 @@ impl App {
     }
 }
 
+impl App {
+    /// Aplică setările care se văd pe loc: hârtia și noaptea; apoi le salvează.
+    fn apply_settings(&self) {
+        let s = self.settings.borrow().clone();
+        for c in self.window.css_classes() {
+            if c.starts_with("hartie-") || c.starts_with("culoare-") {
+                self.window.remove_css_class(&c);
+            }
+        }
+        for c in s.css_classes() {
+            self.window.add_css_class(&c);
+        }
+        adw::StyleManager::default().set_color_scheme(match s.scheme {
+            setari::Scheme::System => adw::ColorScheme::Default,
+            setari::Scheme::Light => adw::ColorScheme::ForceLight,
+            setari::Scheme::Dark => adw::ColorScheme::ForceDark,
+        });
+        if let Err(e) = s.save() {
+            self.error(&e);
+        }
+    }
+
+    fn show_preferences(self: &Rc<Self>) {
+        let lang = self.lang;
+        let s = self.settings.borrow().clone();
+        let dialog = adw::PreferencesDialog::new();
+        dialog.set_title(tr(lang, "Setări", "Preferences"));
+        let page = adw::PreferencesPage::new();
+
+        // Un rând cu variante, legat de o setare.
+        fn combo<T: Copy + PartialEq + 'static, const N: usize>(
+            app: &Rc<App>,
+            title: &str,
+            table: &'static [(T, &'static str, &'static str, &'static str); N],
+            current: T,
+            set: fn(&mut setari::Settings, T),
+            after: fn(&Rc<App>),
+        ) -> adw::ComboRow {
+            let names: Vec<&str> = table.iter().map(|(_, _, ro, en)| if app.lang == Lang::Ro { *ro } else { *en }).collect();
+            let row = adw::ComboRow::builder().title(title).model(&gtk::StringList::new(&names)).build();
+            row.set_selected(table.iter().position(|(v, ..)| *v == current).unwrap_or(0) as u32);
+            let weak = Rc::downgrade(app);
+            row.connect_selected_notify(move |r| {
+                let Some(app) = weak.upgrade() else { return };
+                if let Some((v, ..)) = table.get(r.selected() as usize) {
+                    set(&mut app.settings.borrow_mut(), *v);
+                    app.apply_settings();
+                    after(&app);
+                }
+            });
+            row
+        }
+
+        let paper = adw::PreferencesGroup::builder().title(tr(lang, "Hârtia", "Paper")).build();
+        paper.add(&combo(self, tr(lang, "Model", "Pattern"), &setari::PAPERS, s.paper, |st, v| st.paper = v, |_| {}));
+        paper.add(&combo(self, tr(lang, "Culoare", "Color"), &setari::COLORS, s.color, |st, v| st.color = v, |_| {}));
+        paper.add(&combo(
+            self,
+            tr(lang, "Noaptea", "Dark mode"),
+            &setari::SCHEMES,
+            s.scheme,
+            |st, v| st.scheme = v,
+            |_| {},
+        ));
+        page.add(&paper);
+
+        let mig = adw::PreferencesGroup::builder()
+            .title(tr(lang, "Migrarea", "Migration"))
+            .description(tr(
+                lang,
+                "Trierea sarcinilor neterminate: seara pentru zi, la început de lună și de săptămână pentru listele lor.",
+                "Sorting unfinished tasks: in the evening for the day, at the start of the month and week for their lists.",
+            ))
+            .build();
+        let auto = adw::SwitchRow::builder()
+            .title(tr(lang, "Pornește singură", "Starts by itself"))
+            .subtitle(tr(lang, "Altfel doar cu butonul Migrează (Ctrl+M)", "Otherwise only with the Migrate button (Ctrl+M)"))
+            .active(s.auto_migrate)
+            .build();
+        let weak = Rc::downgrade(self);
+        auto.connect_active_notify(move |r| {
+            if let Some(app) = weak.upgrade() {
+                app.settings.borrow_mut().auto_migrate = r.is_active();
+                app.apply_settings();
+            }
+        });
+        mig.add(&auto);
+        let hour = adw::SpinRow::with_range(16.0, 23.0, 1.0);
+        hour.set_title(tr(lang, "Ora migrării de seară", "Evening migration time"));
+        hour.set_subtitle(tr(lang, "De la ora aceasta (de exemplu 21 = 21:00)", "From this hour (for example 21 = 9 pm)"));
+        hour.set_value(s.evening_hour as f64);
+        auto.bind_property("active", &hour, "sensitive").sync_create().build();
+        let weak = Rc::downgrade(self);
+        hour.connect_value_notify(move |r| {
+            if let Some(app) = weak.upgrade() {
+                app.settings.borrow_mut().evening_hour = r.value() as u32;
+                app.apply_settings();
+            }
+        });
+        mig.add(&hour);
+        page.add(&mig);
+
+        let lg = adw::PreferencesGroup::builder()
+            .title(tr(lang, "Limba", "Language"))
+            .description(tr(lang, "Aplicația se redeschide în limba aleasă.", "The app reopens in the chosen language."))
+            .build();
+        lg.add(&combo(self, tr(lang, "Limba aplicației", "App language"), &setari::LANGS, s.lang, |st, v| st.lang = v, |app| {
+            // Fereastra se reface, cu noua limbă, după ce se închide dialogul.
+            let weak = Rc::downgrade(app);
+            glib::idle_add_local_once(move || {
+                let Some(app) = weak.upgrade() else { return };
+                let Some(gapp) = app.window.application() else { return };
+                let Some(gapp) = gapp.downcast_ref::<adw::Application>().cloned() else { return };
+                let _hold = gapp.hold();
+                let old = app.window.clone();
+                drop(app);
+                old.destroy();
+                build_ui(&gapp);
+            });
+        }));
+        page.add(&lg);
+
+        dialog.add(&page);
+        dialog.present(Some(&self.window));
+    }
+}
+
 fn load_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("style.css"));
@@ -608,7 +737,8 @@ fn build_ui(app: &adw::Application) {
         w.present();
         return;
     }
-    let lang = Lang::from_env();
+    let settings = setari::Settings::load();
+    let lang = settings.lang();
     let journal = Journal::new(Journal::default_root());
 
     let window = adw::ApplicationWindow::builder()
@@ -621,6 +751,14 @@ fn build_ui(app: &adw::Application) {
         .build();
     window.add_css_class("lanruj");
     let style = adw::StyleManager::default();
+    style.set_color_scheme(match settings.scheme {
+        setari::Scheme::System => adw::ColorScheme::Default,
+        setari::Scheme::Light => adw::ColorScheme::ForceLight,
+        setari::Scheme::Dark => adw::ColorScheme::ForceDark,
+    });
+    for c in settings.css_classes() {
+        window.add_css_class(&c);
+    }
     let set_night = {
         let w = window.clone();
         move |s: &adw::StyleManager| {
@@ -664,6 +802,7 @@ fn build_ui(app: &adw::Application) {
     side_box.append(&calendar);
 
     let menu = gio::Menu::new();
+    menu.append(Some(tr(lang, "Setări", "Preferences")), Some("win.preferences"));
     menu.append(Some(tr(lang, "Despre Lanruj", "About Lanruj")), Some("app.about"));
     let side_header = adw::HeaderBar::new();
     let search = gtk::Button::from_icon_name("edit-find-symbolic");
@@ -776,7 +915,18 @@ fn build_ui(app: &adw::Application) {
         migrate_button: migrate.clone(),
         nav: nav.clone(),
         nav_rows: rows.to_vec(),
+        settings: RefCell::new(settings),
     });
+
+    let a = gio::SimpleAction::new("preferences", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        if let Some(s) = weak.upgrade() {
+            s.show_preferences();
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.preferences", &["<Control>comma"]);
 
     for (bp_apply, narrow) in [(true, true), (false, false)] {
         let weak = Rc::downgrade(&state);
@@ -973,6 +1123,56 @@ fn build_ui(app: &adw::Application) {
         Ok("luna") => {
             let t = state.today.get();
             state.go_month(t.year(), t.month());
+        }
+        Ok("setari") => {
+            let w = state.window.clone();
+            glib::idle_add_local_once(move || {
+                gtk::prelude::WidgetExt::activate_action(&w, "win.preferences", None).ok();
+            });
+        }
+        Ok("test-setari") => {
+            // Schimbă hârtia și limba din dialogul de setări, ca un clic adevărat.
+            gtk::prelude::WidgetExt::activate_action(&state.window, "win.preferences", None).ok();
+            let w = state.window.clone();
+            glib::idle_add_local_once(move || {
+                fn rows(w: &gtk::Widget, out: &mut Vec<adw::ComboRow>) {
+                    if let Some(r) = w.downcast_ref::<adw::ComboRow>() {
+                        out.push(r.clone());
+                    }
+                    let mut c = w.first_child();
+                    while let Some(ch) = c {
+                        rows(&ch, out);
+                        c = ch.next_sibling();
+                    }
+                }
+                let mut v = Vec::new();
+                rows(w.upcast_ref(), &mut v);
+                eprintln!("selftest-setari: {} rânduri cu variante", v.len());
+                if v.len() >= 4 {
+                    v[0].set_selected(2); // Dungi
+                    eprintln!("selftest-setari: clase după „Dungi”: {:?}", w.css_classes().iter().filter(|c| c.starts_with("hartie")).collect::<Vec<_>>());
+                    v[3].set_selected(2); // English
+                    let app = w.application().expect("aplicația");
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                        let nw = app.active_window().expect("fereastra nouă");
+                        eprintln!("selftest-setari: după limbă, fereastra nouă: {} (aceeași={})", nw.title().unwrap_or_default(), nw == w.upcast::<gtk::Window>());
+                        fn labels(w: &gtk::Widget, out: &mut Vec<String>) {
+                            if let Some(l) = w.downcast_ref::<gtk::Label>() {
+                                out.push(l.label().to_string());
+                            }
+                            let mut c = w.first_child();
+                            while let Some(ch) = c {
+                                labels(&ch, out);
+                                c = ch.next_sibling();
+                            }
+                        }
+                        let mut ls = Vec::new();
+                        labels(nw.upcast_ref(), &mut ls);
+                        eprintln!("selftest-setari: „Week” în bara laterală: {}", ls.iter().any(|l| l == "Week"));
+                        nw.close();
+                    });
+                }
+            });
         }
         Ok("saptamana") => {
             let w = state.today.get().iso_week();

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Hârtia și cerneala; varianta de noapte vine din clasa .noapte pe fereastră. */
 
+/* Culorile hârtiei (ziua), apoi varianta de noapte a fiecăreia. */
 window.lanruj {
   --hartie: #f6efe0;
   --hartie-margine: #e3d8bf;
@@ -12,6 +13,11 @@ window.lanruj {
   --rapid: rgba(255, 255, 255, 0.40);
 }
 
+window.lanruj.culoare-alb { --hartie: #fdfdfb; --hartie-margine: #e2e2de; --punct: #d6d6d0; }
+window.lanruj.culoare-galbui { --hartie: #fbf3cf; --hartie-margine: #e6d9a4; --punct: #ddd09c; }
+window.lanruj.culoare-albastru { --hartie: #eef3f8; --hartie-margine: #d3dde8; --punct: #c9d4e0; }
+window.lanruj.culoare-maro { --hartie: #efe4d6; --hartie-margine: #d9c7b0; --punct: #d1bfa8; }
+
 window.lanruj.noapte {
   --hartie: #2b2622;
   --hartie-margine: #1a1714;
@@ -22,6 +28,11 @@ window.lanruj.noapte {
   --bulina: rgba(230, 220, 203, 0.12);
   --rapid: rgba(0, 0, 0, 0.18);
 }
+
+window.lanruj.noapte.culoare-alb { --hartie: #242424; --hartie-margine: #151515; --punct: #363636; --cerneala: #e4e4e4; }
+window.lanruj.noapte.culoare-galbui { --hartie: #2d2a1e; --hartie-margine: #1b1912; --punct: #403c2b; }
+window.lanruj.noapte.culoare-albastru { --hartie: #1f252c; --hartie-margine: #13171b; --punct: #2f3742; --cerneala: #dce6f2; }
+window.lanruj.noapte.culoare-maro { --hartie: #2e261f; --hartie-margine: #1c1713; --punct: #43382e; }
 
 .caiet {
   padding: 22px 26px 18px 26px;
@@ -35,6 +46,21 @@ window.lanruj.noapte {
   color: var(--cerneala);
   box-shadow: 0 1px 0 var(--hartie-margine), 0 3px 0 var(--hartie-margine), 0 4px 10px rgba(0, 0, 0, 0.12);
 }
+
+/* Modelul hârtiei */
+window.hartie-patratele .pagina {
+  background-image: linear-gradient(to right, var(--punct) 1px, transparent 1px), linear-gradient(to bottom, var(--punct) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: 0 0;
+}
+
+window.hartie-dungi .pagina {
+  background-image: linear-gradient(to bottom, transparent 21px, var(--punct) 21px);
+  background-size: 22px 22px;
+  background-position: 0 0;
+}
+
+window.hartie-alba .pagina { background-image: none; }
 
 .pagina.stanga { border-radius: 10px 2px 2px 10px; }
 .pagina.dreapta { border-radius: 2px 10px 10px 2px; }

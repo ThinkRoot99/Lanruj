@@ -13,9 +13,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-/// Ora de la care migrarea de seară pornește singură (se va alege din setări).
-pub const EVENING_HOUR: u32 = 21;
-
 pub struct Migration {
     pub source: PageRef,
     pub target: PageRef,
@@ -342,7 +339,14 @@ impl App {
         let now = Local::now();
         let today = now.date_naive();
         self.transfer_future_if_due(today);
-        let pending = if now.hour() >= EVENING_HOUR { today } else { today - Duration::days(1) };
+        let (auto, hour) = {
+            let st = self.settings.borrow();
+            (st.auto_migrate, st.evening_hour)
+        };
+        if !auto {
+            return;
+        }
+        let pending = if now.hour() >= hour { today } else { today - Duration::days(1) };
         let day_done = last_done().is_some_and(|d| d >= pending);
         if !day_done && self.dismissed.get() != Some(PageRef::Day(pending)) {
             if candidates(&self.load(pending)).is_empty() {
