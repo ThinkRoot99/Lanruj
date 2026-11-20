@@ -1122,11 +1122,41 @@ fn build_ui(app: &adw::Application) {
         .build();
     side_box.append(&cal_box);
 
+    // Meniul principal: toate acțiunile care au taste, pe grupuri (GNOME arată singur tasta).
     let menu = gio::Menu::new();
-    menu.append(Some(tr(lang, "Setări", "Preferences")), Some("win.preferences"));
-    menu.append(Some(tr(lang, "Scurtături de taste", "Keyboard Shortcuts")), Some("win.shortcuts"));
-    menu.append(Some(tr(lang, "Despre Lanruj", "About Lanruj")), Some("app.about"));
-    menu.append(Some(tr(lang, "Ieșire", "Quit")), Some("app.quit"));
+    let section = |items: &[(&str, &str)]| {
+        let m = gio::Menu::new();
+        for (label, action) in items {
+            m.append(Some(label), Some(action));
+        }
+        m
+    };
+    menu.append_section(
+        None,
+        &section(&[
+            (tr(lang, "Caută în jurnal", "Search the journal"), "win.search"),
+            (tr(lang, "Azi", "Today"), "win.today"),
+            (tr(lang, "Pagina de dinainte", "Previous page"), "win.prev"),
+            (tr(lang, "Pagina de după", "Next page"), "win.next"),
+            (tr(lang, "Migrează", "Migrate"), "win.migrate"),
+        ]),
+    );
+    menu.append_section(None, &section(&[(tr(lang, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "win.sidebar")]));
+    menu.append_section(
+        None,
+        &section(&[
+            (tr(lang, "Setări", "Preferences"), "win.preferences"),
+            (tr(lang, "Scurtături de taste", "Keyboard Shortcuts"), "win.shortcuts"),
+            (tr(lang, "Despre Lanruj", "About Lanruj"), "app.about"),
+        ]),
+    );
+    menu.append_section(
+        None,
+        &section(&[
+            (tr(lang, "Închide fereastra", "Close Window"), "window.close"),
+            (tr(lang, "Ieșire", "Quit"), "app.quit"),
+        ]),
+    );
     let side_header = adw::HeaderBar::builder().show_end_title_buttons(false).show_start_title_buttons(false).build();
     let side_title = gtk::Label::builder().label("Lanruj").css_classes(["heading"]).ellipsize(gtk::pango::EllipsizeMode::End).build();
     side_header.set_title_widget(Some(&side_title));
@@ -1615,6 +1645,53 @@ fn build_ui(app: &adw::Application) {
                         }
                         eprintln!("selftest-cautare: după clic titlu={} ales={:?}", s2.title.title(), s2.selected.get().map(|(_, i)| i));
                         s2.window.close();
+                    });
+                }
+            });
+        }
+        Ok("test-meniu") => {
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                fn find(w: &gtk::Widget) -> Option<gtk::MenuButton> {
+                    if let Some(m) = w.downcast_ref::<gtk::MenuButton>()
+                        && m.is_primary()
+                    {
+                        return Some(m.clone());
+                    }
+                    let mut c = w.first_child();
+                    while let Some(ch) = c {
+                        if let Some(m) = find(&ch) {
+                            return Some(m);
+                        }
+                        c = ch.next_sibling();
+                    }
+                    None
+                }
+                if let Some(m) = find(s.window.upcast_ref()) {
+                    m.popup();
+                }
+                if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                    let w = s.window.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                        let path = p;
+                        // Meniul e o fereastră separată (popover): capturăm popover-ul.
+                        fn pop(w: &gtk::Widget) -> Option<gtk::Widget> {
+                            if w.is::<gtk::PopoverMenu>() && w.is_visible() {
+                                return Some(w.clone());
+                            }
+                            let mut c = w.first_child();
+                            while let Some(ch) = c {
+                                if let Some(p) = pop(&ch) {
+                                    return Some(p);
+                                }
+                                c = ch.next_sibling();
+                            }
+                            None
+                        }
+                        match pop(w.upcast_ref()) {
+                            Some(m) => save_png(&m, &path),
+                            None => eprintln!("selftest-meniu: nu găsesc meniul deschis"),
+                        }
                     });
                 }
             });
