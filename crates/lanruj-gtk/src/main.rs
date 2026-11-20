@@ -805,6 +805,7 @@ impl App {
                     (tr(l, "Ieșire", "Quit"), "<Control>q"),
                     (tr(l, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "F9"),
                     (tr(l, "Caută în tot jurnalul", "Search the whole journal"), "<Control>f"),
+                    (tr(l, "Mărește sau micșorează fereastra", "Maximize or restore the window"), "F11"),
                     (tr(l, "Închide fereastra", "Close window"), "<Control>w"),
                 ],
             ),
@@ -1155,6 +1156,7 @@ fn build_ui(app: &adw::Application) {
     menu.append_section(
         None,
         &section(&[
+            (tr(lang, "Mărește sau micșorează fereastra", "Maximize or restore the window"), "win.maximize"),
             (tr(lang, "Închide fereastra", "Close Window"), "window.close"),
             (tr(lang, "Ieșire", "Quit"), "app.quit"),
         ]),
@@ -1353,6 +1355,18 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.search", &["<Control>f"]);
+    // F11: fereastra mărită pe tot ecranul (cu bara de sus a sistemului) și înapoi.
+    let a = gio::SimpleAction::new("maximize", None);
+    let w = window.clone();
+    a.connect_activate(move |_, _| {
+        if w.is_maximized() {
+            w.unmaximize();
+        } else {
+            w.maximize();
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.maximize", &["F11"]);
     let a = gio::SimpleAction::new("sidebar", None);
     let b = bara.clone();
     a.connect_activate(move |_, _| b.flip());
@@ -1723,6 +1737,22 @@ fn build_ui(app: &adw::Application) {
                         }
                     });
                 }
+            });
+        }
+        Ok("test-f11") => {
+            let w = state.window.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                eprintln!("selftest-f11: la început mărită={}", w.is_maximized());
+                gtk::prelude::WidgetExt::activate_action(&w, "win.maximize", None).ok();
+                let w2 = w.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    eprintln!("selftest-f11: după F11 mărită={}", w2.is_maximized());
+                    gtk::prelude::WidgetExt::activate_action(&w2, "win.maximize", None).ok();
+                    let w3 = w2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                        eprintln!("selftest-f11: din nou F11 mărită={}", w3.is_maximized());
+                    });
+                });
             });
         }
         Ok("taste") => {
