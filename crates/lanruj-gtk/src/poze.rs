@@ -33,20 +33,21 @@ pub fn page_images(app: &App, r: PageRef, items: &[Item]) -> Vec<(usize, Shown)>
         .collect()
 }
 
-/// O miniatură: poza micșorată la `w`×`h` (păstrând proporțiile), făcută o singură dată.
-fn thumbnail(abs: &Path, w: i32, h: i32) -> Option<gdk::Texture> {
+/// Poza micșorată exact la lățimea `w` (înălțimea după proporții), făcută o singură dată.
+fn sized(abs: &Path, w: i32) -> Option<gdk::Texture> {
     thread_local! {
-        static CACHE: std::cell::RefCell<std::collections::HashMap<(PathBuf, i32, i32), gdk::Texture>> = Default::default();
+        static CACHE: std::cell::RefCell<std::collections::HashMap<(PathBuf, i32), gdk::Texture>> = Default::default();
     }
-    let key = (abs.to_path_buf(), w, h);
+    let key = (abs.to_path_buf(), w);
     if let Some(t) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
         return Some(t);
     }
-    // De două ori mai mare, pentru ecranele dese.
-    let pb = gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(abs, w * 2, h * 2, true).ok()?;
+    let pb = gtk::gdk_pixbuf::Pixbuf::from_file(abs).ok()?;
     let pb = pb.apply_embedded_orientation().unwrap_or(pb);
+    let h = (w as f64 * pb.height() as f64 / pb.width().max(1) as f64).round().max(1.0) as i32;
+    let small = pb.scale_simple(w, h, gtk::gdk_pixbuf::InterpType::Bilinear)?;
     #[allow(deprecated)]
-    let tex = gdk::Texture::for_pixbuf(&pb);
+    let tex = gdk::Texture::for_pixbuf(&small);
     CACHE.with(|c| c.borrow_mut().insert(key, tex.clone()));
     Some(tex)
 }
@@ -99,15 +100,13 @@ pub fn single(app: &Rc<App>, r: PageRef, index: usize, a: &Attachment, images: R
     holder.set_margin_bottom(4);
     // Cel mult „Mare”, ca o lățime scrisă în alt program să nu iasă din pagină.
     let w = width.unwrap_or(IMAGE_SIZES[1].2).min(IMAGE_SIZES[2].2) as i32;
-    match thumbnail(&abs, w, w * 3) {
+    match sized(&abs, w) {
         Some(tex) => {
-            // Mărimea aleasă (lățimea), cu înălțimea după proporțiile pozei.
-            let h = (w as f64 * tex.height() as f64 / tex.width().max(1) as f64).round() as i32;
+            // Poza are exact lățimea aleasă (și înălțimea după proporții): nu ocupă mai mult loc decât se vede.
             let pic = gtk::Picture::for_paintable(&tex);
-            pic.set_can_shrink(true);
-            pic.set_content_fit(gtk::ContentFit::Contain);
-            pic.set_size_request(w, h);
+            pic.set_can_shrink(false);
             pic.set_halign(gtk::Align::Start);
+            pic.set_valign(gtk::Align::Start);
             pic.add_css_class("poza");
             holder.append(&pic);
             hook_image(app, pic.upcast_ref(), &holder, r, index, images);
@@ -338,59 +337,95 @@ pub fn viewer(app: &Rc<App>, images: Vec<Shown>, start: usize) {
     view.set_content(Some(&scroll));
     dialog.set_child(Some(&view));
 
-    let state = Rc::new((std::cell::Cell::new(start), std::cell::Cell::new(0.0f64), images));
-    // zoom 0 = potrivit în fereastră; altfel factorul față de mărimea reală.
+    // Starea: poza arătată, zoomul (0 = potrivită în fereastră) și poza întreagă, citită o dată.
+    struct St {
+        pos: std::cell::Cell<usize>,
+        zoom: std::cell::Cell<f64>,
+        full: std::cell::RefCell<Option<gtk::gdk_pixbuf::Pixbuf>>,
+        imgs: Vec<Shown>,
+    }
+    let state = Rc::new(St { pos: std::cell::Cell::new(start.min(images.len() - 1)), zoom: std::cell::Cell::new(0.0), full: Default::default(), imgs: images });
+    let load = {
+        let state = state.clone();
+        move || {
+            let s = &state.imgs[state.pos.get()];
+            let pb = gtk::gdk_pixbuf::Pixbuf::from_file(&s.abs).ok().map(|p| p.apply_embedded_orientation().unwrap_or(p));
+            *state.full.borrow_mut() = pb;
+        }
+    };
     let show = {
         let (pic, title, state, prev, next) = (pic.clone(), title.clone(), state.clone(), prev.clone(), next.clone());
         move || {
-            let (pos, zoom, imgs) = (&state.0, &state.1, &state.2);
-            let i = pos.get().min(imgs.len() - 1);
-            let s = &imgs[i];
-            let tex = gdk::Texture::from_filename(&s.abs).ok();
-            pic.set_paintable(tex.as_ref());
-            let z = zoom.get();
-            if let (Some(t), true) = (tex.as_ref(), z > 0.0) {
-                pic.set_can_shrink(false);
-                pic.set_size_request((t.width() as f64 * z) as i32, (t.height() as f64 * z) as i32);
+            let i = state.pos.get();
+            let s = &state.imgs[i];
+            let z = state.zoom.get();
+            let full = state.full.borrow();
+            if let Some(pb) = full.as_ref() {
+                if z > 0.0 {
+                    // Zoom: poza pregătită exact la mărimea cerută; mai mare decât fereastra = se derulează.
+                    let (w, h) = ((pb.width() as f64 * z).round() as i32, (pb.height() as f64 * z).round() as i32);
+                    let scaled = pb.scale_simple(w.max(1), h.max(1), gtk::gdk_pixbuf::InterpType::Bilinear);
+                    #[allow(deprecated)]
+                    let tex = scaled.as_ref().map(gdk::Texture::for_pixbuf);
+                    pic.set_paintable(tex.as_ref());
+                    pic.set_can_shrink(false);
+                    pic.set_halign(gtk::Align::Center);
+                    pic.set_valign(gtk::Align::Center);
+                } else {
+                    #[allow(deprecated)]
+                    let tex = gdk::Texture::for_pixbuf(pb);
+                    pic.set_paintable(Some(&tex));
+                    pic.set_can_shrink(true);
+                    pic.set_halign(gtk::Align::Fill);
+                    pic.set_valign(gtk::Align::Fill);
+                }
             } else {
-                pic.set_can_shrink(true);
-                pic.set_size_request(-1, -1);
+                pic.set_paintable(gdk::Paintable::NONE);
             }
             let name = if s.name.is_empty() { s.abs.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string() } else { s.name.clone() };
             title.set_title(&name);
             let zt = if z > 0.0 { format!(" · {}%", (z * 100.0).round()) } else { String::new() };
-            title.set_subtitle(&format!("{} / {}{zt}", i + 1, imgs.len()));
+            title.set_subtitle(&format!("{} / {}{zt}", i + 1, state.imgs.len()));
             prev.set_sensitive(i > 0);
-            next.set_sensitive(i + 1 < imgs.len());
+            next.set_sensitive(i + 1 < state.imgs.len());
         }
     };
     let show = Rc::new(show);
-    // Zoom față de mărimea arătată acum (de la „potrivit” pornește din raportul poză/fereastră).
+    // Zoom față de mărimea arătată acum; din „potrivit” pornește de la raportul poză/fereastră.
     let zoom_by = {
-        let (state, show, pic) = (state.clone(), show.clone(), pic.clone());
+        let (state, show, scroll) = (state.clone(), show.clone(), scroll.clone());
         move |f: f64| {
-            let z = state.1.get();
-            let base = if z > 0.0 {
-                z
-            } else {
-                match pic.paintable() {
-                    Some(p) if p.intrinsic_width() > 0 => (pic.width() as f64 / p.intrinsic_width() as f64).min(pic.height() as f64 / p.intrinsic_height().max(1) as f64),
-                    _ => 1.0,
+            let base = {
+                let full = state.full.borrow();
+                let Some(pb) = full.as_ref() else { return };
+                let z = state.zoom.get();
+                if z > 0.0 {
+                    z
+                } else {
+                    (scroll.width() as f64 / pb.width() as f64).min(scroll.height() as f64 / pb.height().max(1) as f64).min(1.0)
                 }
             };
-            state.1.set((base * f).clamp(0.05, 8.0));
+            // Cel mult 4× și cel mult 8000 de pixeli pe latură.
+            let max = {
+                let full = state.full.borrow();
+                full.as_ref().map(|pb| 4.0f64.min(8000.0 / pb.width().max(pb.height()) as f64)).unwrap_or(4.0)
+            };
+            state.zoom.set((base * f).clamp(0.05, max));
             show();
         }
     };
     let zoom_by = Rc::new(zoom_by);
     let go = {
-        let (state, show) = (state.clone(), show.clone());
+        let (state, show, load) = (state.clone(), show.clone(), load.clone());
         move |d: i32| {
-            let n = state.2.len() as i32;
-            let i = (state.0.get() as i32 + d).clamp(0, n - 1);
-            state.0.set(i as usize);
-            state.1.set(0.0);
-            show();
+            let n = state.imgs.len() as i32;
+            let i = (state.pos.get() as i32 + d).clamp(0, n - 1);
+            if i as usize != state.pos.get() {
+                state.pos.set(i as usize);
+                state.zoom.set(0.0);
+                load();
+                show();
+            }
         }
     };
     let go = Rc::new(go);
@@ -404,10 +439,12 @@ pub fn viewer(app: &Rc<App>, images: Vec<Shown>, start: usize) {
     zout.connect_clicked(move |_| z(0.8));
     let (st, sh) = (state.clone(), show.clone());
     fit.connect_clicked(move |_| {
-        st.1.set(0.0);
+        st.zoom.set(0.0);
         sh();
     });
+    // Tastele și rotița se prind înaintea altor părți ale ferestrei.
     let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let (g, z, st, sh) = (go.clone(), zoom_by.clone(), state.clone(), show.clone());
     keys.connect_key_pressed(move |_, key, _, _| {
         match key {
@@ -416,7 +453,7 @@ pub fn viewer(app: &Rc<App>, images: Vec<Shown>, start: usize) {
             gdk::Key::plus | gdk::Key::KP_Add | gdk::Key::equal => z(1.25),
             gdk::Key::minus | gdk::Key::KP_Subtract => z(0.8),
             gdk::Key::_0 | gdk::Key::KP_0 => {
-                st.1.set(0.0);
+                st.zoom.set(0.0);
                 sh();
             }
             _ => return glib::Propagation::Proceed,
@@ -424,16 +461,18 @@ pub fn viewer(app: &Rc<App>, images: Vec<Shown>, start: usize) {
         glib::Propagation::Stop
     });
     dialog.add_controller(keys);
+    // Rotița: cu Ctrl sau fără, mărește și micșorează (derularea rămâne pe bare și pe trackpad cu două degete).
     let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
     let z = zoom_by.clone();
-    wheel.connect_scroll(move |c, _, dy| {
-        if c.current_event_state().contains(gdk::ModifierType::CONTROL_MASK) {
+    wheel.connect_scroll(move |_, _, dy| {
+        if dy != 0.0 {
             z(if dy < 0.0 { 1.15 } else { 1.0 / 1.15 });
-            return glib::Propagation::Stop;
         }
-        glib::Propagation::Proceed
+        glib::Propagation::Stop
     });
     scroll.add_controller(wheel);
+    load();
     show();
     dialog.present(Some(&app.window_widget()));
 }

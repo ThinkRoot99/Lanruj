@@ -2287,7 +2287,51 @@ fn build_ui(app: &adw::Application) {
                         let imgs: Vec<poze::Shown> = poze::page_images(&s2, r, &s2.journal.load_ref(r).unwrap().items).into_iter().map(|(_, x)| x).collect();
                         poze::viewer(&s2, imgs, 1);
                         let w = s2.window.clone();
-                        glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || save_png(&w, &p));
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                            fn find(w: &gtk::Widget, icon: &str, out: &mut Vec<gtk::Button>) {
+                                if let Some(b) = w.downcast_ref::<gtk::Button>()
+                                    && b.icon_name().as_deref() == Some(icon)
+                                {
+                                    out.push(b.clone());
+                                }
+                                let mut c = w.first_child();
+                                while let Some(ch) = c {
+                                    find(&ch, icon, out);
+                                    c = ch.next_sibling();
+                                }
+                            }
+                            fn subtitle(w: &gtk::Widget) -> Option<String> {
+                                if let Some(t) = w.downcast_ref::<adw::WindowTitle>()
+                                    && t.subtitle().contains(" / ")
+                                {
+                                    return Some(t.subtitle().to_string());
+                                }
+                                let mut c = w.first_child();
+                                while let Some(ch) = c {
+                                    if let Some(x) = subtitle(&ch) {
+                                        return Some(x);
+                                    }
+                                    c = ch.next_sibling();
+                                }
+                                None
+                            }
+                            let mut zin = Vec::new();
+                            find(w.upcast_ref(), "zoom-in-symbolic", &mut zin);
+                            eprintln!("selftest-vizor: la început {:?}", subtitle(w.upcast_ref()));
+                            if let Some(b) = zin.first() {
+                                b.emit_clicked();
+                                b.emit_clicked();
+                            }
+                            eprintln!("selftest-vizor: după ++ {:?}", subtitle(w.upcast_ref()));
+                            let mut zout = Vec::new();
+                            find(w.upcast_ref(), "zoom-out-symbolic", &mut zout);
+                            if let Some(b) = zout.first() {
+                                b.emit_clicked();
+                            }
+                            eprintln!("selftest-vizor: după - {:?}", subtitle(w.upcast_ref()));
+                            let w2 = w.clone();
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || save_png(&w2, &p));
+                        });
                     });
                 }
                 if let Ok(p) = std::env::var("LANRUJ_PNG") {
