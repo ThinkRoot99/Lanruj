@@ -85,9 +85,6 @@ impl Page {
         self.label.set_label(&label.to_uppercase());
         self.label.set_visible(!label.is_empty());
         self.title.set_label(title);
-        if let Some(q) = &self.quick {
-            q.set_visible(true);
-        }
 
         self.clear();
         let mut any = false;
@@ -515,10 +512,18 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
     }
 
     let mut markup = String::new();
+    // În jurnalul viitor, ziua de la începutul textului e îngroșată: „15 Revizia”.
+    let (fday, ftext) = match r {
+        PageRef::Future { .. } => lanruj_core::future::split_day(&e.text),
+        _ => (None, e.text.as_str()),
+    };
+    if let Some(d) = fday {
+        markup.push_str(&format!("<b>{d}</b>  "));
+    }
     if let Some(t) = &e.time {
         markup.push_str(&format!("<b>{}</b>  ", glib::markup_escape_text(t)));
     }
-    let text = glib::markup_escape_text(&e.text);
+    let text = glib::markup_escape_text(ftext);
     if e.kind == Kind::Task(TaskState::Dropped) {
         markup.push_str(&format!("<s>{text}</s>"));
     } else {

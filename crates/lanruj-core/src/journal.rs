@@ -3,6 +3,7 @@
 
 use crate::day::{Day, Entry, Kind, TaskState};
 use crate::lang::Lang;
+use crate::future::{Future, split_day};
 use crate::month::Month;
 use crate::PageRef;
 use chrono::{Datelike, NaiveDate};
@@ -117,11 +118,17 @@ impl Journal {
                 out.push(PageRef::Day(d));
             }
         }
+        if let Ok(f) = self.load_future() {
+            out.extend(f.months().into_iter().map(|(year, month)| PageRef::Future { year, month }));
+        }
         out
     }
 
     fn page_files(&self) -> Vec<PathBuf> {
         let mut out = self.day_files();
+        if self.future_path().is_file() {
+            out.push(self.future_path());
+        }
         let Ok(years) = fs::read_dir(&self.root) else { return out };
         for y in years.flatten() {
             let Ok(months) = fs::read_dir(y.path()) else { continue };
@@ -194,6 +201,106 @@ impl Journal {
         Ok(m)
     }
 
+    pub fn future_path(&self) -> PathBuf {
+        self.root.join("viitor.md")
+    }
+
+    pub fn load_future(&self) -> io::Result<Future> {
+        match fs::read_to_string(self.future_path()) {
+            Ok(text) => Ok(Future::parse(&text)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Future::default()),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn save_future(&self, f: &Future, lang: Lang) -> io::Result<()> {
+        let path = self.future_path();
+        if f.is_empty() && !path.exists() {
+            return Ok(());
+        }
+        fs::create_dir_all(&self.root)?;
+        let tmp = path.with_extension("md.tmp");
+        fs::write(&tmp, f.to_markdown(lang))?;
+        fs::rename(&tmp, &path)
+    }
+
+    /// Pe 1 ale lunii: intrările lunii din jurnalul viitor trec în pagina lunii.
+    /// Sarcinile intră în lista de sarcini (și primesc `[>]` în jurnalul viitor);
+    /// evenimentele și notițele cu zi intră în calendarul lunii, cele fără zi în listă.
+    /// Întoarce câte intrări au trecut.
+    pub fn transfer_future(&self, year: i32, month: u32, lang: Lang) -> io::Result<usize> {
+        use crate::day::{Item, Kind, TaskState};
+        let mut future = self.load_future()?;
+        let mut items = future.items(year, month);
+        if items.is_empty() {
+            return Ok(0);
+        }
+        let mut m = self.load_month(year, month)?;
+        let mut moved = 0;
+        let mut i = 0;
+        while i < items.len() {
+            let Item::Entry(e) = &items[i] else {
+                i += 1;
+                continue;
+            };
+            if e.depth > 0 {
+                i += 1;
+                continue;
+            }
+            let e = e.clone();
+            // Notițele de sub o intrare merg cu ea.
+            let kids: Vec<Item> = items[i + 1..]
+                .iter()
+                .take_while(|it| matches!(it, Item::Entry(c) if c.depth > 0))
+                .cloned()
+                .collect();
+            match e.kind {
+                Kind::Task(TaskState::Open) => {
+                    let id = e.id.clone().unwrap_or_else(|| crate::migrate::fresh_id(&[]));
+                    let mut copy = e.clone();
+                    copy.id = Some(id.clone());
+                    m.tasks.push(Item::Entry(copy));
+                    m.tasks.extend(kids.iter().cloned());
+                    if let Item::Entry(src) = &mut items[i] {
+                        src.kind = Kind::Task(TaskState::Migrated);
+                        src.id = Some(id);
+                    }
+                    moved += 1;
+                }
+                Kind::Task(_) => {}
+                Kind::Event | Kind::Note => {
+                    let (day, text) = split_day(&e.text);
+                    match day {
+                        Some(d) => {
+                            let mut texts: Vec<String> = m.day_texts(d).iter().map(|t| t.to_string()).collect();
+                            let t = match e.time.as_deref() {
+                                Some(h) => format!("{h} {text}"),
+                                None => text.to_string(),
+                            };
+                            if !texts.contains(&t) {
+                                texts.push(t);
+                            }
+                            m.set_day(d, &texts);
+                        }
+                        None => {
+                            // O a doua trecere nu o mai adaugă o dată.
+                            if !m.tasks.iter().any(|t| matches!(t, Item::Entry(x) if *x == e)) {
+                                m.tasks.push(Item::Entry(e.clone()));
+                                m.tasks.extend(kids.iter().cloned());
+                            }
+                        }
+                    }
+                    moved += 1;
+                }
+            }
+            i += 1 + kids.len();
+        }
+        self.save_month(&m, lang)?;
+        future.set_items(year, month, items, lang);
+        self.save_future(&future, lang)?;
+        Ok(moved)
+    }
+
     /// O pagină cu intrări, ca zi: pentru o lună, lista ei de sarcini.
     pub fn load_ref(&self, r: PageRef) -> io::Result<Day> {
         match r {
@@ -202,6 +309,12 @@ impl Journal {
                 let m = self.load_month(year, month)?;
                 let mut day = Day::new(NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"));
                 day.items = m.tasks;
+                Ok(day)
+            }
+            PageRef::Future { year, month } => {
+                let f = self.load_future()?;
+                let mut day = Day::new(NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"));
+                day.items = f.items(year, month);
                 Ok(day)
             }
         }
@@ -215,6 +328,14 @@ impl Journal {
                 f(&mut day);
                 let items = day.items.clone();
                 self.update_month(year, month, lang, move |m| m.tasks = items)?;
+                Ok(day)
+            }
+            PageRef::Future { year, month } => {
+                let mut day = self.load_ref(r)?;
+                f(&mut day);
+                let mut fut = self.load_future()?;
+                fut.set_items(year, month, day.items.clone(), lang);
+                self.save_future(&fut, lang)?;
                 Ok(day)
             }
         }

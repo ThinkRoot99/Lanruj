@@ -3,6 +3,7 @@
 //! Nu știe nimic despre ferestre; interfața doar îl folosește.
 
 pub mod day;
+pub mod future;
 pub mod journal;
 pub mod lang;
 pub mod migrate;
@@ -12,6 +13,7 @@ pub use day::{parse_quick, Day, Entry, Item, Kind, Priority, TaskState};
 pub use journal::Journal;
 pub use lang::Lang;
 pub use migrate::Decision;
+pub use future::Future;
 pub use month::{CalLine, Month};
 
 /// O pagină cu intrări: o zi sau lista de sarcini a unei luni.
@@ -19,4 +21,6 @@ pub use month::{CalLine, Month};
 pub enum PageRef {
     Day(chrono::NaiveDate),
     Month { year: i32, month: u32 },
+    /// Secțiunea unei luni din jurnalul viitor.
+    Future { year: i32, month: u32 },
 }

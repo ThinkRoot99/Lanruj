@@ -54,6 +54,11 @@ fn children(day: &Day, index: usize) -> Vec<Entry> {
     out
 }
 
+/// Un semn nou, pentru alte module ale nucleului.
+pub(crate) fn fresh_id(taken: &[&Day]) -> String {
+    new_id(taken)
+}
+
 fn new_id(taken: &[&Day]) -> String {
     const ABC: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let state = std::collections::hash_map::RandomState::new();
@@ -83,19 +88,25 @@ pub fn next_page(r: PageRef) -> PageRef {
     match r {
         PageRef::Day(d) => PageRef::Day(d.succ_opt().expect("zi validă")),
         PageRef::Month { year, month } => {
-            if month == 12 {
-                PageRef::Month { year: year + 1, month: 1 }
-            } else {
-                PageRef::Month { year, month: month + 1 }
-            }
+            let (year, month) = next_month(year, month);
+            PageRef::Month { year, month }
+        }
+        PageRef::Future { year, month } => {
+            let (year, month) = next_month(year, month);
+            PageRef::Future { year, month }
         }
     }
+}
+
+pub fn next_month(year: i32, month: u32) -> (i32, u32) {
+    if month == 12 { (year + 1, 1) } else { (year, month + 1) }
 }
 
 /// Luna în care se află o pagină.
 pub fn month_of(r: PageRef) -> PageRef {
     match r {
         PageRef::Day(d) => PageRef::Month { year: d.year(), month: d.month() },
+        PageRef::Future { year, month } => PageRef::Month { year, month },
         m => m,
     }
 }
@@ -221,7 +232,7 @@ impl Journal {
         let key = |p: PageRef| match p {
             PageRef::Day(d) => (d.year(), d.month(), d.day()),
             // Lista lunii vine înaintea zilelor ei.
-            PageRef::Month { year, month } => (year, month, 0),
+            PageRef::Month { year, month } | PageRef::Future { year, month } => (year, month, 0),
         };
         key(r) < key(from)
     }
@@ -347,6 +358,37 @@ mod tests {
         assert!(fs::read_to_string(r.join("2026/12/2026-12-03.md")).unwrap().contains("- [ ] Lampă"));
         assert_eq!(next_page(DEC), PageRef::Month { year: 2027, month: 1 });
         assert_eq!(month_of(z(20)), NOV);
+        fs::remove_dir_all(r).unwrap();
+    }
+
+    #[test]
+    fn viitorul_coboara_in_luna() {
+        let (j, r) = setup("viitor");
+        fs::write(
+            r.join("viitor.md"),
+            "# Jurnalul viitor\n\n## Decembrie 2026\n\n- [ ] 15 Revizia mașinii\n  - la service-ul din Turda\n- o 24 Crăciun la părinți\n- o 18:00 31 Revelion\n- Idee: cadouri\n- [x] Deja făcută\n\n## Ianuarie 2027\n\n- o 7 Ziua lui Ion\n",
+        )
+        .unwrap();
+        let n = j.transfer_future(2026, 12, Lang::Ro).unwrap();
+        assert_eq!(n, 4);
+        let luna = fs::read_to_string(r.join("2026/12/luna.md")).unwrap();
+        assert!(luna.contains("- 24 Crăciun la părinți\n- 31 18:00 Revelion\n"), "{luna}");
+        assert!(luna.contains("- [ ] 15 Revizia mașinii ^"));
+        assert!(luna.contains("  - la service-ul din Turda\n- Idee: cadouri\n"), "{luna}");
+        let viitor = fs::read_to_string(r.join("viitor.md")).unwrap();
+        assert!(viitor.contains("- [>] 15 Revizia mașinii ^"), "{viitor}");
+        assert!(viitor.contains("## Ianuarie 2027"));
+        // A doua oară nu se dublează sarcinile (sunt deja [>]); evenimentele nu se repetă în calendar.
+        j.transfer_future(2026, 12, Lang::Ro).unwrap();
+        let luna2 = fs::read_to_string(r.join("2026/12/luna.md")).unwrap();
+        assert_eq!(luna2.matches("Revizia").count(), 1);
+        assert_eq!(luna2.matches("Crăciun").count(), 1);
+        assert_eq!(luna2.matches("Idee: cadouri").count(), 1);
+        // Pagina viitorului, ca pagină cu intrări.
+        let ian = PageRef::Future { year: 2027, month: 1 };
+        j.update_ref(ian, Lang::Ro, |d| d.push(crate::day::parse_quick(". 3 Plătește taxele").unwrap())).unwrap();
+        assert_eq!(j.load_ref(ian).unwrap().entries().count(), 2);
+        assert_eq!(next_page(ian), PageRef::Future { year: 2027, month: 2 });
         fs::remove_dir_all(r).unwrap();
     }
 

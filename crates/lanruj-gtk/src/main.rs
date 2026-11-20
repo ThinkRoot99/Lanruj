@@ -66,6 +66,8 @@ pub struct App {
 pub enum View {
     Day,
     Month(i32, u32),
+    /// Jurnalul viitor: luna din stânga (în dreapta, cea de după).
+    Future(i32, u32),
 }
 
 fn today() -> NaiveDate {
@@ -115,7 +117,7 @@ impl App {
     /// (în migrare, cea cu sarcinile de triat).
     fn layout(&self) {
         // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
-        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..)) && !self.migrating();
+        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..)) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
         if month_stacked {
             self.left.root.set_visible(true);
@@ -142,18 +144,42 @@ impl App {
 
     pub fn refresh(self: &Rc<Self>) {
         let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
+        let future_view = matches!(self.view.get(), View::Future(..)) && !self.migrating();
         if self.migrating() {
             self.refresh_migration();
         } else if let View::Month(y, m) = self.view.get() {
             self.refresh_month(y, m);
+        } else if let View::Future(y, m) = self.view.get() {
+            self.refresh_future(y, m);
         } else {
             self.refresh_normal();
         }
+        // Câmpurile de scriere: în viitor pe ambele pagini, în rest doar în dreapta.
+        if let Some(q) = &self.left.quick {
+            q.set_visible(future_view);
+        }
+        if let Some(q) = &self.right.quick {
+            q.set_visible(true);
+        }
+        let ph = if future_view {
+            tr(self.lang, "Scrie aici; ziua la început: . 15 Revizia, o 24 Crăciun", "Write here; day first: . 15 Service, o 24 Christmas")
+        } else {
+            tr(self.lang, "Scrie aici: . sarcină, o eveniment, - notă, apoi Enter", "Write here: . task, o event, - note, then Enter")
+        };
+        for q in [&self.left.quick, &self.right.quick].into_iter().flatten() {
+            q.set_placeholder_text(Some(ph));
+        }
         self.refresh_migration_header();
-        let on_today = !month_view && self.shown.get() == self.today.get();
+        let on_today = !month_view && !future_view && self.shown.get() == self.today.get();
         self.today_button.set_visible(!self.migrating() && !on_today);
-        self.migrate_button.set_visible(!self.migrating());
-        let row = if month_view { 2 } else { 0 };
+        self.migrate_button.set_visible(!self.migrating() && !future_view);
+        let row = if month_view {
+            2
+        } else if future_view {
+            3
+        } else {
+            0
+        };
         if self.nav.selected_row().map(|r| r.index()) != Some(row as i32) {
             self.nav.select_row(Some(&self.nav_rows[row]));
         }
@@ -199,6 +225,7 @@ impl App {
     /// („Luna aceasta · sarcini”, „Noiembrie 2026”).
     fn page_labels(&self, r: PageRef) -> (String, String) {
         match r {
+            PageRef::Future { year, month } => (self.future_label(year, month), self.lang.month_title(year, month)),
             PageRef::Day(d) => (self.relative(d), self.lang.day_title(d)),
             PageRef::Month { year, month } => {
                 let rel = self.relative_month(year, month);
@@ -252,6 +279,59 @@ impl App {
         self.right.fill(self, &tasks, r, tr(self.lang, "Sarcinile lunii", "Monthly tasks"), &title, None);
         self.title.set_title(&title);
         self.title.set_subtitle(&self.relative_month(y, m));
+    }
+
+    /// „Luna viitoare”, „Peste 3 luni”.
+    fn future_label(&self, y: i32, m: u32) -> String {
+        let t = self.today.get();
+        let n = (y - t.year()) * 12 + m as i32 - t.month() as i32;
+        match (self.lang, n) {
+            (_, 1) => tr(self.lang, "Luna viitoare", "Next month").into(),
+            (Lang::Ro, n) if n >= 20 => format!("Peste {n} de luni"),
+            (Lang::Ro, n) => format!("Peste {n} luni"),
+            (Lang::En, n) => format!("In {n} months"),
+        }
+    }
+
+    fn refresh_future(self: &Rc<Self>, y: i32, m: u32) {
+        let (y2, m2) = lanruj_core::migrate::next_month(y, m);
+        for (page, (yy, mm)) in [(&self.left, (y, m)), (&self.right, (y2, m2))] {
+            let r = PageRef::Future { year: yy, month: mm };
+            let day = self.journal.load_ref(r).unwrap_or_else(|e| {
+                self.error(&e);
+                Day::new(self.today.get())
+            });
+            page.fill(self, &day, r, &self.future_label(yy, mm), &self.lang.month_title(yy, mm), None);
+        }
+        self.title.set_title(tr(self.lang, "Jurnalul viitor", "Future log"));
+        self.title.set_subtitle(&format!("{} - {}", self.lang.month_title(y, m), self.lang.month_title(y2, m2)));
+    }
+
+    /// Prima lună din jurnalul viitor: luna viitoare.
+    fn future_start(&self) -> (i32, u32) {
+        let t = self.today.get();
+        lanruj_core::migrate::next_month(t.year(), t.month())
+    }
+
+    pub fn go_future(self: &Rc<Self>, y: i32, m: u32) {
+        if self.migrating() {
+            self.end_migration(false);
+        }
+        self.editing.set(None);
+        self.cal_editing.set(None);
+        // Nu mai devreme de luna viitoare.
+        let start = self.future_start();
+        let (y, m) = if (y, m) < start { start } else { (y, m) };
+        self.view.set(View::Future(y, m));
+        self.refresh();
+    }
+
+    /// Lunile din jurnalul viitor, două câte două.
+    fn shift_future(self: &Rc<Self>, delta: i32) {
+        if let View::Future(y, m) = self.view.get() {
+            let idx = y * 12 + m as i32 - 1 + 2 * delta;
+            self.go_future(idx.div_euclid(12), (idx.rem_euclid(12) + 1) as u32);
+        }
     }
 
     pub fn go_month(self: &Rc<Self>, y: i32, m: u32) {
@@ -408,12 +488,16 @@ impl App {
         self.toasts.add_toast(toast);
     }
 
-    fn quick_add(self: &Rc<Self>, entry: &gtk::Entry) {
+    fn quick_add(self: &Rc<Self>, entry: &gtk::Entry, left: bool) {
         let Some(e) = parse_quick(&entry.text()) else { return };
         // În migrare, câmpul de jos scrie pe ziua din dreapta (mâine).
         let r = match (self.mig.borrow().as_ref().map(|m| m.target), self.view.get()) {
             (Some(target), _) => target,
             (None, View::Month(year, month)) => PageRef::Month { year, month },
+            (None, View::Future(year, month)) => {
+                let (year, month) = if left { (year, month) } else { lanruj_core::migrate::next_month(year, month) };
+                PageRef::Future { year, month }
+            }
             (None, View::Day) => PageRef::Day(self.shown.get()),
         };
         match self.journal.update_ref(r, self.lang, |d| d.push(e)) {
@@ -487,7 +571,7 @@ fn build_ui(app: &adw::Application) {
         nav_row("view-list-bullet-symbolic", "Index", None),
     ];
     for (i, r) in rows.iter().enumerate() {
-        if i != 0 && i != 2 {
+        if !matches!(i, 0 | 2 | 3) {
             r.set_sensitive(false);
             r.set_tooltip_text(Some(if i == 4 { tr(lang, "În versiunea a doua", "In version two") } else { soon }));
         }
@@ -518,7 +602,7 @@ fn build_ui(app: &adw::Application) {
 
     // Caietul
     let placeholder = tr(lang, "Scrie aici: . sarcină, o eveniment, - notă, apoi Enter", "Write here: . task, o event, - note, then Enter");
-    let left = Page::new(Side::Left, false, placeholder);
+    let left = Page::new(Side::Left, true, placeholder);
     let right = Page::new(Side::Right, true, placeholder);
     let caiet = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     caiet.add_css_class("caiet");
@@ -649,7 +733,7 @@ fn build_ui(app: &adw::Application) {
         if let Some(s) = weak.upgrade() {
             let source = match s.view.get() {
                 View::Month(year, month) => PageRef::Month { year, month },
-                View::Day => PageRef::Day(s.shown.get()),
+                View::Day | View::Future(..) => PageRef::Day(s.shown.get()),
             };
             s.start_migration(source, false);
         }
@@ -666,11 +750,12 @@ fn build_ui(app: &adw::Application) {
     window.add_controller(keys);
 
     // Scrierea rapidă
-    if let Some(q) = &state.right.quick {
+    for (q, is_left) in [(&state.left.quick, true), (&state.right.quick, false)] {
+        let Some(q) = q else { continue };
         let weak = Rc::downgrade(&state);
         q.connect_activate(move |e| {
             if let Some(s) = weak.upgrade() {
-                s.quick_add(e);
+                s.quick_add(e, is_left);
             }
         });
     }
@@ -684,6 +769,10 @@ fn build_ui(app: &adw::Application) {
             2 => {
                 let t = s.today.get();
                 s.go_month(t.year(), t.month());
+            }
+            3 => {
+                let (y, m) = s.future_start();
+                s.go_future(y, m);
             }
             _ => {}
         }
@@ -719,6 +808,8 @@ fn build_ui(app: &adw::Application) {
             if let Some(s) = weak.upgrade() {
                 if matches!(s.view.get(), View::Month(..)) {
                     s.shift_month(delta as i32);
+                } else if matches!(s.view.get(), View::Future(..)) {
+                    s.shift_future(delta as i32);
                 } else {
                     s.go(s.shown.get() + Duration::days(delta));
                 }
@@ -795,9 +886,16 @@ fn build_ui(app: &adw::Application) {
     });
     // Doar la dezvoltare: pornește direct în ecranul lunii, pentru capturi.
     #[cfg(debug_assertions)]
-    if std::env::var("LANRUJ_START").as_deref() == Ok("luna") {
-        let t = state.today.get();
-        state.go_month(t.year(), t.month());
+    match std::env::var("LANRUJ_START").as_deref() {
+        Ok("luna") => {
+            let t = state.today.get();
+            state.go_month(t.year(), t.month());
+        }
+        Ok("viitor") => {
+            let (y, m) = state.future_start();
+            state.go_future(y, m);
+        }
+        _ => {}
     }
     #[cfg(debug_assertions)]
     if std::env::var_os("LANRUJ_SELFTEST").is_some() {
@@ -922,6 +1020,19 @@ fn selftest(s: &Rc<App>) {
             eprintln!("selftest: după migrarea lunii, în migrare={} titlu={}", s3.migrating(), s3.title.title());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
             eprintln!("selftest: după „înainte” titlu={}", s3.title.title());
+            // Jurnalul viitor: câte o intrare pe fiecare pagină, apoi următoarele două luni.
+            s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[3]]);
+            eprintln!("selftest: viitor {} / {}", s3.title.title(), s3.title.subtitle());
+            for (q, t) in [(&s3.left.quick, ". 15 Revizia mașinii"), (&s3.right.quick, "o 7 Ziua lui Ion")] {
+                let q = q.clone().expect("câmp");
+                q.set_text(t);
+                q.emit_activate();
+            }
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
+            eprintln!("selftest: viitor după „înainte” {}", s3.title.subtitle());
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.prev", None).ok();
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.prev", None).ok();
+            eprintln!("selftest: viitor nu trece înapoi de luna viitoare: {}", s3.title.subtitle());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.today", None).ok();
             eprintln!("selftest: după Azi titlu={} butonul Azi vizibil={}", s3.title.title(), s3.today_button.is_visible());
             s3.window.close();
