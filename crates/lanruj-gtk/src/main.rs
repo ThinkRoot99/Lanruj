@@ -1774,6 +1774,16 @@ fn build_ui(app: &adw::Application) {
                 });
             });
         }
+        Ok("captura") => {
+            // Doar o captură a ecranului de pornire (LANRUJ_PNG), apoi ieșire.
+            if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                let w = state.window.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
+                    save_png(&w, &p);
+                    w.close();
+                });
+            }
+        }
         Ok("test-culori") => {
             let s = state.clone();
             glib::idle_add_local_once(move || {
