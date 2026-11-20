@@ -88,6 +88,31 @@ impl Journal {
                     count += 1;
                 }
             }
+            // Etichetele zilei și rândurile din calendarul lunii se caută și ele (ca notițe).
+            let as_note = filter == Filter::default() || (filter.notes && !filter.important && !filter.ideas);
+            if as_note && !words.is_empty() {
+                let mut extra = Vec::new();
+                match r {
+                    PageRef::Day(_) if !day.tags.is_empty() => extra.push(format!("Etichete: {}", day.tags.join(", "))),
+                    PageRef::Month { year, month } => {
+                        if let Ok(m) = self.load_month(year, month) {
+                            for c in &m.calendar {
+                                if let crate::month::CalLine::Day(n, t) = c {
+                                    extra.push(format!("{n} {}", crate::colors::plain(t)));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                for t in extra {
+                    let f = fold(&t);
+                    if words.iter().all(|w| f.contains(w.as_str())) {
+                        hits.push((usize::MAX, Entry::new(Kind::Note, t)));
+                        count += 1;
+                    }
+                }
+            }
             if !hits.is_empty() {
                 out.push((r, hits));
             }
@@ -134,6 +159,14 @@ mod tests {
 
         let r = j.search("sedinta", Filter { events: true, ..Default::default() }, 100);
         assert_eq!(r.len(), 1);
+        fs::write(root.join("2026/11/2026-11-19.md"), "# x\n\n- Ceva\n\nEtichete: carte, sănătate\n").unwrap();
+        fs::write(root.join("2026/11/luna.md"), "# Noiembrie 2026\n\n## Calendar\n\n- 25 Oftalmolog\n\n## Sarcini\n\n- [ ] Revizia la service\n").unwrap();
+        let r = j.search("sanatate", Filter::default(), 100);
+        assert_eq!(r.len(), 1, "eticheta");
+        assert_eq!(r[0].1[0].1.text, "Etichete: carte, sănătate");
+        let r = j.search("oftalmolog", Filter::default(), 100);
+        assert_eq!(r[0].0, PageRef::Month { year: 2026, month: 11 });
+        assert_eq!(r[0].1[0].1.text, "25 Oftalmolog");
         let r = j.search("10:00", Filter::default(), 100);
         assert_eq!(r.len(), 1, "și ora se caută");
         assert!(j.search("", Filter::default(), 100).is_empty());

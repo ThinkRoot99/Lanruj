@@ -388,3 +388,29 @@ button.mark-ffbe6f { background-color: #ffbe6f; }
   background: none;
   color: var(--cerneala);
 }
+
+/* Indexul */
+.index-rand {
+  padding: 6px 4px;
+  border-bottom: 1px solid alpha(currentColor, 0.08);
+}
+
+.index-rand:hover { background-color: var(--bulina); border-radius: 4px; }
+.index-titlu { font-size: 15px; font-weight: 700; }
+.index-zile { font-size: 13px; opacity: 0.65; }
+.index-sectiune { font-size: 12px; font-weight: 700; letter-spacing: 1px; opacity: 0.55; margin-bottom: 4px; }
+.index-eticheta { margin: 2px 0; }
+.pagina button.index-zi, .pagina button.index-luna {
+  font-weight: 400;
+  color: var(--cerneala);
+  padding: 2px 6px;
+  min-height: 0;
+}
+
+.pagina menubutton.adauga-index > button {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cerneala);
+  background-color: var(--bulina);
+  margin-bottom: 8px;
+}

@@ -5,6 +5,7 @@
 pub mod colors;
 pub mod day;
 pub mod future;
+pub mod index;
 pub mod journal;
 pub mod lang;
 pub mod migrate;
@@ -16,6 +17,7 @@ pub use journal::Journal;
 pub use lang::Lang;
 pub use migrate::Decision;
 pub use future::Future;
+pub use index::{Index, IndexItem};
 pub use month::{CalLine, Month};
 pub use search::Filter;
 

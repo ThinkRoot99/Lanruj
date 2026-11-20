@@ -76,6 +76,9 @@ pub struct App {
     pub cautare: Rc<cautare::Cautare>,
     content_stack: gtk::Stack,
     searching: Cell<bool>,
+    /// Ziua propusă în „Adaugă în index” (Ctrl+I) și dacă formularul trebuie deschis.
+    pub index_add_date: Cell<Option<NaiveDate>>,
+    index_add_open: Cell<bool>,
 }
 
 /// Ce ecran se vede.
@@ -87,6 +90,8 @@ pub enum View {
     Future(i32, u32),
     /// Pagina săptămânii (an și săptămână ISO).
     Week(i32, u32),
+    /// Indexul.
+    Index,
 }
 
 fn today() -> NaiveDate {
@@ -136,7 +141,7 @@ impl App {
     /// (în migrare, cea cu sarcinile de triat).
     fn layout(&self) {
         // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
-        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..)) && !self.migrating();
+        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
         if month_stacked {
             self.left.root.set_visible(true);
@@ -164,6 +169,67 @@ impl App {
     #[cfg(debug_assertions)]
     fn cautare_first_target(&self) -> Option<(PageRef, usize)> {
         self.cautare.first_target()
+    }
+
+    fn refresh_index(self: &Rc<Self>) {
+        let idx = self.journal.load_index().unwrap_or_else(|e| {
+            self.error(&e);
+            lanruj_core::Index::default()
+        });
+        let add = self.left.fill_index_manual(self, &idx);
+        self.right.fill_index_auto(self, &self.journal.tags_index(), &self.journal.months_written());
+        self.title.set_title("Index");
+        let n = idx.items.iter().filter(|i| matches!(i, lanruj_core::IndexItem::Entry { .. })).count();
+        self.title.set_subtitle(&match self.lang {
+            Lang::Ro => match n {
+                0 => "gol încă".to_string(),
+                1 => "un rând".to_string(),
+                n if n % 100 >= 20 => format!("{n} de rânduri"),
+                n => format!("{n} rânduri"),
+            },
+            Lang::En => format!("{n} lines"),
+        });
+        if self.index_add_open.take() {
+            glib::idle_add_local_once(move || add.popup());
+        }
+    }
+
+    pub fn go_index(self: &Rc<Self>) {
+        self.leave_search();
+        if self.migrating() {
+            self.end_migration(false);
+        }
+        self.editing.set(None);
+        self.cal_editing.set(None);
+        self.selected.set(None);
+        self.view.set(View::Index);
+        self.refresh();
+    }
+
+    pub fn index_add(self: &Rc<Self>, title: &str, start: NaiveDate, end: Option<NaiveDate>) {
+        let res = self.journal.load_index().and_then(|mut idx| {
+            idx.add(title, start, end, self.lang);
+            self.journal.save_index(&idx)
+        });
+        match res {
+            Ok(()) => self.toast(tr(self.lang, "Adăugat în index", "Added to the index")),
+            Err(e) => self.error(&e),
+        }
+        self.index_add_date.set(None);
+        self.refresh();
+    }
+
+    pub fn index_remove(self: &Rc<Self>, i: usize) {
+        let res = self.journal.load_index().and_then(|mut idx| {
+            if i < idx.items.len() {
+                idx.items.remove(i);
+            }
+            self.journal.save_index(&idx)
+        });
+        if let Err(e) = res {
+            self.error(&e);
+        }
+        self.refresh();
     }
 
     /// Mersul pe altă pagină închide căutarea (fără să mute cursorul).
@@ -227,6 +293,7 @@ impl App {
         let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
         let future_view = matches!(self.view.get(), View::Future(..)) && !self.migrating();
         let week_view = matches!(self.view.get(), View::Week(..)) && !self.migrating();
+        let index_view = matches!(self.view.get(), View::Index) && !self.migrating();
         if self.migrating() {
             self.refresh_migration();
         } else if let View::Month(y, m) = self.view.get() {
@@ -235,6 +302,8 @@ impl App {
             self.refresh_future(y, m);
         } else if let View::Week(y, w) = self.view.get() {
             self.refresh_week(y, w);
+        } else if index_view {
+            self.refresh_index();
         } else {
             self.refresh_normal();
         }
@@ -243,7 +312,7 @@ impl App {
             q.set_visible(future_view || week_view);
         }
         if let Some(q) = &self.right.quick {
-            q.set_visible(!week_view);
+            q.set_visible(!week_view && !index_view);
         }
         let ph = if future_view {
             tr(self.lang, "Scrie aici; ziua la început: . 15 Revizia, o 24 Crăciun", "Write here; day first: . 15 Service, o 24 Christmas")
@@ -254,10 +323,17 @@ impl App {
             q.set_placeholder_text(Some(ph));
         }
         self.refresh_migration_header();
-        let on_today = !month_view && !future_view && !week_view && self.shown.get() == self.today.get();
+        let on_today = !month_view && !future_view && !week_view && !index_view && self.shown.get() == self.today.get();
         self.today_button.set_visible(!self.migrating() && !on_today);
-        self.migrate_button.set_visible(!self.migrating() && !future_view);
-        let row = if month_view {
+        self.migrate_button.set_visible(!self.migrating() && !future_view && !index_view);
+        if index_view {
+            for w in &self.normal_header {
+                w.set_visible(false);
+            }
+        }
+        let row = if index_view {
+            5
+        } else if month_view {
             2
         } else if week_view {
             1
@@ -675,6 +751,7 @@ impl App {
                 PageRef::Future { year, month }
             }
             (None, View::Week(year, week)) => PageRef::Week { year, week },
+            (None, View::Index) => return,
             (None, View::Day) => PageRef::Day(self.shown.get()),
         };
         match self.journal.update_ref(r, self.lang, |d| d.push(e)) {
@@ -727,6 +804,7 @@ impl App {
             View::Month(year, month) => (PageRef::Month { year, month }, &self.right),
             View::Week(year, week) => (PageRef::Week { year, week }, &self.left),
             View::Future(year, month) => (PageRef::Future { year, month }, &self.left),
+            View::Index => return None,
         })
     }
 
@@ -824,6 +902,7 @@ impl App {
                     (tr(l, "Ieșire", "Quit"), "<Control>q"),
                     (tr(l, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "F9"),
                     (tr(l, "Caută în tot jurnalul", "Search the whole journal"), "<Control>f"),
+                    (tr(l, "Adaugă ziua în index", "Add the day to the index"), "<Control>i"),
                     (tr(l, "Mărește sau micșorează fereastra", "Maximize or restore the window"), "F11"),
                     (tr(l, "Închide fereastra", "Close window"), "<Control>w"),
                 ],
@@ -1120,7 +1199,7 @@ fn build_ui(app: &adw::Application) {
     let row_boxes: Vec<gtk::Box> = built.iter().map(|(_, b, _)| b.clone()).collect();
     let mut hide_when_compact: Vec<gtk::Widget> = built.iter().flat_map(|(_, _, h)| h.clone()).collect();
     for (i, r) in rows.iter().enumerate() {
-        if !matches!(i, 0..=3) {
+        if !matches!(i, 0..=3 | 5) {
             r.set_sensitive(false);
             r.set_tooltip_text(Some(if i == 4 { tr(lang, "În versiunea a doua", "In version two") } else { soon }));
         }
@@ -1161,6 +1240,7 @@ fn build_ui(app: &adw::Application) {
             (tr(lang, "Pagina de dinainte", "Previous page"), "win.prev"),
             (tr(lang, "Pagina de după", "Next page"), "win.next"),
             (tr(lang, "Migrează", "Migrate"), "win.migrate"),
+            (tr(lang, "Adaugă ziua în index", "Add the day to the index"), "win.index-add"),
         ]),
     );
     menu.append_section(None, &section(&[(tr(lang, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "win.sidebar")]));
@@ -1345,6 +1425,8 @@ fn build_ui(app: &adw::Application) {
         cautare: cautare.clone(),
         content_stack,
         searching: Cell::new(false),
+        index_add_date: Cell::new(None),
+        index_add_open: Cell::new(false),
         selected: Cell::new(None),
     });
     if state.settings.borrow().tray {
@@ -1386,6 +1468,18 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.maximize", &["F11"]);
+    // Ctrl+I: „Adaugă în index”, cu ziua arătată propusă.
+    let a = gio::SimpleAction::new("index-add", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        if let Some(s) = weak.upgrade() {
+            s.index_add_date.set(Some(s.shown.get()));
+            s.index_add_open.set(true);
+            s.go_index();
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.index-add", &["<Control>i"]);
     let a = gio::SimpleAction::new("sidebar", None);
     let b = bara.clone();
     a.connect_activate(move |_, _| b.flip());
@@ -1441,7 +1535,7 @@ fn build_ui(app: &adw::Application) {
             let source = match s.view.get() {
                 View::Month(year, month) => PageRef::Month { year, month },
                 View::Week(year, week) => PageRef::Week { year, week },
-                View::Day | View::Future(..) => PageRef::Day(s.shown.get()),
+                View::Day | View::Future(..) | View::Index => PageRef::Day(s.shown.get()),
             };
             s.start_migration(source, false);
         }
@@ -1494,6 +1588,7 @@ fn build_ui(app: &adw::Application) {
                 let (y, m) = s.future_start();
                 s.go_future(y, m);
             }
+            5 => s.go_index(),
             _ => {}
         }
     });
@@ -1783,6 +1878,47 @@ fn build_ui(app: &adw::Application) {
                     w.close();
                 });
             }
+        }
+        Ok("test-index") => {
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                gtk::prelude::WidgetExt::activate_action(&s.window, "win.index-add", None).ok();
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    fn find(w: &gtk::Widget) -> Option<gtk::Entry> {
+                        if let Some(e) = w.downcast_ref::<gtk::Entry>()
+                            && e.has_css_class("index-form-titlu")
+                        {
+                            return Some(e.clone());
+                        }
+                        let mut c = w.first_child();
+                        while let Some(ch) = c {
+                            if let Some(e) = find(&ch) {
+                                return Some(e);
+                            }
+                            c = ch.next_sibling();
+                        }
+                        None
+                    }
+                    match find(s2.left.root.upcast_ref()) {
+                        Some(e) => {
+                            e.set_text("Prezentarea proiectului");
+                            e.emit_activate();
+                        }
+                        None => eprintln!("selftest-index: nu găsesc formularul"),
+                    }
+                    let s3 = s2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                        eprintln!("selftest-index: titlu={} / {}", s3.title.title(), s3.title.subtitle());
+                        eprintln!("selftest-index: fișier:\n{}", std::fs::read_to_string(s3.journal.index_path()).unwrap_or_default());
+                        let r = s3.journal.search("sanatate", lanruj_core::Filter::default(), 50);
+                        eprintln!("selftest-index: căutare „sanatate”: {} pagini", r.len());
+                        if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                            save_png(&s3.window, &p);
+                        }
+                    });
+                });
+            });
         }
         Ok("test-culori") => {
             let s = state.clone();
