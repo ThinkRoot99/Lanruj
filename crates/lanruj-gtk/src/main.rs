@@ -11,6 +11,8 @@ mod tava;
 use adw::prelude::*;
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use gtk::{gdk, gio, glib};
+#[cfg(debug_assertions)]
+use gtk::glib::translate::IntoGlib;
 use lanruj_core::{Day, Journal, Lang, PageRef, parse_quick};
 use page::{Page, Side};
 use migrare::{MigView, Migration};
@@ -1211,7 +1213,21 @@ fn build_ui(app: &adw::Application) {
         .build();
     header.pack_start(&today_button);
     // Meniul principal stă în antetul din dreapta, ca să rămână la îndemână și cu bara strânsă.
-    header.pack_end(&gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).primary(true).build());
+    let menu_button = gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).primary(true).build();
+    // F10 (din GNOME) deschide meniul; tot F10 îl și închide, nu doar Esc.
+    if let Some(pop) = menu_button.popover() {
+        let keys = gtk::EventControllerKey::new();
+        let p = pop.clone();
+        keys.connect_key_pressed(move |_, key, _, _| {
+            if key == gdk::Key::F10 {
+                p.popdown();
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        pop.add_controller(keys);
+    }
+    header.pack_end(&menu_button);
     let next = gtk::Button::from_icon_name("go-next-symbolic");
     next.set_action_name(Some("win.next"));
     next.set_tooltip_text(Some(tr(lang, "Ziua de după (Alt+→)", "Next day (Alt+→)")));
@@ -1669,6 +1685,19 @@ fn build_ui(app: &adw::Application) {
                 }
                 if let Some(m) = find(s.window.upcast_ref()) {
                     m.popup();
+                    if std::env::var("LANRUJ_F10").is_ok() {
+                        let m2 = m.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                            let pop = m2.popover().expect("meniul");
+                            eprintln!("selftest-meniu: deschis={}", pop.is_visible());
+                            for c in pop.observe_controllers().into_iter().flatten() {
+                                if let Ok(k) = c.downcast::<gtk::EventControllerKey>() {
+                                    let _: bool = k.emit_by_name("key-pressed", &[&gdk::Key::F10.into_glib(), &0u32, &gdk::ModifierType::empty()]);
+                                }
+                            }
+                            eprintln!("selftest-meniu: după F10 deschis={}", pop.is_visible());
+                        });
+                    }
                 }
                 if let Ok(p) = std::env::var("LANRUJ_PNG") {
                     let w = s.window.clone();
