@@ -871,6 +871,18 @@ impl App {
         self.refresh();
     }
 
+    /// Tab / Shift+Tab: intrarea trece sub cea de deasupra (notiță a ei) sau iese înapoi.
+    pub fn indent_entry(self: &Rc<Self>, r: PageRef, index: usize, right: bool) {
+        let mut ok = false;
+        if let Err(e) = self.journal.update_ref(r, self.lang, |d| ok = d.indent(index, right)) {
+            self.error(&e);
+        }
+        if !ok && right {
+            self.toast(tr(self.lang, "Intrarea trece sub cea de deasupra ei; prima intrare n-are sub ce sta.", "The entry goes under the one above it; the first entry has nothing to go under."));
+        }
+        self.refresh();
+    }
+
     /// Mută intrarea pe altă pagină (din meniul „Mută…”).
     pub fn move_entry(self: &Rc<Self>, r: PageRef, index: usize, to: PageRef) {
         match self.journal.move_entry(r, index, to, self.lang) {
@@ -1057,6 +1069,11 @@ impl App {
                 }
                 glib::Propagation::Stop
             }
+            gdk::Key::Tab | gdk::Key::ISO_Left_Tab if pos.is_some() && !in_quick => {
+                let right = key == gdk::Key::Tab && !mods.contains(gdk::ModifierType::SHIFT_MASK);
+                self.indent_entry(r, sel.expect("verificat"), right);
+                glib::Propagation::Stop
+            }
             gdk::Key::Delete | gdk::Key::KP_Delete if pos.is_some() && !in_quick => {
                 let i = sel.expect("verificat");
                 // După ștergere, selecția trece pe intrarea de dinainte (sau rămâne la loc).
@@ -1102,6 +1119,7 @@ impl App {
                     (tr(l, "Ziua, săptămâna sau luna de dinainte", "Previous day, week or month"), "<Alt>Left <Control>Page_Up"),
                     (tr(l, "Ziua, săptămâna sau luna de după", "Next day, week or month"), "<Alt>Right <Control>Page_Down"),
                     (tr(l, "Înapoi la ziua de azi", "Back to today"), "<Alt>Home"),
+                    (tr(l, "Mergi la o dată", "Go to a date"), "<Control>g"),
                 ],
             ),
             (
@@ -1112,6 +1130,7 @@ impl App {
                     (tr(l, "Editează intrarea aleasă", "Edit the selected entry"), "Return"),
                     (tr(l, "Bifează sau debifează sarcina aleasă", "Check or uncheck the selected task"), "<Control>Return"),
                     (tr(l, "Șterge intrarea aleasă", "Delete the selected entry"), "Delete"),
+                    (tr(l, "Pune intrarea aleasă sub cea de deasupra / scoate-o", "Indent / outdent the selected entry"), "Tab <Shift>Tab"),
                     (tr(l, "Înapoi în câmpul de scriere", "Back to the writing field"), "Escape"),
                     (tr(l, "Legătură pe textul selectat (la editare)", "Link on the selected text (while editing)"), "<Control>k"),
                     (tr(l, "Salvează intrarea editată", "Save the edited entry"), "Return"),
@@ -1449,6 +1468,7 @@ fn build_ui(app: &adw::Application) {
         &section(&[
             (tr(lang, "Caută în jurnal", "Search the journal"), "win.search"),
             (tr(lang, "Azi", "Today"), "win.today"),
+            (tr(lang, "Mergi la data…", "Go to date…"), "win.goto"),
             (tr(lang, "Pagina de dinainte", "Previous page"), "win.prev"),
             (tr(lang, "Pagina de după", "Next page"), "win.next"),
             (tr(lang, "Migrează", "Migrate"), "win.migrate"),
@@ -1669,6 +1689,56 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.search", &["<Control>f"]);
+    // Ctrl+G: Mergi la data… (un calendar; clic pe o zi o deschide).
+    let a = gio::SimpleAction::new("goto", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        let Some(s) = weak.upgrade() else { return };
+        let lang = s.lang;
+        let dialog = adw::Dialog::builder().title(tr(lang, "Mergi la data…", "Go to date…")).content_width(340).build();
+        let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        b.set_margin_top(6);
+        b.set_margin_bottom(12);
+        b.set_margin_start(12);
+        b.set_margin_end(12);
+        let cal = gtk::Calendar::new();
+        let d = s.shown.get();
+        if let Ok(dt) = glib::DateTime::from_local(d.year(), d.month() as i32, d.day() as i32, 12, 0, 0.0) {
+            cal.select_day(&dt);
+        }
+        b.append(&cal);
+        // Butonul deschide ziua aleasă (schimbarea lunii din săgeți nu deschide nimic).
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        row.set_halign(gtk::Align::End);
+        let today_b = gtk::Button::with_label(tr(lang, "Azi", "Today"));
+        let open_b = gtk::Button::builder().label(tr(lang, "Deschide ziua", "Open the day")).css_classes(["suggested-action"]).build();
+        row.append(&today_b);
+        row.append(&open_b);
+        b.append(&row);
+        let view = adw::ToolbarView::new();
+        view.add_top_bar(&adw::HeaderBar::new());
+        view.set_content(Some(&b));
+        dialog.set_child(Some(&view));
+        let (weak2, dl, c2) = (Rc::downgrade(&s), dialog.clone(), cal.clone());
+        open_b.connect_clicked(move |_| {
+            let dt = c2.date();
+            if let (Some(app), Some(d)) = (weak2.upgrade(), NaiveDate::from_ymd_opt(dt.year(), dt.month() as u32, dt.day_of_month() as u32)) {
+                dl.close();
+                app.go(d);
+            }
+        });
+        let (weak2, dl) = (Rc::downgrade(&s), dialog.clone());
+        today_b.connect_clicked(move |_| {
+            if let Some(app) = weak2.upgrade() {
+                dl.close();
+                app.go(app.today.get());
+            }
+        });
+        dialog.set_default_widget(Some(&open_b));
+        dialog.present(Some(&s.window));
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.goto", &["<Control>g"]);
     // F11: fereastra mărită pe tot ecranul (cu bara de sus a sistemului) și înapoi.
     let a = gio::SimpleAction::new("maximize", None);
     let w = window.clone();

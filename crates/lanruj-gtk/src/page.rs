@@ -899,6 +899,19 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     keys.connect_key_pressed(move |_, key, _, mods| {
         let Some(app) = weak.upgrade() else { return glib::Propagation::Proceed };
         match key {
+            gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab => {
+                // Tab în editare: salvează și pune intrarea sub cea de deasupra; Shift+Tab o scoate.
+                let right = key == gtk::gdk::Key::Tab && !mods.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+                let text = serialize_colored(&v.buffer());
+                if let Some((r, i)) = app.editing.get() {
+                    glib::idle_add_local_once(move || {
+                        app.finish_edit(Some(text));
+                        app.indent_entry(r, i, right);
+                        app.start_edit(r, i);
+                    });
+                }
+                glib::Propagation::Stop
+            }
             gtk::gdk::Key::Escape => {
                 glib::idle_add_local_once(move || app.finish_edit(None));
                 glib::Propagation::Stop
@@ -1431,6 +1444,17 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     let edit = gtk::Button::builder().label(tr(lang, "Editează", "Edit")).css_classes(["flat"]).build();
     let mv = gtk::Button::builder().label(tr(lang, "Mută…", "Move…")).css_classes(["flat", "muta"]).visible(movable).build();
     let col = gtk::Button::builder().label(tr(lang, "Culoare…", "Color…")).css_classes(["flat", "culoare"]).build();
+    let ind = gtk::Button::builder().label(tr(lang, "Sub intrarea de deasupra (Tab)", "Under the entry above (Tab)")).css_classes(["flat"]).build();
+    let outd = gtk::Button::builder().label(tr(lang, "Scoate de sub ea (Shift+Tab)", "Out from under it (Shift+Tab)")).css_classes(["flat"]).build();
+    for (b, right) in [(&ind, true), (&outd, false)] {
+        let (weak, p) = (Rc::downgrade(app), pop.clone());
+        b.connect_clicked(move |_| {
+            p.popdown();
+            if let Some(app) = weak.upgrade() {
+                glib::idle_add_local_once(move || app.indent_entry(date, index, right));
+            }
+        });
+    }
     let pics = gtk::Button::builder().label(tr(lang, "Adaugă poze sau fișiere…", "Add pictures or files…")).css_classes(["flat", "adauga-poze"]).build();
     let (weak, p) = (Rc::downgrade(app), pop.clone());
     pics.connect_clicked(move |_| {
@@ -1458,7 +1482,7 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     if !urls.is_empty() {
         menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
-    for b in [&edit, &mv, &col, &pics, &del] {
+    for b in [&edit, &mv, &col, &pics, &ind, &outd, &del] {
         b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
         menu.append(b);
     }

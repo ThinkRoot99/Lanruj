@@ -407,6 +407,41 @@ impl Day {
         true
     }
 
+    /// Mută intrarea `index` (cu tot ce are dedesubt) un nivel la dreapta (sub intrarea de deasupra)
+    /// sau la stânga. Întoarce adevărat dacă s-a putut.
+    pub fn indent(&mut self, index: usize, right: bool) -> bool {
+        let Some(Item::Entry(e)) = self.items.get(index) else { return false };
+        let depth = e.depth;
+        if right {
+            // Doar dacă deasupra e o intrare la același nivel sau mai adâncă (altfel n-are sub ce sta).
+            let above = self.items[..index].iter().rev().find_map(|it| match it {
+                Item::Entry(p) => Some(p.depth),
+                _ => None,
+            });
+            if !above.is_some_and(|d| d >= depth) {
+                return false;
+            }
+        } else if depth == 0 {
+            return false;
+        }
+        let n = self.children_count(index);
+        for it in &mut self.items[index..=index + n] {
+            match it {
+                Item::Entry(x) => {
+                    if right { x.depth += 1 } else { x.depth -= 1 }
+                }
+                Item::Other(l) => {
+                    if right {
+                        *l = format!("  {l}");
+                    } else if let Some(r) = l.strip_prefix("  ") {
+                        *l = r.to_string();
+                    }
+                }
+            }
+        }
+        true
+    }
+
     pub fn push_item(&mut self, item: Item) {
         self.trim_trailing_blank();
         self.items.push(item);
@@ -568,6 +603,18 @@ Ziua: 4/5
         assert!(day.remove(3));
         assert_eq!(day.items.len(), before - 2);
         assert!(!day.remove(100));
+    }
+
+    #[test]
+    fn notite_dedesubt() {
+        let mut day = Day::parse(d(), "# x\n\n- [x] Plimbare\n- frig, dar senin\n  ![](2026-11-20/p.jpg)\n");
+        assert!(!day.indent(0, true), "prima intrare n-are sub ce sta");
+        assert!(day.indent(1, true));
+        assert_eq!(day.to_markdown(Lang::Ro), "# x\n\n- [x] Plimbare\n  - frig, dar senin\n    ![](2026-11-20/p.jpg)\n");
+        assert!(!day.indent(1, true), "nu mai adânc decât intrarea de deasupra plus unu");
+        assert!(day.indent(1, false));
+        assert_eq!(day.to_markdown(Lang::Ro), "# x\n\n- [x] Plimbare\n- frig, dar senin\n  ![](2026-11-20/p.jpg)\n");
+        assert!(!day.indent(1, false));
     }
 
     #[test]

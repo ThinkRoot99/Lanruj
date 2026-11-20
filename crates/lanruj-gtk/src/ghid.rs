@@ -7,7 +7,13 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 13] = [
+const CAPITOLE: [(&str, &str, &str, &str); 15] = [
+    (
+        "Cum începi",
+        "O zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
+        "Getting started",
+        "A usual day with Lanruj:\n\n         <b>1.</b> Open the app: you are on today, with the cursor in the field at the bottom.\n         <b>2.</b> Write what you have to do, one line at a time, pressing Enter after each: <tt>. Call the bank</tt>,          <tt>o 18:00 Family dinner</tt>, <tt>- First snow</tt>.\n         <b>3.</b> When you finish a task, click the dot in front of it: it becomes ×.\n         <b>4.</b> To add a note under an entry (for example \"cold but clear\" under \"Walk\"), write it at the bottom,          select it with ↑ and press <b>Tab</b>: it goes under the entry above.\n         <b>5.</b> Want to change something? Double-click the entry (or right-click → Edit).\n         <b>6.</b> In the evening, Lanruj shows what you didn't finish: choose tomorrow, another day, drop or keep (see Migration).\n         <b>7.</b> Under the day add tags and the day rating; with the paperclip in the bottom field, pictures.\n\n         For things that don't belong to a day: the week's plan, the month's list, the future log for the coming months,          and the Index for what you want to find easily later.",
+    ),
     (
         "Pe scurt",
         "Lanruj e un jurnal în stilul metodei Bullet Journal: scrii scurt, cu semne, și muți ce n-ai terminat.\n\n\
@@ -33,8 +39,12 @@ const CAPITOLE: [(&str, &str, &str, &str); 13] = [
          <tt>o </tt> eveniment, cu ora dacă vrei: <tt>o 10:00 Dentist</tt>\n\
          <tt>- </tt> notă: <tt>- A plouat toată ziua</tt>\n\
          fără semn: tot notă\n\n\
-         După semn: <tt>*</tt> pentru important (★), <tt>!</tt> pentru idee, de exemplu <tt>. * Trimite raportul</tt>.\n\
-         În Planuri, ziua stă la început: <tt>. 15 Revizia mașinii</tt>.",
+         După semn: <tt>*</tt> pentru important (★), <tt>!</tt> pentru idee, de exemplu <tt>. * Trimite raportul</tt>.\n\n\
+         <b>Unde scrii</b>: în Pagina zilei, în câmpul de jos din dreapta; în Pagina săptămânii, în câmpul planului (stânga); \
+         în Pagina lunii, în câmpul sarcinilor (dreapta), iar în calendar cu dublu clic pe o zi; în Planuri, fiecare lună are \
+         câmpul ei, iar ziua stă la început: <tt>. 15 Revizia mașinii</tt>; în pagina unui rând din index, în câmpul din stânga.\n\n\
+         <b>Notițe sub o intrare</b>: alegi intrarea cu ↑ ↓ (sau o editezi) și apeși <b>Tab</b>; trece sub cea de deasupra. \
+         <b>Shift+Tab</b> o scoate înapoi. La fel din clic dreapta.",
         "Quick writing",
         "Type a line in the field at the bottom and press <b>Enter</b>. The sign at the start says what it is:\n\n\
          <tt>. </tt> task, for example <tt>. Call the bank</tt>\n\
@@ -42,7 +52,11 @@ const CAPITOLE: [(&str, &str, &str, &str); 13] = [
          <tt>- </tt> note: <tt>- Rained all day</tt>\n\
          no sign: also a note\n\n\
          After the sign: <tt>*</tt> for important (★), <tt>!</tt> for an idea, for example <tt>. * Send the report</tt>.\n\
-         In the future log, the day goes first: <tt>. 15 Car service</tt>.",
+         <b>Where to write</b>: on the Day page, in the bottom field on the right; on the Week page, in the plan's field (left); \
+         on the Month page, in the tasks field (right), and in the calendar by double-clicking a day; in the future log, each month \
+         has its own field, with the day first: <tt>. 15 Car service</tt>; on an index line's page, in the field on the left.\n\n\
+         <b>Notes under an entry</b>: select the entry with ↑ ↓ (or edit it) and press <b>Tab</b>; it goes under the one above. \
+         <b>Shift+Tab</b> takes it back out. The same from the right-click menu.",
     ),
     (
         "Semnele",
@@ -94,29 +108,65 @@ const CAPITOLE: [(&str, &str, &str, &str); 13] = [
     ),
     (
         "Editare, mutare, ștergere",
-        "<b>Dublu clic</b> pe o intrare (sau ↑ ↓ și Enter) o editează; Enter salvează, Esc renunță. \
-         Schimbând semnul de la început, o notă devine sarcină sau eveniment.\n\n\
-         <b>Clic dreapta</b> pe o intrare: Editează, <b>Mută…</b> (azi, mâine, lista lunii, planul săptămânii, Planuri, o zi anume), \
-         Culoare…, Adaugă poze sau fișiere…, Șterge (cu <b>Anulează</b> în notificare).\n\n\
-         Din tastatură: ↑ din câmpul de jos alege ultima intrare; Ctrl+Enter bifează; Delete șterge.",
+        "<b>Cum editezi o intrare</b>\n\
+         <b>1.</b> Dublu clic pe ea (sau o alegi cu ↑ ↓ și apeși Enter; sau clic dreapta → Editează).\n\
+         <b>2.</b> Rândul devine un câmp, cu semnul de la început: <tt>. </tt> sarcină, <tt>o </tt> eveniment, <tt>- </tt> notă.\n\
+         <b>3.</b> Schimbi textul. Schimbând semnul, o notă devine sarcină sau eveniment (<tt>- dentist</tt> → <tt>. dentist</tt>).\n\
+         <b>4.</b> <b>Enter</b> salvează, <b>Esc</b> renunță.\n\n\
+         <b>Clic dreapta</b> pe o intrare deschide meniul ei: Editează, <b>Mută…</b>, Culoare…, Adaugă poze sau fișiere…, \
+         Sub intrarea de deasupra (Tab), Scoate de sub ea (Shift+Tab), Șterge. Dacă intrarea are legături, sus apar și \
+         „Deschide …” / „Scrie la …”.\n\n\
+         <b>Mută…</b> duce intrarea pe altă pagină: azi, mâine, planul săptămânii aceasteia sau viitoare, lista lunii aceasteia \
+         sau viitoare, o lună din Planuri ori o zi anume din calendar. O sarcină lasă urma ei (&lt;); notele și evenimentele pleacă de tot, \
+         cu tot ce au dedesubt.\n\n\
+         <b>Șterge</b> scoate intrarea cu notițele și pozele ei; jos apare <b>Anulează</b>, dacă te-ai răzgândit.\n\n\
+         <b>Din tastatură</b>: ↑ din câmpul de jos alege ultima intrare; ↑ ↓ între intrări; Enter editează; Ctrl+Enter bifează; \
+         Tab / Shift+Tab mută sub / scoate; Delete șterge; Esc te întoarce în câmpul de jos.",
         "Edit, move, delete",
-        "<b>Double-click</b> an entry (or ↑ ↓ and Enter) to edit it; Enter saves, Esc cancels. \
-         Changing the leading sign turns a note into a task or an event.\n\n\
-         <b>Right-click</b> an entry: Edit, <b>Move…</b> (today, tomorrow, a month's list, a week's plan, future log, a specific day), \
-         Color…, Add pictures or files…, Delete (with <b>Undo</b> in the notification).\n\n\
-         From the keyboard: ↑ from the bottom field selects the last entry; Ctrl+Enter checks; Delete deletes.",
+        "<b>How to edit an entry</b>\n\
+         <b>1.</b> Double-click it (or select it with ↑ ↓ and press Enter; or right-click → Edit).\n\
+         <b>2.</b> The line becomes a field, with the leading sign: <tt>. </tt> task, <tt>o </tt> event, <tt>- </tt> note.\n\
+         <b>3.</b> Change the text. Changing the sign turns a note into a task or an event (<tt>- dentist</tt> → <tt>. dentist</tt>).\n\
+         <b>4.</b> <b>Enter</b> saves, <b>Esc</b> cancels.\n\n\
+         <b>Right-click</b> an entry for its menu: Edit, <b>Move…</b>, Color…, Add pictures or files…, \
+         Under the entry above (Tab), Out from under it (Shift+Tab), Delete. If the entry has links, \"Open …\" / \"Write to …\" appear on top.\n\n\
+         <b>Move…</b> takes the entry to another page: today, tomorrow, this or next week's plan, this or next month's list, \
+         a future log month or a specific day. A task leaves its trace (&lt;); notes and events leave entirely, with everything under them.\n\n\
+         <b>Delete</b> removes the entry with its notes and pictures; <b>Undo</b> appears at the bottom if you change your mind.\n\n\
+         <b>Keyboard</b>: ↑ from the bottom field selects the last entry; ↑ ↓ between entries; Enter edits; Ctrl+Enter checks; \
+         Tab / Shift+Tab indent / outdent; Delete deletes; Esc goes back to the bottom field.",
     ),
     (
         "Culori și legături",
-        "La editare, sub câmp apare bara de culori: selectezi o bucată de text și alegi <b>A</b> colorat (textul) sau un pătrat (marker). \
-         Fără selecție se colorează tot textul; butonul cu ✕ scoate culorile. Clic dreapta → Culoare… colorează toată intrarea.\n\n\
-         <b>Legături</b>: o adresă scrisă (<tt>https://…</tt>) sau de e-mail devine singură legătură. \
-         Pe un cuvânt: selectezi și apeși 🔗 (Ctrl+K), apoi lipești adresa. Clic pe legătură o deschide.",
+        "<b>Cum colorezi o bucată de text</b>\n\
+         <b>1.</b> Intri în editare (dublu clic pe intrare).\n\
+         <b>2.</b> Selectezi cu mouse-ul (sau cu Shift+săgeți) cuvintele pe care le vrei colorate.\n\
+         <b>3.</b> În bara de sub câmp apeși un <b>A</b> colorat (culoarea textului) sau un pătrat colorat (marker, ca fundal).\n\
+         <b>4.</b> Enter salvează.\n\
+         Fără selecție, culoarea se pune pe tot textul. Butonul cu ✕ scoate culorile de pe selecție (sau de pe tot).\n\n\
+         <b>Toată intrarea deodată</b>: clic dreapta → Culoare… și alegi.\n\n\
+         <b>Legături</b>\n\
+         • O adresă scrisă (<tt>https://…</tt>) sau o adresă de e-mail devine singură legătură.\n\
+         • Pe un cuvânt: în editare îl selectezi, apeși 🔗 din bară (sau <b>Ctrl+K</b>), lipești adresa și Enter. \
+         Poți scrie scurt, <tt>exemplu.ro</tt>; Lanruj adaugă <tt>https://</tt>.\n\
+         • „Scoate legătura” din aceeași fereastră o scoate de pe textul selectat.\n\
+         • Clic pe o legătură o deschide în browser (sau în programul de e-mail).\n\n\
+         Noaptea, culorile se luminează singure, ca să se vadă pe hârtia întunecată.",
         "Colors and links",
-        "While editing, the color bar appears under the field: select some text and pick a colored <b>A</b> (text) or a square (marker). \
-         With no selection, all the text is colored; the ✕ button removes colors. Right-click → Color… colors the whole entry.\n\n\
-         <b>Links</b>: a web address (<tt>https://…</tt>) or an e-mail address becomes a link by itself. \
-         On a word: select it, press 🔗 (Ctrl+K) and paste the address. Click a link to open it.",
+        "<b>How to color some text</b>\n\
+         <b>1.</b> Start editing (double-click the entry).\n\
+         <b>2.</b> Select the words with the mouse (or Shift+arrows).\n\
+         <b>3.</b> In the bar under the field, press a colored <b>A</b> (text color) or a colored square (marker, as background).\n\
+         <b>4.</b> Enter saves.\n\
+         With no selection, the color goes on all the text. The ✕ button removes colors from the selection (or from everything).\n\n\
+         <b>The whole entry at once</b>: right-click → Color… and pick.\n\n\
+         <b>Links</b>\n\
+         • A written web address (<tt>https://…</tt>) or e-mail address becomes a link by itself.\n\
+         • On a word: while editing, select it, press 🔗 in the bar (or <b>Ctrl+K</b>), paste the address and press Enter. \
+         You can type it short, <tt>example.com</tt>; Lanruj adds <tt>https://</tt>.\n\
+         • \"Remove link\" in the same window removes it from the selected text.\n\
+         • Click a link to open it in the browser (or the e-mail program).\n\n\
+         In dark mode, colors brighten by themselves so they show on dark paper.",
     ),
     (
         "Poze și fișiere",
@@ -152,11 +202,11 @@ const CAPITOLE: [(&str, &str, &str, &str); 13] = [
     ),
     (
         "Tastele",
-        "Toate tastele sunt în <b>☰ → Scurtături de taste</b> (Ctrl+?). Cele mai folosite: Ctrl+F căutare, Ctrl+M migrare, Ctrl+I în index, \
-         Alt+← → zile, Alt+Home azi, F9 bara laterală, F11 fereastra mare, F10 meniul, Ctrl+Q ieșire, F1 ghidul acesta.",
+        "Toate tastele sunt în <b>☰ → Scurtături de taste</b> (Ctrl+?). Cele mai folosite: Ctrl+F căutare, Ctrl+M migrare, Ctrl+I în index, Ctrl+G mergi la data, \
+         Tab sub intrarea de deasupra, Ctrl+K legătură (la editare), Alt+← → zile, Alt+Home azi, F9 bara laterală, F11 fereastra mare, F10 meniul, Ctrl+Q ieșire, F1 ghidul acesta.",
         "Keys",
-        "All keys are in <b>☰ → Keyboard Shortcuts</b> (Ctrl+?). The most used: Ctrl+F search, Ctrl+M migrate, Ctrl+I index, \
-         Alt+← → days, Alt+Home today, F9 sidebar, F11 maximize, F10 menu, Ctrl+Q quit, F1 this guide.",
+        "All keys are in <b>☰ → Keyboard Shortcuts</b> (Ctrl+?). The most used: Ctrl+F search, Ctrl+M migrate, Ctrl+I index, Ctrl+G go to date, \
+         Tab under the entry above, Ctrl+K link (while editing), Alt+← → days, Alt+Home today, F9 sidebar, F11 maximize, F10 menu, Ctrl+Q quit, F1 this guide.",
     ),
     (
         "Unde stă jurnalul",
@@ -181,6 +231,26 @@ const CAPITOLE: [(&str, &str, &str, &str); 13] = [
         "Preferences",
         "<b>☰ → Preferences</b> (Ctrl+,): paper pattern and color, dark mode, migration (automatic or only with the button, evening hour), \
          language (the window reopens) and the system tray (when closed, Lanruj stays in the top bar; Ctrl+Q quits).",
+    ),
+    (
+        "Sfaturi utile",
+        "• <b>Nu trebuie să salvezi nimic</b>: fiecare schimbare se scrie pe loc. Dacă ai șters ceva din greșeală, apasă Anulează în notificarea de jos.\n\
+         • <b>Mergi la data…</b> (Ctrl+G) te duce la orice zi; <b>Azi</b> (Alt+Home) te aduce înapoi.\n\
+         • <b>F9</b> strânge bara laterală la iconițe (și o deschide); pe o fereastră mică se strânge singură. <b>F11</b> mărește fereastra.\n\
+         • Sarcinile mutate de mai multe ori primesc <b>↻</b>; de la a treia mutare, gândește-te dacă mai merită.\n\
+         • Lucrurile mari (un concediu, un proiect) pune-le în <b>Index</b>: au o pagină a lor, iar rândurile cu dată apar și în zilele lor.\n\
+         • Rândurile din fișiere sunt Markdown obișnuit: le poți deschide și cu Obsidian, Typora sau orice editor de text.\n\
+         • Cu <b>systray</b> pornit (Setări → Fereastra), închiderea doar ascunde fereastra; Ctrl+Q oprește aplicația.\n\
+         • Totul despre taste: Ctrl+? (Scurtături de taste).",
+        "Useful tips",
+        "• <b>No need to save</b>: every change is written at once. If you deleted something by mistake, press Undo in the notification at the bottom.\n\
+         • <b>Go to date…</b> (Ctrl+G) takes you to any day; <b>Today</b> (Alt+Home) brings you back.\n\
+         • <b>F9</b> collapses the sidebar to icons (and back); on a small window it collapses by itself. <b>F11</b> maximizes the window.\n\
+         • Tasks moved several times get <b>↻</b>; from the third move on, think whether it's still worth it.\n\
+         • Put big things (a holiday, a project) in the <b>Index</b>: they get a page of their own, and dated lines show on their days.\n\
+         • The lines in the files are plain Markdown: you can open them with Obsidian, Typora or any text editor.\n\
+         • With the <b>system tray</b> on (Preferences → Window), closing only hides the window; Ctrl+Q quits the app.\n\
+         • Everything about keys: Ctrl+? (Keyboard Shortcuts).",
     ),
 ];
 
