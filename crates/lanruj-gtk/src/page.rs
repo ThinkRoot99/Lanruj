@@ -21,6 +21,8 @@ pub struct Page {
     title: gtk::Label,
     /// Temele din index care privesc ziua (concediul în care e, rândurile cu data ei).
     banner: gtk::Box,
+    /// Pagina arătată acum (pentru pozele trase în ea); `None` pe paginile făcute automat.
+    pub current: std::cell::Cell<Option<PageRef>>,
     list: gtk::Box,
     footer: gtk::Box,
     pub quick: Option<gtk::Entry>,
@@ -70,7 +72,12 @@ impl Page {
         root.append(&footer);
 
         let quick = with_quick.then(|| {
-            let e = gtk::Entry::builder().placeholder_text(placeholder).css_classes(["rapid"]).build();
+            let e = gtk::Entry::builder()
+                .placeholder_text(placeholder)
+                .css_classes(["rapid"])
+                .secondary_icon_name("mail-attachment-symbolic")
+                .secondary_icon_tooltip_text("Poze și fișiere (le poți și trage în pagină)")
+                .build();
             e.set_margin_start(20);
             e.set_margin_end(20);
             e.set_margin_bottom(18);
@@ -78,10 +85,11 @@ impl Page {
             e
         });
 
-        Page { root, label, title, banner, list, footer, quick }
+        Page { root, label, title, banner, list, footer, quick, current: std::cell::Cell::new(None) }
     }
 
     fn clear(&self) {
+        self.current.set(None);
         while let Some(c) = self.list.first_child() {
             self.list.remove(&c);
         }
@@ -98,6 +106,7 @@ impl Page {
         self.title.set_label(title);
 
         self.clear();
+        self.current.set(Some(r));
         // Pe o zi: temele din index (concediul în care e și rândurile cu data ei).
         if let (PageRef::Day(d), None) = (r, mig) {
             for t in app.journal.topics_on(d) {
@@ -119,6 +128,11 @@ impl Page {
                     {
                         self.list.append(p);
                     }
+                }
+                Item::Other(s) if lanruj_core::attach::parse(s).is_some() => {
+                    any = true;
+                    let a = lanruj_core::attach::parse(s).expect("verificat");
+                    self.list.append(&attachment_widget(app, r, index, &a));
                 }
                 Item::Other(s) if !s.trim().is_empty() => {
                     any = true;
@@ -748,6 +762,79 @@ fn sign_of(kind: Kind) -> &'static str {
         Kind::Event => "○",
         Kind::Note => "–",
     }
+}
+
+/// O poză (mică, clic = mare în programul de poze) sau un fișier (iconiță și nume, clic = deschis).
+/// Clic dreapta: „Scoate din pagină” (fișierul rămâne în dosarul zilei).
+fn attachment_widget(app: &Rc<App>, r: PageRef, index: usize, a: &lanruj_core::attach::Attachment) -> gtk::Widget {
+    use lanruj_core::attach::Attachment;
+    let lang = app.lang;
+    let rel = match a {
+        Attachment::Image { path } | Attachment::File { path, .. } => path.clone(),
+    };
+    let abs = app.journal.attachment_abs(r, &rel);
+    let w: gtk::Widget = match a {
+        Attachment::Image { .. } => {
+            let pic = gtk::Picture::for_filename(&abs);
+            pic.set_can_shrink(true);
+            pic.set_content_fit(gtk::ContentFit::Contain);
+            pic.set_size_request(-1, 180);
+            pic.set_halign(gtk::Align::Start);
+            pic.add_css_class("poza");
+            if !abs.exists() {
+                let l = gtk::Label::builder().label(format!("{} {rel}", tr(lang, "Poza lipsește:", "Missing picture:"))).xalign(0.0).css_classes(["gol"]).build();
+                l.upcast()
+            } else {
+                pic.upcast()
+            }
+        }
+        Attachment::File { name, .. } => {
+            let b = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            b.add_css_class("fisier");
+            let (ctype, _) = gtk::gio::content_type_guess(Some(&abs), None);
+            let icon = gtk::gio::content_type_get_icon(&ctype);
+            let img = gtk::Image::from_gicon(&icon);
+            img.set_pixel_size(24);
+            b.append(&img);
+            b.append(&gtk::Label::builder().label(name.as_str()).xalign(0.0).wrap(true).css_classes(["text"]).build());
+            b.upcast()
+        }
+    };
+    w.set_tooltip_text(Some(tr(lang, "Clic: deschide; clic dreapta: scoate din pagină", "Click: open; right-click: remove from the page")));
+    w.set_cursor_from_name(Some("pointer"));
+    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    holder.set_margin_top(4);
+    holder.set_margin_bottom(4);
+    holder.append(&w);
+    let click = gtk::GestureClick::builder().button(1).build();
+    let path = abs.clone();
+    click.connect_released(move |g, _, _, _| {
+        if let Some(w) = g.widget() {
+            open_uri(&w, &format!("file://{}", path.display()));
+        }
+    });
+    w.add_controller(click);
+    let pop = gtk::Popover::new();
+    let rm = gtk::Button::builder().label(tr(lang, "Scoate din pagină", "Remove from the page")).css_classes(["flat", "error"]).build();
+    pop.set_child(Some(&rm));
+    pop.set_parent(&holder);
+    let p = pop.clone();
+    holder.connect_destroy(move |_| p.unparent());
+    let (weak, p) = (Rc::downgrade(app), pop.clone());
+    rm.connect_clicked(move |_| {
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.remove_line(r, index));
+        }
+    });
+    let right = gtk::GestureClick::builder().button(3).build();
+    let p = pop.clone();
+    right.connect_pressed(move |g, _, _, _| {
+        p.popup();
+        g.set_state(gtk::EventSequenceState::Claimed);
+    });
+    holder.add_controller(right);
+    holder.upcast()
 }
 
 /// O temă din index pe o zi: banda „Concediu · ziua 1 din 8” și rândurile din pagina ei

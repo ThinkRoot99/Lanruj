@@ -429,3 +429,15 @@ button.mark-ffbe6f { background-color: #ffbe6f; }
 .tema-zi.mare .tema-titlu { font-size: 14px; }
 .tema-zi .text { font-size: 13px; }
 .tema-zi:hover { background-color: var(--bulina); }
+
+/* Poze și fișiere în pagină */
+picture.poza {
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.fisier {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: var(--bulina);
+}

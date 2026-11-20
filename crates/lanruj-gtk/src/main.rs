@@ -769,6 +769,68 @@ impl App {
         self.refresh();
     }
 
+    /// Alege poze și fișiere (agrafa din câmpul de jos) și le pune în pagina câmpului.
+    pub fn pick_files(self: &Rc<Self>, left: bool) {
+        let Some(r) = self.quick_ref(left) else { return };
+        let dialog = gtk::FileDialog::builder().title(tr(self.lang, "Poze și fișiere", "Pictures and files")).modal(true).build();
+        let weak = Rc::downgrade(self);
+        dialog.open_multiple(Some(&self.window), gtk::gio::Cancellable::NONE, move |res| {
+            let Some(s) = weak.upgrade() else { return };
+            let Ok(list) = res else { return };
+            let files: Vec<std::path::PathBuf> = (0..list.n_items())
+                .filter_map(|i| list.item(i).and_downcast::<gtk::gio::File>())
+                .filter_map(|f| f.path())
+                .collect();
+            s.attach_files(r, files);
+        });
+    }
+
+    /// Copiază fișierele lângă pagină (pozele mari micșorate) și le adaugă la sfârșitul ei.
+    pub fn attach_files(self: &Rc<Self>, r: PageRef, files: Vec<std::path::PathBuf>) {
+        use lanruj_core::attach::is_image;
+        let mut added = 0;
+        for src in files {
+            if !src.is_file() {
+                continue;
+            }
+            let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("fisier").to_string();
+            let res = self.journal.attach_target(r, &name).and_then(|(abs, rel)| {
+                if is_image(&name) && copy_image_resized(&src, &abs).is_some() {
+                    // copiată (și micșorată, dacă era mare)
+                } else {
+                    std::fs::copy(&src, &abs)?;
+                }
+                self.journal.add_attachment_line(r, &rel, &name, self.lang)
+            });
+            match res {
+                Ok(()) => added += 1,
+                Err(e) => self.error(&e),
+            }
+        }
+        if added > 0 {
+            let msg = match self.lang {
+                Lang::Ro if added == 1 => "Am adăugat un fișier.".to_string(),
+                Lang::Ro => format!("Am adăugat {added} fișiere."),
+                Lang::En => format!("Added {added} file(s)."),
+            };
+            self.toast(&msg);
+        }
+        self.refresh();
+    }
+
+    /// Scoate din pagină rândul unei poze sau al unui fișier (fișierul rămâne pe disc).
+    pub fn remove_line(self: &Rc<Self>, r: PageRef, index: usize) {
+        let res = self.journal.update_ref(r, self.lang, |d| {
+            if index < d.items.len() && matches!(d.items[index], lanruj_core::Item::Other(_)) {
+                d.items.remove(index);
+            }
+        });
+        if let Err(e) = res {
+            self.error(&e);
+        }
+        self.refresh();
+    }
+
     /// Mută intrarea pe altă pagină (din meniul „Mută…”).
     pub fn move_entry(self: &Rc<Self>, r: PageRef, index: usize, to: PageRef) {
         match self.journal.move_entry(r, index, to, self.lang) {
@@ -819,10 +881,10 @@ impl App {
         self.toasts.add_toast(toast);
     }
 
-    fn quick_add(self: &Rc<Self>, entry: &gtk::Entry, left: bool) {
-        let Some(e) = parse_quick(&entry.text()) else { return };
+    /// Pagina pe care scrie câmpul de jos (cel din stânga sau cel din dreapta).
+    fn quick_ref(&self, left: bool) -> Option<PageRef> {
         // În migrare, câmpul de jos scrie pe ziua din dreapta (mâine).
-        let r = match (self.mig.borrow().as_ref().map(|m| m.target), self.view.get()) {
+        Some(match (self.mig.borrow().as_ref().map(|m| m.target), self.view.get()) {
             (Some(target), _) => target,
             (None, View::Month(year, month)) => PageRef::Month { year, month },
             (None, View::Future(year, month)) => {
@@ -830,10 +892,15 @@ impl App {
                 PageRef::Future { year, month }
             }
             (None, View::Week(year, week)) => PageRef::Week { year, week },
-            (None, View::Index) => return,
+            (None, View::Index) => return None,
             (None, View::Topic(date, n)) => PageRef::Topic { date, n },
             (None, View::Day) => PageRef::Day(self.shown.get()),
-        };
+        })
+    }
+
+    fn quick_add(self: &Rc<Self>, entry: &gtk::Entry, left: bool) {
+        let Some(e) = parse_quick(&entry.text()) else { return };
+        let Some(r) = self.quick_ref(left) else { return };
         match self.journal.update_ref(r, self.lang, |d| d.push(e)) {
             Ok(_) => entry.set_text(""),
             Err(err) => self.error(&err),
@@ -1194,6 +1261,28 @@ impl App {
         dialog.add(&page);
         dialog.present(Some(&self.window));
     }
+}
+
+/// Copiază o poză JPEG sau PNG; dacă latura mare are peste 2000 de pixeli, o micșorează.
+/// Poza se întoarce după cum a fost făcută (orientarea din EXIF). `None` = nu s-a putut (se copiază simplu).
+fn copy_image_resized(src: &std::path::Path, dst: &std::path::Path) -> Option<()> {
+    const MAX: i32 = 2000;
+    let ext = dst.extension()?.to_str()?.to_lowercase();
+    let format = match ext.as_str() {
+        "jpg" | "jpeg" => "jpeg",
+        "png" => "png",
+        _ => return None,
+    };
+    let pb = gtk::gdk_pixbuf::Pixbuf::from_file(src).ok()?;
+    let pb = pb.apply_embedded_orientation().unwrap_or(pb);
+    let (w, h) = (pb.width(), pb.height());
+    if w.max(h) <= MAX {
+        return None;
+    }
+    let scale = MAX as f64 / w.max(h) as f64;
+    let small = pb.scale_simple((w as f64 * scale) as i32, (h as f64 * scale) as i32, gtk::gdk_pixbuf::InterpType::Bilinear)?;
+    let opts: &[(&str, &str)] = if format == "jpeg" { &[("quality", "90")] } else { &[] };
+    small.savev(dst, format, opts).ok()
 }
 
 fn load_css() {
@@ -1650,6 +1739,35 @@ fn build_ui(app: &adw::Application) {
                 s.quick_add(e, is_left);
             }
         });
+        // Agrafa: poze și fișiere.
+        q.set_icon_tooltip_text(gtk::EntryIconPosition::Secondary, Some(tr(lang, "Poze și fișiere (le poți și trage în pagină)", "Pictures and files (you can also drag them onto the page)")));
+        let weak = Rc::downgrade(&state);
+        q.connect_icon_release(move |_, pos| {
+            if pos == gtk::EntryIconPosition::Secondary
+                && let Some(s) = weak.upgrade()
+            {
+                s.pick_files(is_left);
+            }
+        });
+    }
+    // Poze și fișiere trase în pagină.
+    for page in [&state.left, &state.right] {
+        let drop = gtk::DropTarget::new(gtk::gdk::FileList::static_type(), gtk::gdk::DragAction::COPY);
+        let weak = Rc::downgrade(&state);
+        let is_left = std::ptr::eq(page, &state.left);
+        drop.connect_drop(move |_, value, _, _| {
+            let Some(s) = weak.upgrade() else { return false };
+            let Ok(list) = value.get::<gtk::gdk::FileList>() else { return false };
+            let page = if is_left { &s.left } else { &s.right };
+            let Some(r) = page.current.get() else {
+                s.toast(tr(s.lang, "Pozele se pun pe o zi sau pe o pagină cu intrări.", "Pictures go on a day or a page with entries."));
+                return false;
+            };
+            let files: Vec<std::path::PathBuf> = list.files().iter().filter_map(|f| f.path()).collect();
+            glib::idle_add_local_once(move || s.attach_files(r, files));
+            true
+        });
+        page.root.add_controller(drop);
     }
 
     // Navigarea: bara laterală, calendarul, săgețile
@@ -2104,6 +2222,21 @@ fn build_ui(app: &adw::Application) {
                 }
                 if let Ok(p) = std::env::var("LANRUJ_PNG") {
                     save_png(&s.window, &p);
+                }
+            });
+        }
+        Ok("test-poze") => {
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                let dir = std::env::var("LANRUJ_FISIERE").unwrap_or_default();
+                let files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+                let mut files = files;
+                files.sort();
+                s.attach_files(PageRef::Day(s.shown.get()), files);
+                eprintln!("selftest-poze: fișierul zilei:\n{}", std::fs::read_to_string(s.journal.day_path(s.shown.get())).unwrap_or_default());
+                if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                    let w = s.window.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || save_png(&w, &p));
                 }
             });
         }

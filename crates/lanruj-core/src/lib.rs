@@ -2,6 +2,7 @@
 //! Nucleul Lanruj: formatul fișierelor zilei, citirea și scrierea lor.
 //! Nu știe nimic despre ferestre; interfața doar îl folosește.
 
+pub mod attach;
 pub mod colors;
 pub mod day;
 pub mod future;
