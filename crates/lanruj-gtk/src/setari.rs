@@ -42,11 +42,14 @@ pub struct Settings {
     pub auto_migrate: bool,
     /// La închidere, Lanruj rămâne în systray.
     pub tray: bool,
+    /// Lățimea barei laterale întinse și dacă e strânsă (doar iconițe).
+    pub sidebar_width: i32,
+    pub sidebar_compact: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false }
+        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_width: 250, sidebar_compact: false }
     }
 }
 
@@ -124,6 +127,14 @@ impl Settings {
         if let Ok(b) = kf.boolean("lanruj", "systray") {
             s.tray = b;
         }
+        if let Ok(w) = kf.integer("lanruj", "latime-bara")
+            && (100..2000).contains(&w)
+        {
+            s.sidebar_width = w;
+        }
+        if let Ok(b) = kf.boolean("lanruj", "bara-stransa") {
+            s.sidebar_compact = b;
+        }
         s
     }
 
@@ -136,6 +147,8 @@ impl Settings {
         kf.set_integer("lanruj", "ora-migrarii", self.evening_hour as i32);
         kf.set_boolean("lanruj", "migrare-automata", self.auto_migrate);
         kf.set_boolean("lanruj", "systray", self.tray);
+        kf.set_integer("lanruj", "latime-bara", self.sidebar_width);
+        kf.set_boolean("lanruj", "bara-stransa", self.sidebar_compact);
         let p = path();
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir)?;

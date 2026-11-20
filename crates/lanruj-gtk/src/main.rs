@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lanruj: jurnal în stilul Bullet Journal, pe fișiere Markdown.
 
+mod bara;
 mod migrare;
 mod page;
 mod setari;
@@ -66,6 +67,8 @@ pub struct App {
     pub selected: Cell<Option<(PageRef, usize)>>,
     /// Iconița din systray, dacă e pornită.
     tray: RefCell<Option<ksni::blocking::Handle<tava::LanrujTray>>>,
+    /// Bara laterală (lățimea și dacă e strânsă).
+    bara: Rc<bara::Bara>,
 }
 
 /// Ce ecran se vede.
@@ -727,6 +730,7 @@ impl App {
                     (tr(l, "Setări", "Preferences"), "<Control>comma"),
                     (tr(l, "Scurtăturile de taste", "Keyboard shortcuts"), "<Control>question"),
                     (tr(l, "Ieșire", "Quit"), "<Control>q"),
+                    (tr(l, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "F9"),
                     (tr(l, "Închide fereastra", "Close window"), "<Control>w"),
                 ],
             ),
@@ -949,15 +953,20 @@ fn load_css() {
     gtk::Window::set_default_icon_name(APP_ID);
 }
 
-fn nav_row(icon: &str, text: &str, extra: Option<&gtk::Label>) -> gtk::ListBoxRow {
+/// Un rând din bara laterală: iconița, numele și (opțional) un număr.
+/// Întoarce și ce dispare când bara e strânsă.
+fn nav_row(icon: &str, text: &str, extra: Option<&gtk::Label>) -> (gtk::ListBoxRow, gtk::Box, Vec<gtk::Widget>) {
     let b = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     b.append(&gtk::Image::from_icon_name(icon));
-    let l = gtk::Label::builder().label(text).xalign(0.0).hexpand(true).build();
+    let l = gtk::Label::builder().label(text).xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::End).build();
     b.append(&l);
+    let mut hide: Vec<gtk::Widget> = vec![l.upcast()];
     if let Some(e) = extra {
         b.append(e);
+        hide.push(e.clone().upcast());
     }
-    gtk::ListBoxRow::builder().child(&b).build()
+    let row = gtk::ListBoxRow::builder().child(&b).tooltip_text(text).build();
+    (row, b, hide)
 }
 
 fn build_ui(app: &adw::Application) {
@@ -1001,7 +1010,7 @@ fn build_ui(app: &adw::Application) {
     let today_count = gtk::Label::builder().css_classes(["dim-label", "caption"]).build();
     let nav = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
     let soon = tr(lang, "Vine într-un pas următor", "Coming in a later step");
-    let rows = [
+    let built = [
         nav_row("document-edit-symbolic", tr(lang, "Pagina zilei", "Day"), Some(&today_count)),
         nav_row("view-dual-symbolic", tr(lang, "Pagina săptămânii", "Week"), None),
         nav_row("view-grid-symbolic", tr(lang, "Pagina lunii", "Month"), None),
@@ -1013,6 +1022,9 @@ fn build_ui(app: &adw::Application) {
         ),
         nav_row("view-list-bullet-symbolic", "Index", None),
     ];
+    let rows: Vec<gtk::ListBoxRow> = built.iter().map(|(r, _, _)| r.clone()).collect();
+    let row_boxes: Vec<gtk::Box> = built.iter().map(|(_, b, _)| b.clone()).collect();
+    let mut hide_when_compact: Vec<gtk::Widget> = built.iter().flat_map(|(_, _, h)| h.clone()).collect();
     for (i, r) in rows.iter().enumerate() {
         if !matches!(i, 0..=3) {
             r.set_sensitive(false);
@@ -1028,23 +1040,39 @@ fn build_ui(app: &adw::Application) {
     let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     spacer.set_vexpand(true);
     side_box.append(&spacer);
-    side_box.append(&calendar);
+    // Calendarul se poate îngusta odată cu bara (taie din margini, fără bară de derulare).
+    let cal_box = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::External)
+        .vscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .propagate_natural_width(true)
+        .child(&calendar)
+        .build();
+    side_box.append(&cal_box);
 
     let menu = gio::Menu::new();
     menu.append(Some(tr(lang, "Setări", "Preferences")), Some("win.preferences"));
     menu.append(Some(tr(lang, "Scurtături de taste", "Keyboard Shortcuts")), Some("win.shortcuts"));
     menu.append(Some(tr(lang, "Despre Lanruj", "About Lanruj")), Some("app.about"));
     menu.append(Some(tr(lang, "Ieșire", "Quit")), Some("app.quit"));
-    let side_header = adw::HeaderBar::new();
+    let side_header = adw::HeaderBar::builder().show_end_title_buttons(false).show_start_title_buttons(false).build();
+    side_header.set_title_widget(Some(&gtk::Label::builder().label("Lanruj").css_classes(["heading"]).ellipsize(gtk::pango::EllipsizeMode::End).build()));
+    let toggle = gtk::Button::builder()
+        .icon_name("sidebar-show-symbolic")
+        .action_name("win.sidebar")
+        .tooltip_text(tr(lang, "Strânge sau întinde bara laterală (F9)", "Collapse or expand the sidebar (F9)"))
+        .build();
+    side_header.pack_start(&toggle);
     let search = gtk::Button::from_icon_name("edit-find-symbolic");
     search.set_sensitive(false);
     search.set_tooltip_text(Some(tr(lang, "Căutarea vine într-un pas următor", "Search comes in a later step")));
-    side_header.pack_start(&search);
-    side_header.pack_end(&gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).build());
+    side_header.pack_end(&search);
+    hide_when_compact.push(search.clone().upcast());
+    hide_when_compact.push(cal_box.clone().upcast());
     let side_view = adw::ToolbarView::new();
     side_view.add_top_bar(&side_header);
     side_view.set_content(Some(&side_box));
-    let sidebar = adw::NavigationPage::new(&side_view, "Lanruj");
+    side_view.add_css_class("sidebar-pane");
 
     // Caietul
     let placeholder = tr(lang, "Scrie aici: . sarcină, o eveniment, - notă, apoi Enter", "Write here: . task, o event, - note, then Enter");
@@ -1074,6 +1102,8 @@ fn build_ui(app: &adw::Application) {
         .visible(false)
         .build();
     header.pack_start(&today_button);
+    // Meniul principal stă în antetul din dreapta, ca să rămână la îndemână și cu bara strânsă.
+    header.pack_end(&gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).primary(true).build());
     let next = gtk::Button::from_icon_name("go-next-symbolic");
     next.set_action_name(Some("win.next"));
     next.set_tooltip_text(Some(tr(lang, "Ziua de după (Alt+→)", "Next day (Alt+→)")));
@@ -1099,20 +1129,42 @@ fn build_ui(app: &adw::Application) {
     let content_view = adw::ToolbarView::new();
     content_view.add_top_bar(&header);
     content_view.set_content(Some(&toasts));
-    let content = adw::NavigationPage::new(&content_view, "Lanruj");
 
-    let split = adw::NavigationSplitView::builder()
-        .sidebar(&sidebar)
-        .content(&content)
-        .min_sidebar_width(230.0)
-        .max_sidebar_width(270.0)
+    // Bara laterală și caietul, despărțite de o margine care se trage.
+    let paned = gtk::Paned::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .start_child(&side_view)
+        .end_child(&content_view)
+        .resize_start_child(false)
+        .shrink_start_child(false)
+        .resize_end_child(true)
+        .shrink_end_child(false)
         .build();
-    window.set_content(Some(&split));
+    window.set_content(Some(&paned));
+    let bara = Rc::new(bara::Bara::new(
+        paned.clone(),
+        hide_when_compact,
+        row_boxes,
+        side_header.clone(),
+        settings.sidebar_width,
+        settings.sidebar_compact,
+    ));
+    bara.apply();
+    let b = bara.clone();
+    paned.connect_position_notify(move |_| b.dragged());
 
     // Pe ecran îngust: o singură pagină; și mai îngust: bara laterală ascunsă.
     let one_page = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 900sp").expect("condiție"));
-    let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 600sp").expect("condiție"));
-    narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
+    // Fereastra prea mică: bara rămâne doar cu iconițe.
+    let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 700sp").expect("condiție"));
+    for (apply, forced) in [(true, true), (false, false)] {
+        let b = bara.clone();
+        let f = move |_: &adw::Breakpoint| {
+            b.forced.set(forced);
+            b.apply();
+        };
+        if apply { narrow.connect_apply(f); } else { narrow.connect_unapply(f); }
+    }
     window.add_breakpoint(narrow);
 
     let t = today();
@@ -1145,9 +1197,10 @@ fn build_ui(app: &adw::Application) {
         today_button,
         migrate_button: migrate.clone(),
         nav: nav.clone(),
-        nav_rows: rows.to_vec(),
+        nav_rows: rows.clone(),
         settings: RefCell::new(settings),
         tray: RefCell::new(None),
+        bara: bara.clone(),
         selected: Cell::new(None),
     });
     if state.settings.borrow().tray {
@@ -1163,6 +1216,11 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.preferences", &["<Control>comma"]);
+    let a = gio::SimpleAction::new("sidebar", None);
+    let b = bara.clone();
+    a.connect_activate(move |_, _| b.flip());
+    window.add_action(&a);
+    app.set_accels_for_action("win.sidebar", &["F9"]);
     let a = gio::SimpleAction::new("shortcuts", None);
     let weak = Rc::downgrade(&state);
     a.connect_activate(move |_, _| {
@@ -1367,6 +1425,13 @@ fn build_ui(app: &adw::Application) {
     // Cu iconița din systray pornită, închiderea doar ascunde fereastra.
     let keep = state.clone();
     window.connect_close_request(move |w| {
+        // Lățimea și starea barei se țin minte.
+        {
+            let mut st = keep.settings.borrow_mut();
+            st.sidebar_width = keep.bara.width.get();
+            st.sidebar_compact = keep.bara.user_compact.get();
+        }
+        let _ = keep.settings.borrow().save();
         if keep.tray.borrow().as_ref().is_some_and(|h| !h.is_closed()) {
             w.set_visible(false);
             return glib::Propagation::Stop;
@@ -1419,6 +1484,24 @@ fn build_ui(app: &adw::Application) {
                     gtk::prelude::GtkWindowExt::focus(&s.window).is_some_and(|w| w.is_ancestor(&q))
                 );
                 s.window.close();
+            });
+        }
+        Ok("test-bara") => {
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
+                eprintln!("selftest-bara: la pornire poziția={} strânsă={}", s.bara.paned.position(), s.bara.compact());
+                gtk::prelude::WidgetExt::activate_action(&s.window, "win.sidebar", None).ok();
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    eprintln!("selftest-bara: după F9 poziția={} strânsă={}", s2.bara.paned.position(), s2.bara.compact());
+                    if std::env::var("LANRUJ_BARA_RAMANE").is_err() {
+                        gtk::prelude::WidgetExt::activate_action(&s2.window, "win.sidebar", None).ok();
+                        s2.bara.paned.set_position(120);
+                        eprintln!("selftest-bara: trasă la 120 → poziția={} strânsă={}", s2.bara.paned.position(), s2.bara.compact());
+                        s2.bara.paned.set_position(320);
+                        eprintln!("selftest-bara: trasă la 320 → poziția={} strânsă={} lățime ținută={}", s2.bara.paned.position(), s2.bara.compact(), s2.bara.width.get());
+                    }
+                });
             });
         }
         Ok("taste") => {
