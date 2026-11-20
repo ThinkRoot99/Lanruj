@@ -12,10 +12,13 @@ use std::rc::Rc;
 
 const LIMIT: usize = 300;
 
+/// Ce bifează în filtru un buton.
+type SetFilter = fn(&mut Filter);
+
 pub struct Cautare {
     pub root: gtk::Box,
     pub entry: gtk::SearchEntry,
-    filters: Vec<(gtk::ToggleButton, fn(&mut Filter))>,
+    filters: Vec<(gtk::ToggleButton, SetFilter)>,
     list: gtk::ListBox,
     status: adw::StatusPage,
     scroller: gtk::ScrolledWindow,
@@ -83,8 +86,8 @@ impl Cautare {
             .build();
         top.append(&entry);
         let fbox = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        let mut filters: Vec<(gtk::ToggleButton, fn(&mut Filter))> = Vec::new();
-        let defs: [(&str, &str, fn(&mut Filter)); 5] = [
+        let mut filters: Vec<(gtk::ToggleButton, SetFilter)> = Vec::new();
+        let defs: [(&str, &str, SetFilter); 5] = [
             (tr(lang, "• Sarcini", "• Tasks"), "", |f| f.tasks = true),
             (tr(lang, "○ Evenimente", "○ Events"), "", |f| f.events = true),
             (tr(lang, "– Notițe", "– Notes"), "", |f| f.notes = true),
