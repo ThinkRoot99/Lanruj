@@ -40,11 +40,13 @@ pub struct Settings {
     pub evening_hour: u32,
     /// Migrările pornesc singure (seara, la început de lună și de săptămână).
     pub auto_migrate: bool,
+    /// La închidere, Lanruj rămâne în systray.
+    pub tray: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true }
+        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false }
     }
 }
 
@@ -119,6 +121,9 @@ impl Settings {
         if let Ok(b) = kf.boolean("lanruj", "migrare-automata") {
             s.auto_migrate = b;
         }
+        if let Ok(b) = kf.boolean("lanruj", "systray") {
+            s.tray = b;
+        }
         s
     }
 
@@ -130,6 +135,7 @@ impl Settings {
         kf.set_string("lanruj", "noapte", key_of(&SCHEMES, self.scheme));
         kf.set_integer("lanruj", "ora-migrarii", self.evening_hour as i32);
         kf.set_boolean("lanruj", "migrare-automata", self.auto_migrate);
+        kf.set_boolean("lanruj", "systray", self.tray);
         let p = path();
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir)?;

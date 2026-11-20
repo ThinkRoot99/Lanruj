@@ -5,7 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-adw = { version = "0.9.2", package = "libadwaita", features = ["v1_7"] }
+adw = { version = "0.9.2", package = "libadwaita", features = ["v1_8"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 gtk = { version = "0.11.5", package = "gtk4", features = ["v4_18"] }
 lanruj-core = { version = "0.1.0", path = "../lanruj-core" }
+ksni = { version = "0.3.7", default-features = false, features = ["blocking", "async-io"] }

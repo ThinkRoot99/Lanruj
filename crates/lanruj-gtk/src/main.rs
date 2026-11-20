@@ -4,6 +4,7 @@
 mod migrare;
 mod page;
 mod setari;
+mod tava;
 
 use adw::prelude::*;
 use chrono::{Datelike, Duration, Local, NaiveDate};
@@ -61,6 +62,8 @@ pub struct App {
     nav: gtk::ListBox,
     nav_rows: Vec<gtk::ListBoxRow>,
     pub settings: RefCell<setari::Settings>,
+    /// Iconița din systray, dacă e pornită.
+    tray: RefCell<Option<ksni::blocking::Handle<tava::LanrujTray>>>,
 }
 
 /// Ce ecran se vede.
@@ -582,6 +585,100 @@ impl App {
 }
 
 impl App {
+    /// Pornește sau oprește iconița din systray. Dacă sistemul nu are systray,
+    /// setarea rămâne oprită și apare un mesaj.
+    fn set_tray(&self, on: bool) -> bool {
+        if on {
+            if self.tray.borrow().is_some() {
+                return true;
+            }
+            match tava::start(self.lang) {
+                Some(h) => {
+                    *self.tray.borrow_mut() = Some(h);
+                    true
+                }
+                None => {
+                    self.toast(tr(
+                        self.lang,
+                        "Sistemul nu are systray. Pe GNOME e nevoie de extensia AppIndicator.",
+                        "There is no system tray. On GNOME, the AppIndicator extension is needed.",
+                    ));
+                    false
+                }
+            }
+        } else {
+            if let Some(h) = self.tray.borrow_mut().take() {
+                h.shutdown().wait();
+            }
+            true
+        }
+    }
+
+    /// Fereastra cu scurtăturile de taste (Ctrl+?).
+    fn show_shortcuts(&self) {
+        let l = self.lang;
+        let dialog = adw::ShortcutsDialog::new();
+        let sections: [(&str, Vec<(&str, &str)>); 4] = [
+            (
+                tr(l, "General", "General"),
+                vec![
+                    (tr(l, "Setări", "Preferences"), "<Control>comma"),
+                    (tr(l, "Scurtăturile de taste", "Keyboard shortcuts"), "<Control>question"),
+                    (tr(l, "Ieșire", "Quit"), "<Control>q"),
+                    (tr(l, "Închide fereastra", "Close window"), "<Control>w"),
+                ],
+            ),
+            (
+                tr(l, "Navigare", "Navigation"),
+                vec![
+                    (tr(l, "Ziua, săptămâna sau luna de dinainte", "Previous day, week or month"), "<Alt>Left <Control>Page_Up"),
+                    (tr(l, "Ziua, săptămâna sau luna de după", "Next day, week or month"), "<Alt>Right <Control>Page_Down"),
+                    (tr(l, "Înapoi la ziua de azi", "Back to today"), "<Alt>Home"),
+                ],
+            ),
+            (
+                tr(l, "Scriere", "Writing"),
+                vec![
+                    (tr(l, "Adaugă ce ai scris în câmpul de jos", "Add what you typed in the field below"), "Return"),
+                    (tr(l, "Salvează intrarea editată", "Save the edited entry"), "Return"),
+                    (tr(l, "Renunță la editare", "Cancel editing"), "Escape"),
+                ],
+            ),
+            (
+                tr(l, "Migrare", "Migration"),
+                vec![
+                    (tr(l, "Pornește migrarea", "Start the migration"), "<Control>m"),
+                    (tr(l, "Mâine, luna sau săptămâna următoare", "Tomorrow, next month or week"), "m Return"),
+                    (tr(l, "Programează", "Schedule"), "p"),
+                    (tr(l, "Renunț", "Drop"), "r"),
+                    (tr(l, "O las", "Keep"), "l"),
+                    (tr(l, "Altă sarcină", "Another task"), "Up Down"),
+                    (tr(l, "Mai târziu", "Later"), "Escape"),
+                ],
+            ),
+        ];
+        for (title, items) in sections {
+            let sec = adw::ShortcutsSection::new(Some(title));
+            for (what, accel) in items {
+                sec.add(adw::ShortcutsItem::new(what, accel));
+            }
+            dialog.add(sec);
+        }
+        // Prefixele scrierii rapide nu sunt scurtături, dar e bine să fie la îndemână.
+        let sec = adw::ShortcutsSection::new(Some(tr(l, "Semnele de la începutul rândului", "Signs at the start of a line")));
+        for (what, accel) in [
+            (tr(l, "Sarcină: . text", "Task: . text"), "period"),
+            (tr(l, "Eveniment: o 10:00 text", "Event: o 10:00 text"), "o"),
+            (tr(l, "Notă: - text", "Note: - text"), "minus"),
+            (tr(l, "Important: . * text", "Important: . * text"), "asterisk"),
+            (tr(l, "Idee: - ! text", "Idea: - ! text"), "exclam"),
+        ] {
+            sec.add(adw::ShortcutsItem::new(what, accel));
+        }
+        dialog.add(sec);
+        dialog.present(Some(&self.window));
+    }
+
     /// Aplică setările care se văd pe loc: hârtia și noaptea; apoi le salvează.
     fn apply_settings(&self) {
         let s = self.settings.borrow().clone();
@@ -683,6 +780,30 @@ impl App {
         mig.add(&hour);
         page.add(&mig);
 
+        let win = adw::PreferencesGroup::builder().title(tr(lang, "Fereastra", "Window")).build();
+        let tray = adw::SwitchRow::builder()
+            .title(tr(lang, "La închidere rămâne în systray", "Keep in the system tray when closed"))
+            .subtitle(tr(
+                lang,
+                "Iconița din bara de sus o redeschide; Ieșire din meniu o oprește. Pe Wayland, minimizarea nu poate trimite fereastra în systray.",
+                "The tray icon reopens it; Quit in the menu stops it. On Wayland, minimizing can't send the window to the tray.",
+            ))
+            .active(s.tray)
+            .build();
+        let weak = Rc::downgrade(self);
+        tray.connect_active_notify(move |r| {
+            let Some(app) = weak.upgrade() else { return };
+            let ok = app.set_tray(r.is_active());
+            if r.is_active() && !ok {
+                r.set_active(false);
+                return;
+            }
+            app.settings.borrow_mut().tray = r.is_active();
+            app.apply_settings();
+        });
+        win.add(&tray);
+        page.add(&win);
+
         let lg = adw::PreferencesGroup::builder()
             .title(tr(lang, "Limba", "Language"))
             .description(tr(lang, "Aplicația se redeschide în limba aleasă.", "The app reopens in the chosen language."))
@@ -695,6 +816,7 @@ impl App {
                 let Some(gapp) = app.window.application() else { return };
                 let Some(gapp) = gapp.downcast_ref::<adw::Application>().cloned() else { return };
                 let _hold = gapp.hold();
+                app.set_tray(false);
                 let old = app.window.clone();
                 drop(app);
                 old.destroy();
@@ -803,7 +925,9 @@ fn build_ui(app: &adw::Application) {
 
     let menu = gio::Menu::new();
     menu.append(Some(tr(lang, "Setări", "Preferences")), Some("win.preferences"));
+    menu.append(Some(tr(lang, "Scurtături de taste", "Keyboard Shortcuts")), Some("win.shortcuts"));
     menu.append(Some(tr(lang, "Despre Lanruj", "About Lanruj")), Some("app.about"));
+    menu.append(Some(tr(lang, "Ieșire", "Quit")), Some("app.quit"));
     let side_header = adw::HeaderBar::new();
     let search = gtk::Button::from_icon_name("edit-find-symbolic");
     search.set_sensitive(false);
@@ -916,7 +1040,11 @@ fn build_ui(app: &adw::Application) {
         nav: nav.clone(),
         nav_rows: rows.to_vec(),
         settings: RefCell::new(settings),
+        tray: RefCell::new(None),
     });
+    if state.settings.borrow().tray {
+        state.set_tray(true);
+    }
 
     let a = gio::SimpleAction::new("preferences", None);
     let weak = Rc::downgrade(&state);
@@ -927,6 +1055,23 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.preferences", &["<Control>comma"]);
+    let a = gio::SimpleAction::new("shortcuts", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        if let Some(s) = weak.upgrade() {
+            s.show_shortcuts();
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.shortcuts", &["<Control>question"]);
+    if app.lookup_action("quit").is_none() {
+        let q = gio::SimpleAction::new("quit", None);
+        let ga = app.clone();
+        q.connect_activate(move |_, _| ga.quit());
+        app.add_action(&q);
+        app.set_accels_for_action("app.quit", &["<Control>q"]);
+        app.set_accels_for_action("window.close", &["<Control>w"]);
+    }
 
     for (bp_apply, narrow) in [(true, true), (false, false)] {
         let weak = Rc::downgrade(&state);
@@ -1103,9 +1248,13 @@ fn build_ui(app: &adw::Application) {
 
     // Fereastra ține starea în viață; toate celelalte legături sunt slabe.
     // Fără asta, starea dispărea la ieșirea din build_ui și niciun buton nu mai mergea.
+    // Cu iconița din systray pornită, închiderea doar ascunde fereastra.
     let keep = state.clone();
-    window.connect_close_request(move |_| {
-        let _ = &keep;
+    window.connect_close_request(move |w| {
+        if keep.tray.borrow().as_ref().is_some_and(|h| !h.is_closed()) {
+            w.set_visible(false);
+            return glib::Propagation::Stop;
+        }
         glib::Propagation::Proceed
     });
 
@@ -1123,6 +1272,26 @@ fn build_ui(app: &adw::Application) {
         Ok("luna") => {
             let t = state.today.get();
             state.go_month(t.year(), t.month());
+        }
+        Ok("taste") => {
+            let w = state.window.clone();
+            glib::idle_add_local_once(move || {
+                gtk::prelude::WidgetExt::activate_action(&w, "win.shortcuts", None).ok();
+            });
+        }
+        Ok("tava") => {
+            // Fără systray (de exemplu într-o sesiune D-Bus separată): setarea trebuie să rămână oprită.
+            let ok = state.set_tray(true);
+            eprintln!("selftest-tava: pornită={ok}, iconiță={}", state.tray.borrow().is_some());
+            state.window.close();
+            let st = state.clone();
+            glib::idle_add_local_once(move || {
+                eprintln!("selftest-tava: după închidere, fereastra vizibilă={}", st.window.is_visible());
+                st.set_tray(false);
+                if let Some(a) = st.window.application() {
+                    a.quit();
+                }
+            });
         }
         Ok("setari") => {
             let w = state.window.clone();
