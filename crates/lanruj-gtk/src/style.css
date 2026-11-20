@@ -1,0 +1,155 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Hârtia și cerneala; varianta de noapte vine din clasa .noapte pe fereastră. */
+
+window.lanruj {
+  --hartie: #f6efe0;
+  --hartie-margine: #e3d8bf;
+  --punct: #d9cfb8;
+  --cerneala: #1c3d6b;
+  --portocaliu: #c64600;
+  --ocru: #e5a50a;
+  --bulina: rgba(28, 61, 107, 0.10);
+  --rapid: rgba(255, 255, 255, 0.40);
+}
+
+window.lanruj.noapte {
+  --hartie: #2b2622;
+  --hartie-margine: #1a1714;
+  --punct: #3d3630;
+  --cerneala: #e6dccb;
+  --portocaliu: #ff9257;
+  --ocru: #f5c211;
+  --bulina: rgba(230, 220, 203, 0.12);
+  --rapid: rgba(0, 0, 0, 0.18);
+}
+
+.caiet {
+  padding: 22px 26px 18px 26px;
+}
+
+.pagina {
+  background-color: var(--hartie);
+  background-image: radial-gradient(circle, var(--punct) 1px, transparent 1.6px);
+  background-size: 22px 22px;
+  background-position: 11px 11px;
+  color: var(--cerneala);
+  box-shadow: 0 1px 0 var(--hartie-margine), 0 3px 0 var(--hartie-margine), 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+.pagina.stanga { border-radius: 10px 2px 2px 10px; }
+.pagina.dreapta { border-radius: 2px 10px 10px 2px; }
+.pagina.singura { border-radius: 10px; }
+
+.cotor {
+  min-width: 2px;
+  background-color: var(--hartie-margine);
+}
+
+.eticheta-pagina {
+  font-size: 11px;
+  letter-spacing: 1px;
+  font-weight: 700;
+  opacity: 0.55;
+}
+
+.titlu-pagina {
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.intrare {
+  font-size: 15px;
+  min-height: 22px;
+}
+
+.semn {
+  min-width: 18px;
+  font-weight: 700;
+  color: var(--cerneala);
+}
+
+.pagina button.semn {
+  padding: 0;
+  min-height: 0;
+  min-width: 18px;
+  background: none;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.pagina button.semn:hover { background-color: var(--bulina); }
+
+.facut .text, .mutat .text { opacity: 0.55; }
+.renuntat .text { opacity: 0.5; }
+.stea, .bec { color: var(--ocru); font-weight: 700; }
+
+.migrari {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.6;
+}
+
+.migrari.mult {
+  color: var(--portocaliu);
+  opacity: 1;
+}
+
+.altceva { opacity: 0.7; }
+.gol { font-style: italic; opacity: 0.45; }
+
+.pagina menubutton.et > button {
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 10px;
+  min-height: 0;
+  border-radius: 99px;
+  background-color: var(--bulina);
+  color: var(--cerneala);
+  box-shadow: none;
+}
+
+.pagina menubutton.adauga > button {
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 6px;
+  min-height: 0;
+  background: none;
+  color: var(--cerneala);
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.pagina menubutton.adauga > button:hover { opacity: 0.9; }
+
+.nota-label {
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+.pagina button.punct {
+  padding: 0;
+  min-width: 9px;
+  min-height: 9px;
+  border-radius: 99px;
+  border: 1.5px solid var(--cerneala);
+  background: none;
+  box-shadow: none;
+}
+
+.pagina button.punct.plin { background-color: var(--cerneala); }
+
+.pagina entry.rapid {
+  border: 1.5px solid var(--accent-color);
+  border-radius: 8px;
+  background-color: var(--rapid);
+  color: var(--cerneala);
+  min-height: 38px;
+  font-size: 14px;
+  outline: none;
+  box-shadow: none;
+}
+
+.calendar-mic {
+  margin: 0 12px 14px 12px;
+  border-radius: 10px;
+}
