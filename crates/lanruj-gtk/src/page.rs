@@ -712,6 +712,14 @@ pub fn open_uri(widget: &impl IsA<gtk::Widget>, uri: &str) {
     if std::env::var_os("LANRUJ_NU_DESCHIDE").is_some() {
         return;
     }
+    // În afara Flatpak-ului: direct cu programul implicit (fără portal; prin portal, prima
+    // cerere se pierdea la utilizator și legătura se deschidea abia la al doilea clic).
+    if std::env::var_os("FLATPAK_ID").is_none() {
+        match gtk::gio::AppInfo::launch_default_for_uri(uri, gtk::gio::AppLaunchContext::NONE) {
+            Ok(()) => return log(&format!("deschisă direct {uri}")),
+            Err(e) => log(&format!("eroare directă {uri}: {e}; încerc prin portal")),
+        }
+    }
     let window = widget.as_ref().root().and_then(|r| r.downcast::<gtk::Window>().ok());
     let u = uri.to_string();
     gtk::UriLauncher::new(uri).launch(window.as_ref(), gtk::gio::Cancellable::NONE, move |res| match res {
