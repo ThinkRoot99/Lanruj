@@ -214,7 +214,9 @@ fn to_markdown_plain(runs: &[Run]) -> String {
 pub fn paint(text: &str, start: usize, end: usize, paint: Option<Paint>) -> String {
     let rs = runs(text);
     // Câte un rând de însușiri pe fiecare caracter, apoi le adunăm la loc.
-    let mut chars: Vec<(char, Option<String>, Option<String>, Option<String>)> = Vec::new();
+    // (caracter, culoare, marker, legătură)
+    type Attrs = (char, Option<String>, Option<String>, Option<String>);
+    let mut chars: Vec<Attrs> = Vec::new();
     for r in &rs {
         for c in r.text.chars() {
             chars.push((c, r.color.clone(), r.marker.clone(), r.link.clone()));
