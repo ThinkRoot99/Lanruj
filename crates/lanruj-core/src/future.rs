@@ -110,7 +110,7 @@ impl Future {
     pub fn to_markdown(&self, lang: Lang) -> String {
         let title = self.heading.clone().unwrap_or_else(|| {
             match lang {
-                Lang::Ro => "Jurnalul viitor",
+                Lang::Ro => "Planuri",
                 Lang::En => "Future log",
             }
             .to_string()

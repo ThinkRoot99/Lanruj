@@ -393,18 +393,121 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     row
 }
 
-/// Meniul de la clic dreapta: Editează, Șterge. Dublu clic = editează.
-fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize) {
+/// Unde se poate muta o intrare: azi, mâine, lista lunii aceasteia și a celei viitoare.
+/// (O zi anume și o lună din Planuri se aleg separat, în același meniu.)
+fn move_targets(app: &App, from: PageRef) -> Vec<(PageRef, String)> {
+    let lang = app.lang;
+    let t = app.today.get();
+    let this_month = PageRef::Month { year: t.year(), month: t.month() };
+    let next_month = lanruj_core::migrate::next_page(this_month);
+    let name = |r: PageRef| match r {
+        PageRef::Month { month, .. } => lang.month(month).to_string(),
+        _ => String::new(),
+    };
+    [
+        (PageRef::Day(t), tr(lang, "Azi", "Today").to_string()),
+        (PageRef::Day(t.succ_opt().expect("zi")), tr(lang, "Mâine", "Tomorrow").to_string()),
+        (this_month, format!("{} ({})", tr(lang, "Lista lunii aceasteia", "This month's list"), name(this_month))),
+        (next_month, format!("{} ({})", tr(lang, "Lista lunii viitoare", "Next month's list"), name(next_month))),
+    ]
+    .into_iter()
+    .filter(|(r, _)| *r != from)
+    .collect()
+}
+
+/// A doua pagină a meniului, „Mută…”: se construiește abia la primul clic,
+/// ca rândurile să nu poarte fiecare un calendar și o listă de luni.
+fn build_move_page(app: &Rc<App>, pop: &gtk::Popover, stack: &gtk::Stack, date: PageRef, index: usize) {
+    let lang = app.lang;
+    let mbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let back = gtk::Button::builder().icon_name("go-previous-symbolic").css_classes(["flat"]).halign(gtk::Align::Start).build();
+    let st = stack.clone();
+    back.connect_clicked(move |_| st.set_visible_child_name("meniu"));
+    mbox.append(&back);
+    for (to, label) in move_targets(app, date) {
+        let b = gtk::Button::builder().label(label.as_str()).css_classes(["flat", "muta-spre"]).build();
+        b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
+        let (weak, p) = (Rc::downgrade(app), pop.clone());
+        b.connect_clicked(move |_| {
+            p.popdown();
+            if let Some(app) = weak.upgrade() {
+                glib::idle_add_local_once(move || app.move_entry(date, index, to));
+            }
+        });
+        mbox.append(&b);
+    }
+    // O lună din Planuri (de după luna viitoare)
+    let t = app.today.get();
+    let mut months = Vec::new();
+    let (mut y, mut m) = lanruj_core::migrate::next_month(t.year(), t.month());
+    for _ in 0..5 {
+        (y, m) = lanruj_core::migrate::next_month(y, m);
+        months.push((y, m));
+    }
+    let names: Vec<String> = months.iter().map(|(y, m)| lang.month_title(*y, *m)).collect();
+    let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
+    mbox.append(&gtk::Label::builder().label(tr(lang, "În planuri", "To the future log")).css_classes(["heading"]).xalign(0.0).margin_top(6).build());
+    let prow = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let dd = gtk::DropDown::from_strings(&names_ref);
+    dd.set_hexpand(true);
+    let put = gtk::Button::builder().label(tr(lang, "Mută", "Move")).build();
+    let (weak, p, dd_c) = (Rc::downgrade(app), pop.clone(), dd.clone());
+    put.connect_clicked(move |_| {
+        let Some(&(year, month)) = months.get(dd_c.selected() as usize) else { return };
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.move_entry(date, index, PageRef::Future { year, month }));
+        }
+    });
+    prow.append(&dd);
+    prow.append(&put);
+    mbox.append(&prow);
+    // O zi anume
+    mbox.append(&gtk::Label::builder().label(tr(lang, "Pe o zi anume", "On a specific day")).css_classes(["heading"]).xalign(0.0).margin_top(6).build());
+    let cal = gtk::Calendar::new();
+    mbox.append(&cal);
+    let pick = gtk::Button::builder().label(tr(lang, "Mută pe ziua aleasă", "Move to the chosen day")).css_classes(["suggested-action"]).build();
+    let (weak, p, cal_c) = (Rc::downgrade(app), pop.clone(), cal.clone());
+    pick.connect_clicked(move |_| {
+        let dt = cal_c.date();
+        let Some(d) = NaiveDate::from_ymd_opt(dt.year(), dt.month() as u32, dt.day_of_month() as u32) else { return };
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.move_entry(date, index, PageRef::Day(d)));
+        }
+    });
+    mbox.append(&pick);
+    stack.add_named(&mbox, Some("muta"));
+}
+
+/// Meniul de la clic dreapta: Editează, Mută…, Șterge. Dublu clic = editează.
+fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, movable: bool) {
     let lang = app.lang;
     let pop = gtk::Popover::builder().has_arrow(true).build();
+    let stack = gtk::Stack::builder().vhomogeneous(false).hhomogeneous(false).transition_type(gtk::StackTransitionType::SlideLeftRight).build();
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let edit = gtk::Button::builder().label(tr(lang, "Editează", "Edit")).css_classes(["flat"]).build();
+    let mv = gtk::Button::builder().label(tr(lang, "Mută…", "Move…")).css_classes(["flat", "muta"]).visible(movable).build();
     let del = gtk::Button::builder().label(tr(lang, "Șterge", "Delete")).css_classes(["flat", "error"]).build();
-    for b in [&edit, &del] {
+    for b in [&edit, &mv, &del] {
         b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
         menu.append(b);
     }
-    pop.set_child(Some(&menu));
+    stack.add_named(&menu, Some("meniu"));
+
+
+    let (st, weak, p) = (stack.clone(), Rc::downgrade(app), pop.clone());
+    mv.connect_clicked(move |_| {
+        if st.child_by_name("muta").is_none()
+            && let Some(app) = weak.upgrade()
+        {
+            build_move_page(&app, &p, &st, date, index);
+        }
+        st.set_visible_child_name("muta");
+    });
+    let st = stack.clone();
+    pop.connect_closed(move |_| st.set_visible_child_name("meniu"));
+    pop.set_child(Some(&stack));
     pop.set_parent(row);
     let p = pop.clone();
     row.connect_destroy(move |_| p.unparent());
@@ -459,7 +562,8 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("intrare");
     if mig.is_none() {
-        add_entry_menu(app, &row, r, index);
+        let movable = e.is_open_task() || matches!(e.kind, Kind::Event | Kind::Note);
+        add_entry_menu(app, &row, r, index, movable && e.depth == 0);
     }
     // În migrare: sarcina curentă încadrată, cele triate și restul stinse;
     // un clic pe o sarcină de triat o face curentă.

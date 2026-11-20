@@ -156,6 +156,84 @@ impl Journal {
         Ok(id)
     }
 
+    /// Mută o intrare oarecare (sarcină, eveniment, notă) pe altă pagină, cu notițele ei.
+    /// O sarcină neterminată lasă urma în pagina ei (`[<]`, sau `[>]` pe pagina următoare);
+    /// evenimentele și notițele pleacă de tot. Ziua de la începutul textului, din Planuri,
+    /// se folosește: pe o zi se scoate din text, iar în lună evenimentul intră în calendar.
+    pub fn move_entry(&self, from: PageRef, index: usize, to: PageRef, lang: Lang) -> io::Result<()> {
+        use crate::future::split_day;
+        if from == to {
+            return Ok(());
+        }
+        let source = self.load_ref(from)?;
+        let entry = match source.items.get(index) {
+            Some(Item::Entry(e)) => e.clone(),
+            _ => return Err(not_a_task()),
+        };
+        if entry.is_open_task() {
+            // Sarcinile: ca la migrare, cu semn și urmă.
+            if let (PageRef::Future { .. }, PageRef::Day(_)) = (from, to) {
+                let (_, rest) = split_day(&entry.text);
+                let rest = rest.to_string();
+                let id = self.migrate(from, index, to, lang)?;
+                return self
+                    .update_ref(to, lang, move |d| {
+                        if let Some(Item::Entry(e)) = d.items.iter_mut().rev().find(|it| matches!(it, Item::Entry(e) if e.id.as_deref() == Some(id.as_str()))) {
+                            e.text = rest;
+                        }
+                    })
+                    .map(|_| ());
+            }
+            return self.migrate(from, index, to, lang).map(|_| ());
+        }
+        if !matches!(entry.kind, Kind::Event | Kind::Note) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "o sarcină încheiată nu se mută"));
+        }
+        let kids = children(&source, index);
+        let (fday, rest) = match from {
+            PageRef::Future { .. } => split_day(&entry.text),
+            _ => (None, entry.text.as_str()),
+        };
+        // Un eveniment dintr-o zi a lunii merge în calendarul lunii, pe ziua lui.
+        let cal_day = match (from, to) {
+            (PageRef::Future { .. }, PageRef::Month { .. }) => fday,
+            (PageRef::Day(d), PageRef::Month { year, month }) if entry.kind == Kind::Event && d.year() == year && d.month() == month => Some(d.day()),
+            _ => None,
+        };
+        match (to, cal_day) {
+            (PageRef::Month { year, month }, Some(day)) => {
+                let text = match entry.time.as_deref() {
+                    Some(h) => format!("{h} {rest}"),
+                    None => rest.to_string(),
+                };
+                self.update_month(year, month, lang, |m| {
+                    let mut texts: Vec<String> = m.day_texts(day).iter().map(|t| t.to_string()).collect();
+                    if !texts.contains(&text) {
+                        texts.push(text);
+                    }
+                    m.set_day(day, &texts);
+                })?;
+            }
+            _ => {
+                let mut copy = entry.clone();
+                copy.depth = 0;
+                if matches!(to, PageRef::Day(_)) {
+                    copy.text = rest.to_string();
+                }
+                self.update_ref(to, lang, move |d| {
+                    d.push(copy);
+                    for k in kids {
+                        d.push(k);
+                    }
+                })?;
+            }
+        }
+        self.update_ref(from, lang, |d| {
+            d.remove(index);
+        })
+        .map(|_| ())
+    }
+
     /// Renunță la sarcina de pe poziția `index` (o taie).
     pub fn drop_task(&self, from: PageRef, index: usize, lang: Lang) -> io::Result<()> {
         let mut ok = false;
@@ -389,6 +467,37 @@ mod tests {
         j.update_ref(ian, Lang::Ro, |d| d.push(crate::day::parse_quick(". 3 Plătește taxele").unwrap())).unwrap();
         assert_eq!(j.load_ref(ian).unwrap().entries().count(), 2);
         assert_eq!(next_page(ian), PageRef::Future { year: 2027, month: 2 });
+        fs::remove_dir_all(r).unwrap();
+    }
+
+    #[test]
+    fn muta_din_planuri_in_luna_si_pe_o_zi() {
+        let (j, r) = setup("muta");
+        fs::write(
+            r.join("viitor.md"),
+            "# Planuri\n\n## Decembrie 2026\n\n- [ ] 15 Revizia mașinii\n- o 24 Crăciun la părinți\n  - cu tort\n- Idee: cadouri\n",
+        )
+        .unwrap();
+        let dec = PageRef::Future { year: 2026, month: 12 };
+        // Evenimentul cu zi: în calendarul lunii noiembrie (mutat mai devreme), pe 24.
+        j.move_entry(dec, 1, NOV, Lang::Ro).unwrap();
+        assert_eq!(j.load_month(2026, 11).unwrap().day_texts(24), vec!["Crăciun la părinți"]);
+        assert!(!fs::read_to_string(r.join("viitor.md")).unwrap().contains("Crăciun"));
+        // Sarcina cu zi: pe o zi anume, fără numărul zilei; în Planuri rămâne cu <.
+        j.move_entry(dec, 0, z(22), Lang::Ro).unwrap();
+        let zi = fs::read_to_string(r.join("2026/11/2026-11-22.md")).unwrap();
+        assert!(zi.contains("- [ ] Revizia mașinii ^"), "{zi}");
+        assert!(fs::read_to_string(r.join("viitor.md")).unwrap().contains("- [<] 15 Revizia mașinii ^"));
+        // Nota fără zi: în lista lunii.
+        let idx = j.load_ref(dec).unwrap().items.iter().position(|it| matches!(it, Item::Entry(e) if e.text.starts_with("Idee"))).unwrap();
+        j.move_entry(dec, idx, NOV, Lang::Ro).unwrap();
+        assert!(fs::read_to_string(r.join("2026/11/luna.md")).unwrap().contains("- Idee: cadouri"));
+        // O notă dintr-o zi, mutată pe mâine: pleacă de tot, cu notițele ei.
+        j.move_entry(z(20), 0, z(21), Lang::Ro).unwrap();
+        assert!(!fs::read_to_string(r.join("2026/11/2026-11-20.md")).unwrap().contains("Cină"));
+        assert!(fs::read_to_string(r.join("2026/11/2026-11-21.md")).unwrap().contains("- o 18:30 Cină"));
+        // O sarcină făcută nu se mută.
+        assert!(j.move_entry(z(20), 3, z(21), Lang::Ro).is_err());
         fs::remove_dir_all(r).unwrap();
     }
 

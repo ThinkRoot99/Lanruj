@@ -116,7 +116,7 @@ pub fn page_short(lang: Lang, r: PageRef) -> String {
             Lang::En => format!("{} list", lang.month(month)),
         },
         PageRef::Future { year, month } => match lang {
-            Lang::Ro => format!("jurnalul viitor, {}", lang.month_title(year, month).to_lowercase()),
+            Lang::Ro => format!("planuri, {}", lang.month_title(year, month).to_lowercase()),
             Lang::En => format!("future log, {}", lang.month_title(year, month)),
         },
     }
@@ -360,7 +360,7 @@ impl App {
         }
         if moved > 0 {
             let msg = match self.lang {
-                Lang::Ro => format!("Din jurnalul viitor au trecut în luna aceasta {}.", plural_intrare(moved)),
+                Lang::Ro => format!("Din planuri au trecut în luna aceasta {}.", plural_intrare(moved)),
                 Lang::En => format!("{moved} entries moved from the future log into this month."),
             };
             self.toast(&msg);
@@ -571,7 +571,7 @@ impl App {
             }
             pbox.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         }
-        // În jurnalul viitor: lunile de după luna viitoare (până la 6 luni de acum).
+        // În planuri: lunile de după luna viitoare (până la 6 luni de acum).
         {
             let PageRef::Month { year, month } = month_of(source) else { unreachable!() };
             let mut months = Vec::new();
@@ -582,7 +582,7 @@ impl App {
             }
             let names: Vec<String> = months.iter().map(|(y, m)| lang.month_title(*y, *m)).collect();
             let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
-            pbox.append(&gtk::Label::builder().label(tr(lang, "În jurnalul viitor", "To the future log")).css_classes(["heading"]).xalign(0.0).build());
+            pbox.append(&gtk::Label::builder().label(tr(lang, "În planuri", "To the future log")).css_classes(["heading"]).xalign(0.0).build());
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             let dd = gtk::DropDown::from_strings(&names_ref);
             dd.set_hexpand(true);

@@ -303,7 +303,7 @@ impl App {
             });
             page.fill(self, &day, r, &self.future_label(yy, mm), &self.lang.month_title(yy, mm), None);
         }
-        self.title.set_title(tr(self.lang, "Jurnalul viitor", "Future log"));
+        self.title.set_title(tr(self.lang, "Planuri", "Future log"));
         self.title.set_subtitle(&format!("{} - {}", self.lang.month_title(y, m), self.lang.month_title(y2, m2)));
     }
 
@@ -453,6 +453,21 @@ impl App {
     }
 
     /// Șterge intrarea (cu notițele ei); un buton „Anulează” o pune la loc.
+    /// Mută intrarea pe altă pagină (din meniul „Mută…”).
+    pub fn move_entry(self: &Rc<Self>, r: PageRef, index: usize, to: PageRef) {
+        match self.journal.move_entry(r, index, to, self.lang) {
+            Ok(()) => {
+                let msg = match self.lang {
+                    Lang::Ro => format!("Mutată: {}", migrare::page_short(self.lang, to)),
+                    Lang::En => format!("Moved: {}", migrare::page_short(self.lang, to)),
+                };
+                self.toast(&msg);
+            }
+            Err(e) => self.error(&e),
+        }
+        self.refresh();
+    }
+
     pub fn delete_entry(self: &Rc<Self>, r: PageRef, index: usize) {
         let day = match self.journal.load_ref(r) {
             Ok(d) => d,
@@ -532,6 +547,11 @@ fn nav_row(icon: &str, text: &str, extra: Option<&gtk::Label>) -> gtk::ListBoxRo
 }
 
 fn build_ui(app: &adw::Application) {
+    // A doua pornire aduce în față fereastra deja deschisă.
+    if let Some(w) = app.active_window() {
+        w.present();
+        return;
+    }
     let lang = Lang::from_env();
     let journal = Journal::new(Journal::default_root());
 
@@ -559,10 +579,10 @@ fn build_ui(app: &adw::Application) {
     let nav = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
     let soon = tr(lang, "Vine într-un pas următor", "Coming in a later step");
     let rows = [
-        nav_row("document-edit-symbolic", tr(lang, "Azi", "Today"), Some(&today_count)),
-        nav_row("view-dual-symbolic", tr(lang, "Săptămâna", "Week"), None),
-        nav_row("view-grid-symbolic", tr(lang, "Luna", "Month"), None),
-        nav_row("task-due-symbolic", tr(lang, "Viitor", "Future"), None),
+        nav_row("document-edit-symbolic", tr(lang, "Pagina zilei", "Day"), Some(&today_count)),
+        nav_row("view-dual-symbolic", tr(lang, "Pagina săptămânii", "Week"), None),
+        nav_row("view-grid-symbolic", tr(lang, "Pagina lunii", "Month"), None),
+        nav_row("task-due-symbolic", tr(lang, "Planuri", "Future log"), None),
         nav_row(
             "view-sort-ascending-symbolic",
             tr(lang, "Monitorizare", "Tracking"),
@@ -1028,20 +1048,36 @@ fn selftest(s: &Rc<App>) {
                 q.set_text(t);
                 q.emit_activate();
             }
-            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
-            eprintln!("selftest: viitor după „înainte” {}", s3.title.subtitle());
+            // „Mută…” din meniul primei intrări din stânga: în lista lunii aceasteia.
+            click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta", 0);
+            click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta-spre", 2);
+            let s3 = s3.clone();
+            glib::idle_add_local_once(move || {
+                let nov = s3.journal.load_month(2026, 11).map(|m| m.tasks.len()).unwrap_or(0);
+                let dec = s3.journal.load_ref(PageRef::Future { year: 2026, month: 12 }).map(|d| d.entries().filter(|e| e.is_open_task()).count()).unwrap_or(9);
+                eprintln!("selftest: după „Mută”: sarcini în lista lui noiembrie={nov}, sarcini deschise în planuri/decembrie={dec}");
+                gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
+                eprintln!("selftest: viitor după „înainte” {}", s3.title.subtitle());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.prev", None).ok();
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.prev", None).ok();
             eprintln!("selftest: viitor nu trece înapoi de luna viitoare: {}", s3.title.subtitle());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.today", None).ok();
             eprintln!("selftest: după Azi titlu={} butonul Azi vizibil={}", s3.title.title(), s3.today_button.is_visible());
             s3.window.close();
+            });
         });
     });
 }
 
 fn main() -> glib::ExitCode {
-    let app = adw::Application::builder().application_id(APP_ID).build();
+    // Cu un jurnal de probă (LANRUJ_DIR), aplicația rulează separat de cea deschisă,
+    // ca probele să nu ajungă în fereastra jurnalului adevărat.
+    let flags = if std::env::var_os("LANRUJ_DIR").is_some_and(|d| !d.is_empty()) {
+        gio::ApplicationFlags::NON_UNIQUE
+    } else {
+        gio::ApplicationFlags::empty()
+    };
+    let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
     app.connect_startup(|_| load_css());
     app.connect_activate(build_ui);
     app.run()
