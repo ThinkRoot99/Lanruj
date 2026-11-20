@@ -414,3 +414,18 @@ button.mark-ffbe6f { background-color: #ffbe6f; }
   background-color: var(--bulina);
   margin-bottom: 8px;
 }
+
+/* Temele din index pe zile */
+.tema-zi {
+  padding: 4px 8px;
+  margin: 2px 0;
+  border-left: 3px solid var(--ocru);
+  border-radius: 2px;
+  background-color: alpha(@accent_bg_color, 0.06);
+}
+
+.tema-zi.mare { padding: 6px 10px; margin-bottom: 6px; }
+.tema-titlu { font-weight: 700; font-size: 13px; }
+.tema-zi.mare .tema-titlu { font-size: 14px; }
+.tema-zi .text { font-size: 13px; }
+.tema-zi:hover { background-color: var(--bulina); }

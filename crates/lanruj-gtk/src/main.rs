@@ -1951,7 +1951,16 @@ fn build_ui(app: &adw::Application) {
             });
         }
         Ok("captura") => {
-            // Doar o captură a ecranului de pornire (LANRUJ_PNG), apoi ieșire.
+            // Doar o captură (LANRUJ_PNG), apoi ieșire; LANRUJ_ZI=2026-11-24 deschide întâi ziua,
+            // LANRUJ_SAPT=1 apoi săptămâna ei.
+            if let Ok(z) = std::env::var("LANRUJ_ZI")
+                && let Ok(d) = NaiveDate::parse_from_str(&z, "%Y-%m-%d")
+            {
+                state.go(d);
+                if std::env::var("LANRUJ_SAPT").is_ok() {
+                    state.go_week(d.iso_week().year(), d.iso_week().week());
+                }
+            }
             if let Ok(p) = std::env::var("LANRUJ_PNG") {
                 let w = state.window.clone();
                 glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {

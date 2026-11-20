@@ -19,6 +19,8 @@ pub struct Page {
     pub root: gtk::Box,
     label: gtk::Label,
     title: gtk::Label,
+    /// Temele din index care privesc ziua (concediul în care e, rândurile cu data ei).
+    banner: gtk::Box,
     list: gtk::Box,
     footer: gtk::Box,
     pub quick: Option<gtk::Entry>,
@@ -42,6 +44,11 @@ impl Page {
         head.append(&label);
         head.append(&title);
         root.append(&head);
+        let banner = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        banner.set_margin_start(30);
+        banner.set_margin_end(30);
+        banner.set_visible(false);
+        root.append(&banner);
 
         let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
         list.set_margin_start(30);
@@ -71,13 +78,17 @@ impl Page {
             e
         });
 
-        Page { root, label, title, list, footer, quick }
+        Page { root, label, title, banner, list, footer, quick }
     }
 
     fn clear(&self) {
         while let Some(c) = self.list.first_child() {
             self.list.remove(&c);
         }
+        while let Some(c) = self.banner.first_child() {
+            self.banner.remove(&c);
+        }
+        self.banner.set_visible(false);
     }
 
     pub fn fill(&self, app: &Rc<App>, day: &Day, r: PageRef, label: &str, title: &str, mig: Option<&MigView>) {
@@ -87,6 +98,13 @@ impl Page {
         self.title.set_label(title);
 
         self.clear();
+        // Pe o zi: temele din index (concediul în care e și rândurile cu data ei).
+        if let (PageRef::Day(d), None) = (r, mig) {
+            for t in app.journal.topics_on(d) {
+                self.banner.append(&topic_box(app, &t, true));
+                self.banner.set_visible(true);
+            }
+        }
         let mut any = false;
         for (index, item) in day.items.iter().enumerate() {
             match item {
@@ -222,6 +240,12 @@ impl Page {
                         .build(),
                 );
                 self.list.append(&row);
+            }
+            for t in app.journal.topics_on(d) {
+                let b = topic_box(app, &t, false);
+                b.set_margin_start(10);
+                self.list.append(&b);
+                any = true;
             }
             if !any {
                 let l = gtk::Label::builder().label("-").xalign(0.0).css_classes(["gol"]).build();
@@ -471,8 +495,14 @@ impl Page {
                 });
                 row.append(&entry);
             } else {
+                let mut shown: Vec<String> = texts.iter().map(|t| lanruj_core::colors::plain(t)).collect();
+                for t in app.journal.topics_on(d) {
+                    if t.day_of.is_some_and(|(k, _)| k == 1) || (t.day_of.is_some() && d.day() == 1) {
+                        shown.push(format!("▸ {}", t.title));
+                    }
+                }
                 let text = gtk::Label::builder()
-                    .label(texts.join(" · "))
+                    .label(shown.join(" · "))
                     .xalign(0.0)
                     .wrap(true)
                     .wrap_mode(gtk::pango::WrapMode::WordChar)
@@ -641,6 +671,55 @@ fn sign_of(kind: Kind) -> &'static str {
         Kind::Event => "○",
         Kind::Note => "–",
     }
+}
+
+/// O temă din index pe o zi: banda „Concediu · ziua 1 din 8” și rândurile din pagina ei
+/// care încep cu data zilei. Clic = deschide pagina temei. `big` = în pagina zilei (mai mare).
+fn topic_box(app: &Rc<App>, t: &lanruj_core::index::TopicOnDay, big: bool) -> gtk::Box {
+    let lang = app.lang;
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    b.add_css_class("tema-zi");
+    if big {
+        b.add_css_class("mare");
+    }
+    let head = match t.day_of {
+        Some((k, n)) if n > 1 => match lang {
+            lanruj_core::Lang::Ro => format!("▸ {} · ziua {k} din {n}", t.title),
+            lanruj_core::Lang::En => format!("▸ {} · day {k} of {n}", t.title),
+        },
+        _ => format!("▸ {}", t.title),
+    };
+    b.append(&gtk::Label::builder().label(head).xalign(0.0).wrap(true).css_classes(["tema-titlu"]).build());
+    for (_, e) in &t.entries {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.set_margin_start(14);
+        if e.kind == Kind::Task(TaskState::Done) {
+            row.add_css_class("facut");
+        }
+        row.append(&gtk::Label::builder().label(sign_of(e.kind)).css_classes(["semn"]).valign(gtk::Align::Start).build());
+        row.append(
+            &gtk::Label::builder()
+                .label(rich_markup(&e.text, app.window_night()))
+                .use_markup(true)
+                .xalign(0.0)
+                .wrap(true)
+                .hexpand(true)
+                .css_classes(["text"])
+                .build(),
+        );
+        b.append(&row);
+    }
+    b.set_tooltip_text(Some(tr(lang, "Clic: deschide pagina din index", "Click: open the index page")));
+    b.set_cursor_from_name(Some("pointer"));
+    let click = gtk::GestureClick::builder().button(1).build();
+    let (weak, i) = (Rc::downgrade(app), t.index);
+    click.connect_released(move |_, _, _, _| {
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.open_index_item(i));
+        }
+    });
+    b.add_controller(click);
+    b
 }
 
 /// Rândul în editare: un câmp cu intrarea scrisă ca jos („. text”, „o 10:00 text”, „- text”),

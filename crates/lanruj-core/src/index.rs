@@ -180,7 +180,80 @@ pub fn topic_rel_path(date: NaiveDate, n: u8) -> String {
     if n <= 1 { format!("pagini/{}.md", date.format("%Y-%m-%d")) } else { format!("pagini/{}-{n}.md", date.format("%Y-%m-%d")) }
 }
 
+/// Ziua de la începutul unui rând din pagina unei teme: „26.11 …”, „26.11.2026 …” sau „26 …”
+/// (doar ziua, în intervalul temei). Întoarce ziua și restul textului.
+pub fn entry_date(text: &str, start: NaiveDate, end: Option<NaiveDate>) -> Option<(NaiveDate, &str)> {
+    let cut = text.find(' ').unwrap_or(text.len());
+    let (head, rest) = (&text[..cut], text[cut..].trim_start());
+    let parts: Vec<&str> = head.trim_end_matches('.').split('.').collect();
+    let num = |s: &str| s.parse::<u32>().ok();
+    let end = end.unwrap_or(start);
+    let d = match parts.as_slice() {
+        [d, m, y] => NaiveDate::from_ymd_opt(y.parse().ok()?, num(m)?, num(d)?)?,
+        [d, m] => {
+            let (d, m) = (num(d)?, num(m)?);
+            // Anul: al începutului; dacă luna a trecut deja, anul următor (concediu peste Revelion).
+            let y = if m < start.month() && end.year() > start.year() { end.year() } else { start.year() };
+            NaiveDate::from_ymd_opt(y, m, d)?
+        }
+        [d] => {
+            let d = num(d)?;
+            // Doar ziua: în luna începutului sau, dacă iese înainte de început, în luna sfârșitului.
+            match NaiveDate::from_ymd_opt(start.year(), start.month(), d) {
+                Some(x) if x >= start => x,
+                _ => NaiveDate::from_ymd_opt(end.year(), end.month(), d).filter(|x| *x >= start && *x <= end)?,
+            }
+        }
+        _ => return None,
+    };
+    Some((d, rest))
+}
+
+/// O temă din index care are ceva de spus despre o zi: e în intervalul ei sau are rânduri cu ziua aceea.
+#[derive(Clone, Debug)]
+pub struct TopicOnDay {
+    /// Poziția rândului în index.
+    pub index: usize,
+    pub title: String,
+    pub start: NaiveDate,
+    pub end: Option<NaiveDate>,
+    /// A câta zi din interval (1 = prima) și câte sunt, dacă ziua e în interval.
+    pub day_of: Option<(i64, i64)>,
+    /// Rândurile din pagina temei care încep cu ziua aceasta: (poziția în pagină, intrarea fără dată).
+    pub entries: Vec<(usize, crate::day::Entry)>,
+}
+
 impl Journal {
+    /// Temele din index care privesc ziua `d` (pentru pagina zilei, a săptămânii și a lunii).
+    pub fn topics_on(&self, d: NaiveDate) -> Vec<TopicOnDay> {
+        let Ok(idx) = self.load_index() else { return Vec::new() };
+        let mut out = Vec::new();
+        for (i, it) in idx.items.iter().enumerate() {
+            let IndexItem::Entry { title, start, end, page } = it else { continue };
+            let last = end.unwrap_or(*start);
+            let day_of = (d >= *start && d <= last).then(|| ((d - *start).num_days() + 1, (last - *start).num_days() + 1));
+            let mut entries = Vec::new();
+            if let Some((pd, n)) = page
+                && let Ok(p) = self.load_ref(crate::PageRef::Topic { date: *pd, n: *n })
+            {
+                for (pos, item) in p.items.iter().enumerate() {
+                    let crate::day::Item::Entry(e) = item else { continue };
+                    if let Some((ed, rest)) = entry_date(&e.text, *start, *end)
+                        && ed == d
+                    {
+                        let mut e2 = e.clone();
+                        e2.text = rest.to_string();
+                        entries.push((pos, e2));
+                    }
+                }
+            }
+            if day_of.is_some() || !entries.is_empty() {
+                out.push(TopicOnDay { index: i, title: title.clone(), start: *start, end: *end, day_of, entries });
+            }
+        }
+        out
+    }
+
     pub fn topic_path(&self, date: NaiveDate, n: u8) -> std::path::PathBuf {
         self.root().join(topic_rel_path(date, n))
     }
@@ -296,6 +369,37 @@ mod tests {
         assert!(j.pages().contains(&crate::PageRef::Topic { date: d(2026, 11, 23), n: 2 }));
         let found = j.search("hotel", crate::search::Filter::default(), 10);
         assert_eq!(found[0].0, r);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn temele_unei_zile() {
+        let s = d(2026, 11, 23);
+        let e = Some(d(2026, 11, 30));
+        assert_eq!(entry_date("26.11 Vizitare Delfinariu", s, e), Some((d(2026, 11, 26), "Vizitare Delfinariu")));
+        assert_eq!(entry_date("26.11.2026 Delfinariu", s, e), Some((d(2026, 11, 26), "Delfinariu")));
+        assert_eq!(entry_date("24 Plecare", s, e), Some((d(2026, 11, 24), "Plecare")));
+        assert_eq!(entry_date("Oprire la Bușteni", s, e), None);
+        assert_eq!(entry_date("2.01 Întoarcere", d(2026, 12, 28), Some(d(2027, 1, 3))), Some((d(2027, 1, 2), "Întoarcere")));
+
+        let root = std::env::temp_dir().join(format!("lanruj-teme-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let j = Journal::new(&root);
+        let n = j.create_topic("Concediu", s).unwrap();
+        let r = crate::PageRef::Topic { date: s, n };
+        for t in ["- Oprire peste noapte la Bușteni", "- [ ] 26.11 Vizitare Delfinariu", "- [ ] 23.11 Plecare spre Bușteni"] {
+            j.update_ref(r, Lang::Ro, |p| p.push(crate::day::parse_quick(t).unwrap())).unwrap();
+        }
+        let mut idx = Index::default();
+        idx.add("Concediu", s, e, Some((s, n)));
+        j.save_index(&idx, Lang::Ro).unwrap();
+        let t23 = j.topics_on(s);
+        assert_eq!(t23.len(), 1);
+        assert_eq!(t23[0].day_of, Some((1, 8)));
+        assert_eq!(t23[0].entries.len(), 1);
+        assert_eq!(t23[0].entries[0].1.text, "Plecare spre Bușteni");
+        assert_eq!(j.topics_on(d(2026, 11, 26))[0].entries[0].1.text, "Vizitare Delfinariu");
+        assert!(j.topics_on(d(2026, 12, 1)).is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 
