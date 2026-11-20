@@ -5,7 +5,8 @@ use crate::migrare::MigView;
 use crate::{App, tr};
 use adw::prelude::*;
 use gtk::glib;
-use lanruj_core::{Day, Decision, Entry, Item, Kind, Priority, TaskState};
+use chrono::{Datelike, NaiveDate};
+use lanruj_core::{Day, Decision, Entry, Item, Kind, Month, PageRef, Priority, TaskState};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -73,21 +74,28 @@ impl Page {
         Page { root, label, title, list, footer, quick }
     }
 
-    pub fn fill(&self, app: &Rc<App>, day: &Day, label: &str, mig: Option<&MigView>) {
-        let lang = app.lang;
-        self.label.set_label(&label.to_uppercase());
-        self.label.set_visible(!label.is_empty());
-        self.title.set_label(&lang.day_title(day.date));
-
+    fn clear(&self) {
         while let Some(c) = self.list.first_child() {
             self.list.remove(&c);
         }
+    }
+
+    pub fn fill(&self, app: &Rc<App>, day: &Day, r: PageRef, label: &str, title: &str, mig: Option<&MigView>) {
+        let lang = app.lang;
+        self.label.set_label(&label.to_uppercase());
+        self.label.set_visible(!label.is_empty());
+        self.title.set_label(title);
+        if let Some(q) = &self.quick {
+            q.set_visible(true);
+        }
+
+        self.clear();
         let mut any = false;
         for (index, item) in day.items.iter().enumerate() {
             match item {
                 Item::Entry(e) => {
                     any = true;
-                    let row = entry_row(app, day, index, e, mig);
+                    let row = entry_row(app, r, day, index, e, mig);
                     self.list.append(&row);
                     if let Some(m) = mig
                         && m.is_source
@@ -132,7 +140,126 @@ impl Page {
             self.list.append(&l);
         }
 
-        self.fill_footer(app, day);
+        // Etichetele și nota sunt doar ale zilelor.
+        self.footer.set_visible(matches!(r, PageRef::Day(_)));
+        if matches!(r, PageRef::Day(_)) {
+            self.fill_footer(app, day);
+        }
+    }
+
+    /// Calendarul lunii: toate zilele, fiecare cu rândul ei scurt.
+    /// Clic pe număr = deschide ziua; dublu clic pe rând = scrie la ziua aceea.
+    pub fn fill_calendar(&self, app: &Rc<App>, month: &Month, title: &str) {
+        let lang = app.lang;
+        self.label.set_label(&tr(lang, "Calendar", "Calendar").to_uppercase());
+        self.label.set_visible(true);
+        self.title.set_label(title);
+        self.footer.set_visible(false);
+        if let Some(q) = &self.quick {
+            q.set_visible(false);
+        }
+        self.clear();
+        let (y, m) = (month.year, month.month);
+        let written = app.journal.written_days(y, m);
+        let today = app.today.get();
+        let mut d = NaiveDate::from_ymd_opt(y, m, 1).expect("lună validă");
+        while d.month() == m {
+            let n = d.day();
+            let texts = month.day_texts(n);
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row.add_css_class("zi-luna");
+            if d.weekday().num_days_from_monday() >= 5 {
+                row.add_css_class("weekend");
+            }
+            if d == today {
+                row.add_css_class("azi");
+            }
+            let num = gtk::Button::builder().label(n.to_string()).css_classes(["zi-nr"]).valign(gtk::Align::Start).build();
+            if written.contains(&n) {
+                num.add_css_class("scrisa");
+            }
+            num.set_tooltip_text(Some(&lang.day_title(d)));
+            let weak = Rc::downgrade(app);
+            num.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    glib::idle_add_local_once(move || app.go(d));
+                }
+            });
+            row.append(&num);
+            let wd: String = lang.weekday(d.weekday()).chars().take(2).collect();
+            row.append(&gtk::Label::builder().label(wd).css_classes(["zi-sapt"]).valign(gtk::Align::Start).build());
+            if app.cal_editing.get() == Some(n) {
+                let entry = gtk::Entry::builder()
+                    .text(texts.join("; "))
+                    .hexpand(true)
+                    .placeholder_text(tr(lang, "Ce e în ziua asta (mai multe, despărțite prin ;)", "What's on this day (several, separated by ;)"))
+                    .css_classes(["editare"])
+                    .build();
+                let weak = Rc::downgrade(app);
+                entry.connect_activate(move |en| {
+                    let t = en.text().to_string();
+                    if let Some(app) = weak.upgrade() {
+                        glib::idle_add_local_once(move || app.finish_cal_edit(Some(t)));
+                    }
+                });
+                let keys = gtk::EventControllerKey::new();
+                let weak = Rc::downgrade(app);
+                keys.connect_key_pressed(move |_, key, _, _| {
+                    if key == gtk::gdk::Key::Escape {
+                        if let Some(app) = weak.upgrade() {
+                            glib::idle_add_local_once(move || app.finish_cal_edit(None));
+                        }
+                        return glib::Propagation::Stop;
+                    }
+                    glib::Propagation::Proceed
+                });
+                entry.add_controller(keys);
+                let en = entry.clone();
+                glib::idle_add_local_once(move || {
+                    en.grab_focus();
+                    en.set_position(-1);
+                });
+                row.append(&entry);
+            } else {
+                let text = gtk::Label::builder()
+                    .label(texts.join(" · "))
+                    .xalign(0.0)
+                    .wrap(true)
+                    .wrap_mode(gtk::pango::WrapMode::WordChar)
+                    .hexpand(true)
+                    .css_classes(["zi-text"])
+                    .build();
+                row.append(&text);
+                let double = gtk::GestureClick::builder().button(1).build();
+                let weak = Rc::downgrade(app);
+                double.connect_pressed(move |_, k, _, _| {
+                    if k == 2
+                        && let Some(app) = weak.upgrade()
+                    {
+                        glib::idle_add_local_once(move || app.start_cal_edit(n));
+                    }
+                });
+                row.add_controller(double);
+                let right = gtk::GestureClick::builder().button(3).build();
+                let weak = Rc::downgrade(app);
+                right.connect_pressed(move |_, _, _, _| {
+                    if let Some(app) = weak.upgrade() {
+                        glib::idle_add_local_once(move || app.start_cal_edit(n));
+                    }
+                });
+                row.add_controller(right);
+            }
+            self.list.append(&row);
+            d = d.succ_opt().expect("zi validă");
+        }
+        let hint = gtk::Label::builder()
+            .label(tr(lang, "Dublu clic pe o zi ca să scrii ce e atunci; clic pe număr ca s-o deschizi.", "Double-click a day to write what's on; click its number to open it."))
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["gol"])
+            .build();
+        hint.set_margin_top(10);
+        self.list.append(&hint);
     }
 
     fn fill_footer(&self, app: &Rc<App>, day: &Day) {
@@ -270,7 +397,7 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
 }
 
 /// Meniul de la clic dreapta: Editează, Șterge. Dublu clic = editează.
-fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: chrono::NaiveDate, index: usize) {
+fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize) {
     let lang = app.lang;
     let pop = gtk::Popover::builder().has_arrow(true).build();
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -327,15 +454,15 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: chrono::NaiveDate, index:
     row.add_controller(double);
 }
 
-fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
+fn entry_row(app: &Rc<App>, r: PageRef, day: &Day, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
     let lang = app.lang;
-    if mig.is_none() && app.editing.get() == Some((day.date, index)) {
+    if mig.is_none() && app.editing.get() == Some((r, index)) {
         return edit_row(app, e);
     }
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("intrare");
     if mig.is_none() {
-        add_entry_menu(app, &row, day.date, index);
+        add_entry_menu(app, &row, r, index);
     }
     // În migrare: sarcina curentă încadrată, cele triate și restul stinse;
     // un clic pe o sarcină de triat o face curentă.
@@ -375,10 +502,10 @@ fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry, mig: Option<&Mig
         } else {
             tr(lang, "Marchează ca făcută", "Mark as done")
         }));
-        let (weak, date) = (Rc::downgrade(app), day.date);
+        let weak = Rc::downgrade(app);
         b.connect_clicked(move |_| {
             if let Some(app) = weak.upgrade() {
-                app.toggle(date, index);
+                app.toggle(r, index);
             }
         });
         row.append(&b);

@@ -228,3 +228,34 @@ window.lanruj.noapte {
   color: var(--cerneala);
   background-color: var(--rapid);
 }
+
+/* Calendarul lunii */
+.zi-luna {
+  min-height: 24px;
+  font-size: 14px;
+  border-bottom: 1px solid alpha(currentColor, 0.08);
+  padding: 1px 0;
+}
+
+.zi-luna.weekend .zi-sapt { color: var(--portocaliu); opacity: 0.8; }
+.zi-luna.azi { background-color: alpha(@accent_bg_color, 0.12); border-radius: 4px; }
+
+.pagina button.zi-nr {
+  min-width: 26px;
+  min-height: 0;
+  padding: 0 2px;
+  font-weight: 400;
+  background: none;
+  box-shadow: none;
+  color: var(--cerneala);
+}
+
+.pagina button.zi-nr.scrisa { font-weight: 800; }
+.pagina button.zi-nr:hover { background-color: var(--bulina); }
+
+.zi-sapt {
+  min-width: 26px;
+  font-size: 12px;
+  opacity: 0.55;
+  margin-top: 2px;
+}

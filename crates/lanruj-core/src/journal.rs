@@ -3,6 +3,8 @@
 
 use crate::day::{Day, Entry, Kind, TaskState};
 use crate::lang::Lang;
+use crate::month::Month;
+use crate::PageRef;
 use chrono::{Datelike, NaiveDate};
 use std::fs;
 use std::io;
@@ -123,6 +125,62 @@ impl Journal {
         day.push(entry);
         self.save(&day, lang)?;
         Ok(day)
+    }
+
+    pub fn month_path(&self, year: i32, month: u32) -> PathBuf {
+        self.month_dir(year, month).join("luna.md")
+    }
+
+    pub fn load_month(&self, year: i32, month: u32) -> io::Result<Month> {
+        match fs::read_to_string(self.month_path(year, month)) {
+            Ok(text) => Ok(Month::parse(year, month, &text)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Month::new(year, month)),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn save_month(&self, m: &Month, lang: Lang) -> io::Result<()> {
+        let path = self.month_path(m.year, m.month);
+        if m.is_empty() && !path.exists() {
+            return Ok(());
+        }
+        fs::create_dir_all(path.parent().expect("are dosar"))?;
+        let tmp = path.with_extension("md.tmp");
+        fs::write(&tmp, m.to_markdown(lang))?;
+        fs::rename(&tmp, &path)
+    }
+
+    pub fn update_month(&self, year: i32, month: u32, lang: Lang, f: impl FnOnce(&mut Month)) -> io::Result<Month> {
+        let mut m = self.load_month(year, month)?;
+        f(&mut m);
+        self.save_month(&m, lang)?;
+        Ok(m)
+    }
+
+    /// O pagină cu intrări, ca zi: pentru o lună, lista ei de sarcini.
+    pub fn load_ref(&self, r: PageRef) -> io::Result<Day> {
+        match r {
+            PageRef::Day(d) => self.load(d),
+            PageRef::Month { year, month } => {
+                let m = self.load_month(year, month)?;
+                let mut day = Day::new(NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"));
+                day.items = m.tasks;
+                Ok(day)
+            }
+        }
+    }
+
+    pub fn update_ref(&self, r: PageRef, lang: Lang, f: impl FnOnce(&mut Day)) -> io::Result<Day> {
+        match r {
+            PageRef::Day(d) => self.update(d, lang, f),
+            PageRef::Month { year, month } => {
+                let mut day = self.load_ref(r)?;
+                f(&mut day);
+                let items = day.items.clone();
+                self.update_month(year, month, lang, move |m| m.tasks = items)?;
+                Ok(day)
+            }
+        }
     }
 
     /// Citește ziua, o schimbă și o salvează.

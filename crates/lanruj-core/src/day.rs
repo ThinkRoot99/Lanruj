@@ -240,6 +240,27 @@ fn indent_of(line: &str) -> (usize, &str) {
     (spaces / 2, &line[bytes..])
 }
 
+/// Un rând din fișier: o intrare (cu indentarea ei) sau altceva, păstrat neschimbat.
+pub fn parse_item(line: &str) -> Item {
+    let line = line.trim_end();
+    let (depth, rest) = indent_of(line);
+    match Entry::parse_line(rest) {
+        Some(mut e) => {
+            e.depth = depth;
+            Item::Entry(e)
+        }
+        None => Item::Other(line.to_string()),
+    }
+}
+
+/// Rândul din fișier pentru o intrare (cu indentare) sau pentru un rând păstrat.
+pub fn item_line(item: &Item) -> String {
+    match item {
+        Item::Entry(e) => format!("{}{}", "  ".repeat(e.depth), e.to_line()),
+        Item::Other(s) => s.clone(),
+    }
+}
+
 fn parse_tags(s: &str) -> Vec<String> {
     s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()
 }
@@ -282,14 +303,7 @@ impl Day {
                     day.rating = Some(r);
                     continue;
                 }
-            let (depth, rest) = indent_of(line);
-            match Entry::parse_line(rest) {
-                Some(mut e) => {
-                    e.depth = depth;
-                    day.items.push(Item::Entry(e));
-                }
-                None => day.items.push(Item::Other(line.to_string())),
-            }
+            day.items.push(parse_item(line));
         }
         day.trim_trailing_blank();
         day
@@ -314,13 +328,7 @@ impl Day {
             body_end -= 1;
         }
         for item in &self.items[..body_end] {
-            match item {
-                Item::Entry(e) => {
-                    out.push_str(&"  ".repeat(e.depth));
-                    out.push_str(&e.to_line());
-                }
-                Item::Other(s) => out.push_str(s),
-            }
+            out.push_str(&item_line(item));
             out.push('\n');
         }
         if !self.tags.is_empty() || self.rating.is_some() {

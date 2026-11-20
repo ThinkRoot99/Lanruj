@@ -7,7 +7,7 @@ mod page;
 use adw::prelude::*;
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use gtk::{gdk, gio, glib};
-use lanruj_core::{Day, Journal, Lang, parse_quick};
+use lanruj_core::{Day, Journal, Lang, PageRef, parse_quick};
 use page::{Page, Side};
 use migrare::{MigView, Migration};
 use std::cell::{Cell, RefCell};
@@ -49,8 +49,23 @@ pub struct App {
     progress: gtk::Box,
     done_button: gtk::Button,
     sched_button: RefCell<Option<gtk::MenuButton>>,
-    /// Intrarea care se editează acum: (ziua, poziția).
-    pub editing: Cell<Option<(NaiveDate, usize)>>,
+    /// Intrarea care se editează acum: (pagina, poziția).
+    pub editing: Cell<Option<(PageRef, usize)>>,
+    /// Ziua din calendarul lunii care se editează acum.
+    pub cal_editing: Cell<Option<u32>>,
+    pub view: Cell<View>,
+    caiet: gtk::Box,
+    today_button: gtk::Button,
+    migrate_button: gtk::Button,
+    nav: gtk::ListBox,
+    nav_rows: Vec<gtk::ListBoxRow>,
+}
+
+/// Ce ecran se vede.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Day,
+    Month(i32, u32),
 }
 
 fn today() -> NaiveDate {
@@ -99,6 +114,18 @@ impl App {
     /// Ce pagini se văd: pe fereastră îngustă una singură
     /// (în migrare, cea cu sarcinile de triat).
     fn layout(&self) {
+        // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
+        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..)) && !self.migrating();
+        self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
+        if month_stacked {
+            self.left.root.set_visible(true);
+            self.right.root.set_visible(true);
+            self.cotor.set_visible(false);
+            for p in [&self.left.root, &self.right.root] {
+                p.add_css_class("singura");
+            }
+            return;
+        }
         let (show_left, show_right) = match (self.narrow.get(), self.migrating()) {
             (false, _) => (true, true),
             (true, true) => (true, false),
@@ -114,12 +141,22 @@ impl App {
     }
 
     pub fn refresh(self: &Rc<Self>) {
+        let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
         if self.migrating() {
             self.refresh_migration();
+        } else if let View::Month(y, m) = self.view.get() {
+            self.refresh_month(y, m);
         } else {
             self.refresh_normal();
         }
         self.refresh_migration_header();
+        let on_today = !month_view && self.shown.get() == self.today.get();
+        self.today_button.set_visible(!self.migrating() && !on_today);
+        self.migrate_button.set_visible(!self.migrating() && !month_view);
+        let row = if month_view { 2 } else { 0 };
+        if self.nav.selected_row().map(|r| r.index()) != Some(row as i32) {
+            self.nav.select_row(Some(&self.nav_rows[row]));
+        }
         self.layout();
         let t = self.today.get();
         self.today_count.set_label(&match self.load(t).open_tasks() {
@@ -145,9 +182,9 @@ impl App {
             None => Some(self.build_done_panel()),
         };
         let view = MigView { current, candidates: &order, decided: &decided, panel, new_ids: &new_ids, is_source: true };
-        self.left.fill(self, &left, &self.relative(source), Some(&view));
+        self.left.fill(self, &left, PageRef::Day(source), &self.relative(source), &self.lang.day_title(source), Some(&view));
         let view = MigView { current: None, candidates: &[], decided: &decided, panel: None, new_ids: &new_ids, is_source: false };
-        self.right.fill(self, &right, &self.relative(target), Some(&view));
+        self.right.fill(self, &right, PageRef::Day(target), &self.relative(target), &self.lang.day_title(target), Some(&view));
     }
 
     fn refresh_normal(self: &Rc<Self>) {
@@ -155,14 +192,80 @@ impl App {
         let prev = shown - Duration::days(1);
         let right = self.load(shown);
         let left = self.load(prev);
-        self.right.fill(self, &right, &self.relative(shown), None);
-        self.left.fill(self, &left, &self.relative(prev), None);
+        self.right.fill(self, &right, PageRef::Day(shown), &self.relative(shown), &self.lang.day_title(shown), None);
+        self.left.fill(self, &left, PageRef::Day(prev), &self.relative(prev), &self.lang.day_title(prev), None);
         self.title.set_title(&self.lang.day_title_short(shown));
         let mut sub = self.relative(shown);
         if shown.year() != self.today.get().year() {
             sub = format!("{} · {}", shown.year(), sub);
         }
         self.title.set_subtitle(&sub);
+    }
+
+    /// Cum se numește o lună față de cea de acum.
+    fn relative_month(&self, y: i32, m: u32) -> String {
+        let t = self.today.get();
+        let n = (y - t.year()) * 12 + m as i32 - t.month() as i32;
+        let l = self.lang;
+        match n {
+            0 => tr(l, "Luna aceasta", "This month").into(),
+            -1 => tr(l, "Luna trecută", "Last month").into(),
+            1 => tr(l, "Luna viitoare", "Next month").into(),
+            _ => String::new(),
+        }
+    }
+
+    fn refresh_month(self: &Rc<Self>, y: i32, m: u32) {
+        let month = match self.journal.load_month(y, m) {
+            Ok(mo) => mo,
+            Err(e) => {
+                self.error(&e);
+                lanruj_core::Month::new(y, m)
+            }
+        };
+        let title = self.lang.month_title(y, m);
+        self.left.fill_calendar(self, &month, &title);
+        let mut tasks = Day::new(NaiveDate::from_ymd_opt(y, m, 1).expect("lună validă"));
+        tasks.items = month.tasks.clone();
+        let r = PageRef::Month { year: y, month: m };
+        self.right.fill(self, &tasks, r, tr(self.lang, "Sarcinile lunii", "Monthly tasks"), &title, None);
+        self.title.set_title(&title);
+        self.title.set_subtitle(&self.relative_month(y, m));
+    }
+
+    pub fn go_month(self: &Rc<Self>, y: i32, m: u32) {
+        if self.migrating() {
+            self.end_migration(false);
+        }
+        self.editing.set(None);
+        self.cal_editing.set(None);
+        self.view.set(View::Month(y, m));
+        self.refresh();
+    }
+
+    /// Luna de dinainte (-1) sau de după (+1).
+    fn shift_month(self: &Rc<Self>, delta: i32) {
+        if let View::Month(y, m) = self.view.get() {
+            let idx = y * 12 + m as i32 - 1 + delta;
+            self.go_month(idx.div_euclid(12), (idx.rem_euclid(12) + 1) as u32);
+        }
+    }
+
+    pub fn start_cal_edit(self: &Rc<Self>, day: u32) {
+        self.cal_editing.set(Some(day));
+        self.refresh();
+    }
+
+    /// Textul unei zile din calendarul lunii; mai multe rânduri se despart prin „;”.
+    pub fn finish_cal_edit(self: &Rc<Self>, text: Option<String>) {
+        let Some(day) = self.cal_editing.take() else { return };
+        if let (Some(text), View::Month(y, m)) = (text, self.view.get()) {
+            let texts: Vec<String> = text.split(';').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+            if let Err(e) = self.journal.update_month(y, m, self.lang, |mo| mo.set_day(day, &texts)) {
+                self.error(&e);
+            }
+        }
+        self.refresh();
     }
 
     /// Calendarul mic: ziua arătată selectată, zilele scrise cu un punct.
@@ -189,6 +292,8 @@ impl App {
         if self.migrating() {
             self.end_migration(false);
         }
+        self.editing.set(None);
+        self.view.set(View::Day);
         self.shown.set(d);
         self.refresh();
     }
@@ -200,24 +305,34 @@ impl App {
         self.refresh();
     }
 
-    pub fn toggle(self: &Rc<Self>, date: NaiveDate, index: usize) {
-        if let Err(e) = self.journal.toggle_done(date, index, self.lang) {
+    pub fn toggle(self: &Rc<Self>, r: PageRef, index: usize) {
+        use lanruj_core::{Kind, TaskState};
+        let res = self.journal.update_ref(r, self.lang, |d| {
+            if let Some(e) = d.entry_mut(index) {
+                e.kind = match e.kind {
+                    Kind::Task(TaskState::Open) => Kind::Task(TaskState::Done),
+                    Kind::Task(TaskState::Done) => Kind::Task(TaskState::Open),
+                    k => k,
+                };
+            }
+        });
+        if let Err(e) = res {
             self.error(&e);
         }
         self.refresh();
     }
 
-    pub fn start_edit(self: &Rc<Self>, date: NaiveDate, index: usize) {
-        self.editing.set(Some((date, index)));
+    pub fn start_edit(self: &Rc<Self>, r: PageRef, index: usize) {
+        self.editing.set(Some((r, index)));
         self.refresh();
     }
 
     /// Enter salvează (`Some`), Esc renunță (`None`).
     pub fn finish_edit(self: &Rc<Self>, text: Option<String>) {
-        let Some((date, index)) = self.editing.take() else { return };
+        let Some((r, index)) = self.editing.take() else { return };
         if let Some(text) = text {
             let mut ok = true;
-            if let Err(e) = self.journal.update(date, self.lang, |d| ok = d.edit(index, &text)) {
+            if let Err(e) = self.journal.update_ref(r, self.lang, |d| ok = d.edit(index, &text)) {
                 self.error(&e);
             } else if !ok {
                 self.toast(tr(
@@ -234,13 +349,16 @@ impl App {
     }
 
     /// Șterge intrarea (cu notițele ei); un buton „Anulează” o pune la loc.
-    pub fn delete_entry(self: &Rc<Self>, date: NaiveDate, index: usize) {
-        let day = self.load(date);
+    pub fn delete_entry(self: &Rc<Self>, r: PageRef, index: usize) {
+        let day = match self.journal.load_ref(r) {
+            Ok(d) => d,
+            Err(e) => return self.error(&e),
+        };
         if !matches!(day.items.get(index), Some(lanruj_core::Item::Entry(_))) {
             return;
         }
         let removed: Vec<lanruj_core::Item> = day.items[index..=index + day.children_count(index)].to_vec();
-        if let Err(e) = self.journal.update(date, self.lang, |d| {
+        if let Err(e) = self.journal.update_ref(r, self.lang, |d| {
             d.remove(index);
         }) {
             self.error(&e);
@@ -255,7 +373,7 @@ impl App {
         toast.connect_button_clicked(move |_| {
             let Some(s) = weak.upgrade() else { return };
             let items = removed.clone();
-            if let Err(e) = s.journal.update(date, s.lang, move |d| {
+            if let Err(e) = s.journal.update_ref(r, s.lang, move |d| {
                 let at = index.min(d.items.len());
                 d.items.splice(at..at, items);
             }) {
@@ -269,8 +387,12 @@ impl App {
     fn quick_add(self: &Rc<Self>, entry: &gtk::Entry) {
         let Some(e) = parse_quick(&entry.text()) else { return };
         // În migrare, câmpul de jos scrie pe ziua din dreapta (mâine).
-        let date = self.mig.borrow().as_ref().map(|m| m.target).unwrap_or(self.shown.get());
-        match self.journal.add(date, e, self.lang) {
+        let r = match (self.mig.borrow().as_ref().map(|m| m.target), self.view.get()) {
+            (Some(target), _) => PageRef::Day(target),
+            (None, View::Month(year, month)) => PageRef::Month { year, month },
+            (None, View::Day) => PageRef::Day(self.shown.get()),
+        };
+        match self.journal.update_ref(r, self.lang, |d| d.push(e)) {
             Ok(_) => entry.set_text(""),
             Err(err) => self.error(&err),
         }
@@ -341,7 +463,7 @@ fn build_ui(app: &adw::Application) {
         nav_row("view-list-bullet-symbolic", "Index", None),
     ];
     for (i, r) in rows.iter().enumerate() {
-        if i > 0 {
+        if i != 0 && i != 2 {
             r.set_sensitive(false);
             r.set_tooltip_text(Some(if i == 4 { tr(lang, "În versiunea a doua", "In version two") } else { soon }));
         }
@@ -391,6 +513,13 @@ fn build_ui(app: &adw::Application) {
     prev.set_action_name(Some("win.prev"));
     prev.set_tooltip_text(Some(tr(lang, "Ziua de dinainte (Alt+←)", "Previous day (Alt+←)")));
     header.pack_start(&prev);
+    let today_button = gtk::Button::builder()
+        .label(tr(lang, "Azi", "Today"))
+        .action_name("win.today")
+        .tooltip_text(tr(lang, "Înapoi la ziua de azi (Alt+Home)", "Back to today (Alt+Home)"))
+        .visible(false)
+        .build();
+    header.pack_start(&today_button);
     let next = gtk::Button::from_icon_name("go-next-symbolic");
     next.set_action_name(Some("win.next"));
     next.set_tooltip_text(Some(tr(lang, "Ziua de după (Alt+→)", "Next day (Alt+→)")));
@@ -450,12 +579,19 @@ fn build_ui(app: &adw::Application) {
         narrow: Cell::new(false),
         mig: RefCell::new(None),
         dismissed: Cell::new(None),
-        normal_header: vec![prev.upcast(), next.upcast(), migrate.upcast()],
+        normal_header: vec![prev.upcast(), next.upcast()],
         mig_header: vec![later.clone().upcast(), progress.clone().upcast(), done_button.clone().upcast()],
         progress,
         done_button: done_button.clone(),
         sched_button: RefCell::new(None),
         editing: Cell::new(None),
+        cal_editing: Cell::new(None),
+        view: Cell::new(View::Day),
+        caiet: caiet.clone(),
+        today_button,
+        migrate_button: migrate.clone(),
+        nav: nav.clone(),
+        nav_rows: rows.to_vec(),
     });
 
     for (bp_apply, narrow) in [(true, true), (false, false)] {
@@ -514,10 +650,15 @@ fn build_ui(app: &adw::Application) {
     // Navigarea: bara laterală, calendarul, săgețile
     let weak = Rc::downgrade(&state);
     nav.connect_row_activated(move |_, row| {
-        if let Some(s) = weak.upgrade()
-            && row.index() == 0 {
-                s.go(s.today.get());
+        let Some(s) = weak.upgrade() else { return };
+        match row.index() {
+            0 => s.go(s.today.get()),
+            2 => {
+                let t = s.today.get();
+                s.go_month(t.year(), t.month());
             }
+            _ => {}
+        }
     });
     let weak = Rc::downgrade(&state);
     calendar.connect_day_selected(move |c| {
@@ -548,7 +689,11 @@ fn build_ui(app: &adw::Application) {
         let weak = Rc::downgrade(&state);
         a.connect_activate(move |_, _| {
             if let Some(s) = weak.upgrade() {
-                s.go(s.shown.get() + Duration::days(delta));
+                if matches!(s.view.get(), View::Month(..)) {
+                    s.shift_month(delta as i32);
+                } else {
+                    s.go(s.shown.get() + Duration::days(delta));
+                }
             }
         });
         window.add_action(&a);
@@ -620,6 +765,12 @@ fn build_ui(app: &adw::Application) {
             s.auto_migration();
         }
     });
+    // Doar la dezvoltare: pornește direct în ecranul lunii, pentru capturi.
+    #[cfg(debug_assertions)]
+    if std::env::var("LANRUJ_START").as_deref() == Ok("luna") {
+        let t = state.today.get();
+        state.go_month(t.year(), t.month());
+    }
     #[cfg(debug_assertions)]
     if std::env::var_os("LANRUJ_SELFTEST").is_some() {
         // După ce build_ui s-a terminat, ca la un clic adevărat.
@@ -684,7 +835,7 @@ fn selftest(s: &Rc<App>) {
     eprintln!("selftest: după migrare, în migrare={} titlu={}", s.migrating(), s.title.title());
     // Editarea: „o 9:30 Dentist” devine sarcina „. Dentist” (poziția 3 în zi).
     let date = s.shown.get();
-    s.start_edit(date, 3);
+    s.start_edit(PageRef::Day(date), 3);
     let s2 = s.clone();
     glib::idle_add_local_once(move || {
         fn find_entry(w: &gtk::Widget) -> Option<gtk::Entry> {
@@ -714,8 +865,29 @@ fn selftest(s: &Rc<App>) {
         glib::idle_add_local_once(move || {
             // Ștergerea primei intrări (Becuri), apoi „Anulează” din notificare nu se poate apăsa de aici;
             // verificăm doar ștergerea.
-            s3.delete_entry(date, 0);
+            s3.delete_entry(PageRef::Day(date), 0);
             eprintln!("selftest: gata, editare={:?}", s3.editing.get());
+            // Luna: sarcină nouă, bifată; un rând în calendar; butonul Azi
+            s3.go_month(date.year(), date.month());
+            let q = s3.right.quick.clone().expect("câmp");
+            q.set_text(". Plătește impozitul");
+            q.emit_activate();
+            q.set_text(". * Revizia mașinii");
+            q.emit_activate();
+            s3.toggle(PageRef::Month { year: date.year(), month: date.month() }, 0);
+            s3.start_cal_edit(15);
+            s3.finish_cal_edit(Some("Concert; Ziua lui Andrei".into()));
+            eprintln!(
+                "selftest: luna titlu={} / {} · butonul Azi vizibil={} · Migrează vizibil={}",
+                s3.title.title(),
+                s3.title.subtitle(),
+                s3.today_button.is_visible(),
+                s3.migrate_button.is_visible()
+            );
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
+            eprintln!("selftest: după „înainte” titlu={}", s3.title.title());
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.today", None).ok();
+            eprintln!("selftest: după Azi titlu={} butonul Azi vizibil={}", s3.title.title(), s3.today_button.is_visible());
             s3.window.close();
         });
     });
