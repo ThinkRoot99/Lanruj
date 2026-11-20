@@ -371,3 +371,20 @@ button.mark-8ff0a4 { background-color: #8ff0a4; }
 button.mark-99c1f1 { background-color: #99c1f1; }
 button.mark-f6a6c1 { background-color: #f6a6c1; }
 button.mark-ffbe6f { background-color: #ffbe6f; }
+
+/* Câmpul de editare cu culori */
+.pagina .chenar-editare {
+  border-radius: 6px;
+  border: 1.5px solid var(--accent-color);
+  background-color: var(--rapid);
+}
+
+.pagina textview.editare {
+  font-size: 15px;
+  background: none;
+}
+
+.pagina textview.editare > text {
+  background: none;
+  color: var(--cerneala);
+}

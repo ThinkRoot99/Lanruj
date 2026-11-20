@@ -1813,15 +1813,18 @@ fn build_ui(app: &adw::Application) {
                         out
                     }
                     let root = s2.right.root.clone().upcast::<gtk::Widget>();
-                    let e: gtk::Entry = find::<gtk::Entry>(&root, "editare").pop().expect("câmpul de editare");
-                    e.select_region(2, 6); // „Sună” (după „. ”)
+                    let v: gtk::TextView = find::<gtk::TextView>(&root, "editare").pop().expect("câmpul de editare");
+                    let buf = v.buffer();
+                    // „Sună” (după „. ”) în roșu
+                    buf.select_range(&buf.iter_at_offset(2), &buf.iter_at_offset(6));
                     find::<gtk::Button>(&root, "text-c01c28")[0].emit_clicked();
-                    let t = e.text().to_string();
+                    let t = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
                     let start = t.find("mașină").map(|b| t[..b].chars().count() as i32).expect("mașină");
-                    e.select_region(start, start + 6);
+                    buf.select_range(&buf.iter_at_offset(start), &buf.iter_at_offset(start + 6));
                     find::<gtk::Button>(&root, "mark-f9f06b")[0].emit_clicked();
-                    eprintln!("selftest-culori: câmpul: {}", e.text());
-                    e.emit_activate();
+                    eprintln!("selftest-culori: câmpul arată: {}", buf.text(&buf.start_iter(), &buf.end_iter(), false));
+                    eprintln!("selftest-culori: se salvează: {}", page::serialize_colored(&buf));
+                    s2.finish_edit(Some(page::serialize_colored(&buf)));
                     let s3 = s2.clone();
                     glib::idle_add_local_once(move || {
                         // 2. toată intrarea, din meniu: nota în verde, evenimentul cu marker albastru
@@ -1995,8 +1998,8 @@ fn selftest(s: &Rc<App>) {
     s.start_edit(PageRef::Day(date), 3);
     let s2 = s.clone();
     glib::idle_add_local_once(move || {
-        fn find_entry(w: &gtk::Widget) -> Option<gtk::Entry> {
-            if let Some(e) = w.downcast_ref::<gtk::Entry>()
+        fn find_entry(w: &gtk::Widget) -> Option<gtk::TextView> {
+            if let Some(e) = w.downcast_ref::<gtk::TextView>()
                 && e.has_css_class("editare")
             {
                 return Some(e.clone());
@@ -2011,10 +2014,11 @@ fn selftest(s: &Rc<App>) {
             None
         }
         match find_entry(s2.right.root.upcast_ref()) {
-            Some(e) => {
-                eprintln!("selftest: câmpul de editare are „{}”", e.text());
-                e.set_text(". Dentist");
-                e.emit_activate();
+            Some(v) => {
+                let buf = v.buffer();
+                eprintln!("selftest: câmpul de editare are „{}”", buf.text(&buf.start_iter(), &buf.end_iter(), false));
+                buf.set_text(". Dentist");
+                s2.finish_edit(Some(page::serialize_colored(&buf)));
             }
             None => eprintln!("selftest: EȘUAT, nu apare câmpul de editare"),
         }

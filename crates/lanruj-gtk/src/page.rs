@@ -471,40 +471,61 @@ fn sign_of(kind: Kind) -> &'static str {
     }
 }
 
-/// Rândul în editare: un câmp cu intrarea scrisă ca jos („. text”, „o 10:00 text”, „- text”).
+/// Rândul în editare: un câmp cu intrarea scrisă ca jos („. text”, „o 10:00 text”, „- text”),
+/// cu culorile arătate direct (fără etichetele din fișier). Enter salvează, Esc renunță.
 fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 6);
     row.set_margin_start(26 * e.depth as i32);
-    let entry = gtk::Entry::builder().text(e.to_quick()).hexpand(true).css_classes(["editare"]).build();
-    let weak = Rc::downgrade(app);
-    entry.connect_activate(move |en| {
-        let text = en.text().to_string();
-        if let Some(app) = weak.upgrade() {
-            glib::idle_add_local_once(move || app.finish_edit(Some(text)));
-        }
-    });
+    let view = gtk::TextView::builder()
+        .wrap_mode(gtk::WrapMode::WordChar)
+        .accepts_tab(false)
+        .hexpand(true)
+        .top_margin(6)
+        .bottom_margin(6)
+        .left_margin(8)
+        .right_margin(8)
+        .css_classes(["editare"])
+        .build();
+    view.set_size_request(-1, 34);
+    // Chenarul stă pe o cutie din jur; câmpul are doar marginile lui interioare.
+    let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    frame.add_css_class("chenar-editare");
+    frame.append(&view);
+    let night = app.window_night();
+    let quick = e.to_quick();
+    // Semnul de la început („. * ”, „o 10:00 ”) rămâne fără culoare; textul își păstrează culorile.
+    let prefix = &quick[..quick.len() - e.text.len()];
+    load_colored(&view.buffer(), prefix, &e.text, night);
     let keys = gtk::EventControllerKey::new();
     let weak = Rc::downgrade(app);
-    keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            if let Some(app) = weak.upgrade() {
+    let v = view.clone();
+    keys.connect_key_pressed(move |_, key, _, mods| {
+        let Some(app) = weak.upgrade() else { return glib::Propagation::Proceed };
+        match key {
+            gtk::gdk::Key::Escape => {
                 glib::idle_add_local_once(move || app.finish_edit(None));
+                glib::Propagation::Stop
             }
-            return glib::Propagation::Stop;
+            gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter if !mods.contains(gtk::gdk::ModifierType::SHIFT_MASK) => {
+                let text = serialize_colored(&v.buffer());
+                glib::idle_add_local_once(move || app.finish_edit(Some(text)));
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
         }
-        glib::Propagation::Proceed
     });
-    entry.add_controller(keys);
-    let en = entry.clone();
+    view.add_controller(keys);
+    let v = view.clone();
     glib::idle_add_local_once(move || {
-        en.grab_focus();
-        en.set_position(-1);
+        v.grab_focus();
+        let buf = v.buffer();
+        buf.place_cursor(&buf.end_iter());
     });
-    row.append(&entry);
-    row.append(&color_bar(app.lang, ColorTarget::Field(entry.clone())));
+    row.append(&frame);
+    row.append(&color_bar(app.lang, ColorTarget::Field(view.clone(), night)));
     row.append(
         &gtk::Label::builder()
-            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare; fără selecție, se colorează tot textul.", "Select some text, then a color; with no selection, all the text is colored."))
+            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare; fără selecție, se colorează tot textul. Enter salvează, Esc renunță.", "Select some text, then a color; with no selection, all the text is colored. Enter saves, Esc cancels."))
             .css_classes(["mic", "dim-label"])
             .wrap(true)
             .xalign(0.0)
@@ -513,37 +534,129 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     row
 }
 
+/// Eticheta de culoare din câmpul de editare. Numele ține culoarea din fișier
+/// („f#c01c28” = text, „b#8ff0a4” = marker); afișarea folosește varianta de noapte când e cazul.
+fn color_tag(buf: &gtk::TextBuffer, marker: bool, hex: &str, night: bool) -> gtk::TextTag {
+    let name = format!("{}{}", if marker { 'b' } else { 'f' }, hex.to_lowercase());
+    if let Some(t) = buf.tag_table().lookup(&name) {
+        return t;
+    }
+    let tag = gtk::TextTag::new(Some(&name));
+    if marker {
+        if let Ok(mut c) = gtk::gdk::RGBA::parse(hex) {
+            if night {
+                c.set_alpha(0.4);
+            }
+            tag.set_background_rgba(Some(&c));
+        }
+        if !night {
+            tag.set_foreground(Some("#1c3d6b"));
+        }
+    } else {
+        let shown = if night { lanruj_core::colors::night_color(hex) } else { hex };
+        tag.set_foreground(Some(shown));
+    }
+    buf.tag_table().add(&tag);
+    // Culoarea textului are întâietate față de cerneala pusă pe marker:
+    // markerele stau cele mai de jos, culorile cele mai de sus.
+    if marker {
+        tag.set_priority(0);
+    } else {
+        tag.set_priority(buf.tag_table().size() - 1);
+    }
+    tag
+}
+
+/// Pune în câmp semnul de început și textul, cu culorile lui.
+fn load_colored(buf: &gtk::TextBuffer, prefix: &str, text: &str, night: bool) {
+    buf.set_text(prefix);
+    for r in lanruj_core::colors::runs(text) {
+        let start = buf.end_iter().offset();
+        let mut end = buf.end_iter();
+        buf.insert(&mut end, &r.text);
+        let (a, b) = (buf.iter_at_offset(start), buf.end_iter());
+        if let Some(c) = &r.color {
+            buf.apply_tag(&color_tag(buf, false, c, night), &a, &b);
+        }
+        if let Some(m) = &r.marker {
+            buf.apply_tag(&color_tag(buf, true, m, night), &a, &b);
+        }
+    }
+}
+
+/// Textul din câmp, înapoi în Markdown cu etichetele de culoare.
+pub fn serialize_colored(buf: &gtk::TextBuffer) -> String {
+    use lanruj_core::colors::{Run, to_markdown};
+    let mut runs: Vec<Run> = Vec::new();
+    let mut it = buf.start_iter();
+    while !it.is_end() {
+        let c = it.char();
+        let (mut color, mut marker) = (None, None);
+        for t in it.tags() {
+            let name = t.name().map(|n| n.to_string()).unwrap_or_default();
+            if let Some(h) = name.strip_prefix('f') {
+                color = Some(h.to_string());
+            } else if let Some(h) = name.strip_prefix('b') {
+                marker = Some(h.to_string());
+            }
+        }
+        match runs.last_mut() {
+            Some(last) if last.color == color && last.marker == marker => last.text.push(c),
+            _ => runs.push(Run { text: c.to_string(), color, marker }),
+        }
+        it.forward_char();
+    }
+    // Un rând nou scris din greșeală (Shift+Enter) devine spațiu: intrarea rămâne pe un rând.
+    to_markdown(&runs).replace('\n', " ")
+}
+
+/// Pune culoarea pe bucata selectată sau, fără selecție, pe tot textul (fără semnul de la început).
+fn paint_view(view: &gtk::TextView, paint: Option<lanruj_core::colors::Paint>, night: bool) {
+    use lanruj_core::colors::Paint;
+    let buf = view.buffer();
+    let (a, b) = match buf.selection_bounds() {
+        Some((a, b)) => (a, b),
+        None => {
+            let full = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+            let start = match lanruj_core::parse_quick(&full) {
+                Some(p) if full.trim_end().ends_with(&p.text) => full.trim_end().chars().count() - p.text.chars().count(),
+                _ => 0,
+            };
+            (buf.iter_at_offset(start as i32), buf.end_iter())
+        }
+    };
+    // Scoatem culorile de același fel (sau toate, pentru „fără culoare”), apoi o punem pe cea nouă.
+    let names: Vec<gtk::TextTag> = {
+        let mut v = Vec::new();
+        buf.tag_table().foreach(|t| v.push(t.clone()));
+        v
+    };
+    for t in &names {
+        let name = t.name().map(|n| n.to_string()).unwrap_or_default();
+        let remove = match paint {
+            None => true,
+            Some(Paint::Color(_)) => name.starts_with('f'),
+            Some(Paint::Marker(_)) => name.starts_with('b'),
+        };
+        if remove {
+            buf.remove_tag(t, &a, &b);
+        }
+    }
+    match paint {
+        Some(Paint::Color(c)) => buf.apply_tag(&color_tag(&buf, false, c, night), &a, &b),
+        Some(Paint::Marker(m)) => buf.apply_tag(&color_tag(&buf, true, m, night), &a, &b),
+        None => {}
+    }
+    view.grab_focus();
+}
+
 /// Unde pune bara de culori culoarea: în câmpul de editare (pe bucata selectată
 /// sau pe tot textul) ori direct pe o intrare (din meniul de la clic dreapta).
 #[derive(Clone)]
 pub enum ColorTarget {
-    Field(gtk::Entry),
+    /// Câmpul de editare și dacă e noapte (pentru culorile arătate).
+    Field(gtk::TextView, bool),
     Entry(std::rc::Weak<App>, PageRef, usize, gtk::Popover),
-}
-
-/// Pune culoarea în câmpul de editare: pe bucata selectată sau, fără selecție, pe tot textul
-/// (fără semnul de la început, „. ”, „o 10:00 ”…).
-fn paint_field(entry: &gtk::Entry, paint: Option<lanruj_core::colors::Paint>) {
-    use lanruj_core::colors::{paint as do_paint, plain};
-    let full = entry.text().to_string();
-    let Some(parsed) = lanruj_core::parse_quick(&full) else { return };
-    let trimmed = full.trim_end();
-    let body_start = if trimmed.ends_with(&parsed.text) { trimmed.len() - parsed.text.len() } else { 0 };
-    let (prefix, body) = full.split_at(body_start);
-    let prefix_chars = prefix.chars().count() as i32;
-    let body_chars: Vec<char> = body.chars().collect();
-    let to_plain = |raw: i32| -> usize {
-        let raw = (raw - prefix_chars).clamp(0, body_chars.len() as i32) as usize;
-        plain(&body_chars[..raw].iter().collect::<String>()).chars().count()
-    };
-    let (start, end) = match entry.selection_bounds() {
-        Some((a, b)) if a != b => (to_plain(a.min(b)), to_plain(a.max(b))),
-        _ => (0, usize::MAX),
-    };
-    let new_body = do_paint(body, start, end, paint);
-    entry.set_text(&format!("{prefix}{new_body}"));
-    entry.grab_focus();
-    entry.set_position(-1);
 }
 
 /// Bara de culori: textul colorat (A colorat), markerul (pătrățele) și „fără culoare”.
@@ -552,7 +665,7 @@ pub fn color_bar(lang: lanruj_core::Lang, target: ColorTarget) -> gtk::Box {
     let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     bar.add_css_class("bara-culori");
     let apply = move |target: &ColorTarget, paint: Option<Paint>| match target {
-        ColorTarget::Field(e) => paint_field(e, paint),
+        ColorTarget::Field(v, night) => paint_view(v, paint, *night),
         ColorTarget::Entry(weak, r, i, pop) => {
             pop.popdown();
             if let Some(app) = weak.upgrade() {
