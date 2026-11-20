@@ -43,7 +43,7 @@ pub struct App {
     narrow: Cell<bool>,
     mig: RefCell<Option<Migration>>,
     /// Migrarea amânată cu „Mai târziu” (până la următoarea pornire).
-    dismissed: Cell<Option<NaiveDate>>,
+    dismissed: Cell<Option<PageRef>>,
     normal_header: Vec<gtk::Widget>,
     mig_header: Vec<gtk::Widget>,
     progress: gtk::Box,
@@ -152,7 +152,7 @@ impl App {
         self.refresh_migration_header();
         let on_today = !month_view && self.shown.get() == self.today.get();
         self.today_button.set_visible(!self.migrating() && !on_today);
-        self.migrate_button.set_visible(!self.migrating() && !month_view);
+        self.migrate_button.set_visible(!self.migrating());
         let row = if month_view { 2 } else { 0 };
         if self.nav.selected_row().map(|r| r.index()) != Some(row as i32) {
             self.nav.select_row(Some(&self.nav_rows[row]));
@@ -172,8 +172,14 @@ impl App {
             let m = m.as_ref().expect("în migrare");
             (m.source, m.target, m.current(), m.order.clone(), m.decided.clone(), m.new_ids.clone())
         };
-        let left = self.load(source);
-        let right = self.load(target);
+        let left = self.journal.load_ref(source).unwrap_or_else(|e| {
+            self.error(&e);
+            Day::new(self.today.get())
+        });
+        let right = self.journal.load_ref(target).unwrap_or_else(|e| {
+            self.error(&e);
+            Day::new(self.today.get())
+        });
         let panel = match current {
             Some(i) => match left.items.get(i) {
                 Some(lanruj_core::Item::Entry(e)) => Some(self.build_panel(e, decided.get(&i).copied())),
@@ -182,9 +188,24 @@ impl App {
             None => Some(self.build_done_panel()),
         };
         let view = MigView { current, candidates: &order, decided: &decided, panel, new_ids: &new_ids, is_source: true };
-        self.left.fill(self, &left, PageRef::Day(source), &self.relative(source), &self.lang.day_title(source), Some(&view));
+        let (sl, st) = self.page_labels(source);
+        self.left.fill(self, &left, source, &sl, &st, Some(&view));
         let view = MigView { current: None, candidates: &[], decided: &decided, panel: None, new_ids: &new_ids, is_source: false };
-        self.right.fill(self, &right, PageRef::Day(target), &self.relative(target), &self.lang.day_title(target), Some(&view));
+        let (tl, tt) = self.page_labels(target);
+        self.right.fill(self, &right, target, &tl, &tt, Some(&view));
+    }
+
+    /// Eticheta și titlul unei pagini: („Azi”, „Vineri, 20 noiembrie 2026”) sau
+    /// („Luna aceasta · sarcini”, „Noiembrie 2026”).
+    fn page_labels(&self, r: PageRef) -> (String, String) {
+        match r {
+            PageRef::Day(d) => (self.relative(d), self.lang.day_title(d)),
+            PageRef::Month { year, month } => {
+                let rel = self.relative_month(year, month);
+                let tasks = tr(self.lang, "Sarcinile lunii", "Monthly tasks");
+                (if rel.is_empty() { tasks.to_string() } else { format!("{rel} · {tasks}") }, self.lang.month_title(year, month))
+            }
+        }
     }
 
     fn refresh_normal(self: &Rc<Self>) {
@@ -271,7 +292,10 @@ impl App {
     /// Calendarul mic: ziua arătată selectată, zilele scrise cu un punct.
     fn sync_calendar(&self) {
         self.calendar_busy.set(true);
-        let d = self.mig.borrow().as_ref().map(|m| m.source).unwrap_or(self.shown.get());
+        let d = match self.mig.borrow().as_ref().map(|m| m.source) {
+            Some(PageRef::Day(d)) => d,
+            _ => self.shown.get(),
+        };
         if let Ok(dt) = glib::DateTime::from_local(d.year(), d.month() as i32, d.day() as i32, 12, 0, 0.0) {
             self.calendar.select_day(&dt);
         }
@@ -388,7 +412,7 @@ impl App {
         let Some(e) = parse_quick(&entry.text()) else { return };
         // În migrare, câmpul de jos scrie pe ziua din dreapta (mâine).
         let r = match (self.mig.borrow().as_ref().map(|m| m.target), self.view.get()) {
-            (Some(target), _) => PageRef::Day(target),
+            (Some(target), _) => target,
             (None, View::Month(year, month)) => PageRef::Month { year, month },
             (None, View::Day) => PageRef::Day(self.shown.get()),
         };
@@ -623,7 +647,11 @@ fn build_ui(app: &adw::Application) {
     let weak = Rc::downgrade(&state);
     a.connect_activate(move |_, _| {
         if let Some(s) = weak.upgrade() {
-            s.start_migration(s.shown.get(), false);
+            let source = match s.view.get() {
+                View::Month(year, month) => PageRef::Month { year, month },
+                View::Day => PageRef::Day(s.shown.get()),
+            };
+            s.start_migration(source, false);
         }
     });
     window.add_action(&a);
@@ -824,7 +852,7 @@ fn selftest(s: &Rc<App>) {
     let left = s.left.root.clone().upcast::<gtk::Widget>();
     click(&left, "opt-maine", 0); // Becuri -> mâine
     click(&left, "opt-renunt", 0); // Raport -> renunț
-    click(&left, "opt-las", 0); // Lampă -> o las
+    click(&left, "prog-luna", 0); // Lampă -> în lista lunii (Programează)
     // Răzgândire: Becuri rămâne totuși azi (copia de mâine trebuie să dispară)
     s.mig_select(0);
     click(&left, "opt-las", 0);
@@ -884,6 +912,14 @@ fn selftest(s: &Rc<App>) {
                 s3.today_button.is_visible(),
                 s3.migrate_button.is_visible()
             );
+            // Migrarea lunii: sarcinile neterminate din noiembrie trec în decembrie.
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.migrate", None).ok();
+            eprintln!("selftest: migrarea lunii: {} / {}", s3.title.title(), s3.title.subtitle());
+            let left = s3.left.root.clone().upcast::<gtk::Widget>();
+            click(&left, "opt-maine", 0);
+            click(&left, "opt-maine", 0);
+            s3.done_button.emit_clicked();
+            eprintln!("selftest: după migrarea lunii, în migrare={} titlu={}", s3.migrating(), s3.title.title());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
             eprintln!("selftest: după „înainte” titlu={}", s3.title.title());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.today", None).ok();

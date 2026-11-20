@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Ecranul de migrare: ziua triată în stânga, ziua următoare în dreapta,
-//! iar sub sarcina curentă patru alegeri: Mâine, Programează, Renunț, O las.
+//! Ecranul de migrare: pagina triată în stânga (o zi sau lista unei luni),
+//! pagina următoare în dreapta, iar sub sarcina curentă patru alegeri:
+//! Mâine / Luna următoare, Programează, Renunț, O las.
 
-use crate::{App, tr};
+use crate::{App, View, tr};
 use adw::prelude::*;
 use chrono::{Datelike, Duration, Local, NaiveDate, Timelike};
 use gtk::{gdk, glib};
-use lanruj_core::migrate::candidates;
-use lanruj_core::{Decision, Entry, Lang};
+use lanruj_core::migrate::{candidates, month_of, next_page};
+use lanruj_core::{Decision, Entry, Lang, PageRef};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -16,8 +17,8 @@ use std::rc::Rc;
 pub const EVENING_HOUR: u32 = 21;
 
 pub struct Migration {
-    pub source: NaiveDate,
-    pub target: NaiveDate,
+    pub source: PageRef,
+    pub target: PageRef,
     /// Pozițiile sarcinilor de triat, în ordinea din pagină.
     pub order: Vec<usize>,
     /// Sarcina curentă: un indice în `order`; `order.len()` = totul e triat.
@@ -25,8 +26,9 @@ pub struct Migration {
     pub decided: HashMap<usize, Decision>,
     /// Semnele sarcinilor ajunse pe pagina din dreapta în această migrare.
     pub new_ids: Vec<String>,
-    /// Ziua arătată înainte, ca să ne întoarcem la ea.
+    /// Ziua și ecranul de dinainte, ca să ne întoarcem la ele.
     pub prev_shown: NaiveDate,
+    pub prev_view: View,
 }
 
 impl Migration {
@@ -50,8 +52,9 @@ impl Migration {
 
 #[derive(Clone, Copy)]
 pub enum Choice {
+    /// Pagina următoare: mâine sau luna următoare.
     Tomorrow,
-    Schedule(NaiveDate),
+    Schedule(PageRef),
     Drop,
     Keep,
 }
@@ -67,16 +70,52 @@ pub struct MigView<'a> {
 }
 
 fn state_file() -> PathBuf {
+    state_path("migrare")
+}
+
+fn month_state_file() -> PathBuf {
+    state_path("migrare-luna")
+}
+
+fn state_path(name: &str) -> PathBuf {
     // La probe (LANRUJ_DIR), starea stă lângă jurnalul de probă, nu în cea adevărată.
     if let Some(d) = std::env::var_os("LANRUJ_DIR").filter(|d| !d.is_empty()) {
-        return PathBuf::from(d).join(".stare-migrare");
+        return PathBuf::from(d).join(format!(".stare-{name}"));
     }
     // XDG_STATE_HOME (în Flatpak, dosarul aplicației), altfel ~/.local/state.
     let base = std::env::var_os("XDG_STATE_HOME")
         .filter(|d| !d.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| glib::home_dir().join(".local").join("state"));
-    base.join("lanruj").join("migrare")
+    base.join("lanruj").join(name)
+}
+
+/// Ultima lună pentru care s-a încheiat migrarea de sfârșit de lună: (an, lună).
+fn last_month_done() -> Option<(i32, u32)> {
+    let s = std::fs::read_to_string(month_state_file()).ok()?;
+    let (y, m) = s.trim().split_once('-')?;
+    Some((y.parse().ok()?, m.parse().ok()?))
+}
+
+fn set_last_month_done(y: i32, m: u32) {
+    let p = month_state_file();
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if last_month_done().is_none_or(|old| (y, m) > old) {
+        let _ = std::fs::write(p, format!("{y:04}-{m:02}\n"));
+    }
+}
+
+/// Numele scurt al unei pagini: „3 decembrie” sau „lista lui decembrie”.
+pub fn page_short(lang: Lang, r: PageRef) -> String {
+    match r {
+        PageRef::Day(d) => format!("{} {}", d.day(), lang.month(d.month())),
+        PageRef::Month { month, .. } => match lang {
+            Lang::Ro => format!("lista lunii {}", lang.month(month)),
+            Lang::En => format!("{} list", lang.month(month)),
+        },
+    }
 }
 
 /// Ultima zi pentru care s-a încheiat migrarea (pe acest calculator).
@@ -111,28 +150,37 @@ impl App {
         self.mig.borrow().is_some()
     }
 
-    /// Pornește migrarea zilei `source`. `auto` = pornită singură seara.
-    pub fn start_migration(self: &Rc<Self>, source: NaiveDate, auto: bool) {
+    /// Pornește migrarea paginii `source` (o zi sau o lună). `auto` = pornită singură.
+    pub fn start_migration(self: &Rc<Self>, source: PageRef, auto: bool) {
         if self.migrating() {
             return;
         }
-        let day = self.load(source);
+        let day = match self.journal.load_ref(source) {
+            Ok(d) => d,
+            Err(e) => return self.error(&e),
+        };
         let order = candidates(&day);
         if order.is_empty() {
             if !auto {
-                self.toast(tr(self.lang, "Nicio sarcină neterminată în ziua aceasta.", "No unfinished tasks on this day."));
+                self.toast(match source {
+                    PageRef::Day(_) => tr(self.lang, "Nicio sarcină neterminată în ziua aceasta.", "No unfinished tasks on this day."),
+                    PageRef::Month { .. } => tr(self.lang, "Nicio sarcină neterminată în lista lunii.", "No unfinished tasks in the month's list."),
+                });
             }
             return;
         }
         *self.mig.borrow_mut() = Some(Migration {
             source,
-            target: source + Duration::days(1),
+            target: next_page(source),
             order,
             pos: 0,
             decided: HashMap::new(),
             new_ids: Vec::new(),
             prev_shown: self.shown.get(),
+            prev_view: self.view.get(),
         });
+        self.editing.set(None);
+        self.cal_editing.set(None);
         gtk::prelude::GtkWindowExt::set_focus(&self.window, None::<&gtk::Widget>);
         self.refresh();
     }
@@ -141,7 +189,10 @@ impl App {
     pub fn end_migration(self: &Rc<Self>, done: bool) {
         let Some(m) = self.mig.borrow_mut().take() else { return };
         if done {
-            set_last_done(m.source);
+            match m.source {
+                PageRef::Day(d) => set_last_done(d),
+                PageRef::Month { year, month } => set_last_month_done(year, month),
+            }
         } else {
             self.dismissed.set(Some(m.source));
         }
@@ -153,6 +204,7 @@ impl App {
             self.toast(&msg);
         }
         self.shown.set(m.prev_shown);
+        self.view.set(m.prev_view);
         self.refresh();
         if let Some(q) = &self.right.quick {
             q.grab_focus();
@@ -222,7 +274,8 @@ impl App {
         self.refresh();
     }
 
-    /// Seara, la ora aleasă (sau la prima deschidere după ea), migrarea pornește singură.
+    /// Pornește singură: seara, la ora aleasă (sau la prima deschidere după ea), migrarea zilei;
+    /// apoi, de la 1 ale lunii, migrarea lunii trecute.
     pub fn auto_migration(self: &Rc<Self>) {
         if self.migrating() {
             return;
@@ -230,15 +283,26 @@ impl App {
         let now = Local::now();
         let today = now.date_naive();
         let pending = if now.hour() >= EVENING_HOUR { today } else { today - Duration::days(1) };
-        if last_done().is_some_and(|d| d >= pending) || self.dismissed.get() == Some(pending) {
+        let day_done = last_done().is_some_and(|d| d >= pending);
+        if !day_done && self.dismissed.get() != Some(PageRef::Day(pending)) {
+            if candidates(&self.load(pending)).is_empty() {
+                set_last_done(pending);
+            } else {
+                return self.start_migration(PageRef::Day(pending), true);
+            }
+        }
+        // Luna trecută
+        let first = today.with_day(1).expect("zi validă");
+        let prev = first - Duration::days(1);
+        let (y, m) = (prev.year(), prev.month());
+        let r = PageRef::Month { year: y, month: m };
+        if last_month_done().is_some_and(|d| d >= (y, m)) || self.dismissed.get() == Some(r) {
             return;
         }
-        let day = self.load(pending);
-        if candidates(&day).is_empty() {
-            set_last_done(pending);
-            return;
+        match self.journal.load_ref(r) {
+            Ok(d) if !candidates(&d).is_empty() => self.start_migration(r, true),
+            _ => set_last_month_done(y, m),
         }
-        self.start_migration(pending, true);
     }
 
     /// Antetul, titlul și progresul în timpul migrării.
@@ -253,17 +317,25 @@ impl App {
         }
         let Some(m) = m.as_ref() else { return };
         let lang = self.lang;
-        let evening = m.source == Local::now().date_naive();
-        self.title.set_title(if evening { tr(lang, "Migrarea de seară", "Evening migration") } else { tr(lang, "Migrarea", "Migration") });
+        let title = match m.source {
+            PageRef::Day(d) if d == Local::now().date_naive() => tr(lang, "Migrarea de seară", "Evening migration"),
+            PageRef::Day(_) => tr(lang, "Migrarea", "Migration"),
+            PageRef::Month { .. } => tr(lang, "Migrarea lunii", "Monthly migration"),
+        };
+        self.title.set_title(title);
+        let src_name = match m.source {
+            PageRef::Day(d) => lang.day_title_short(d),
+            PageRef::Month { year, month } => lang.month_title(year, month),
+        };
         let n = m.order.len();
         let done = m.decided.len();
         let sub = if m.pos < n {
             match lang {
-                Lang::Ro => format!("sarcina {} din {} · {}", m.pos + 1, n, lang.day_title_short(m.source)),
-                Lang::En => format!("task {} of {} · {}", m.pos + 1, n, lang.day_title_short(m.source)),
+                Lang::Ro => format!("sarcina {} din {} · {}", m.pos + 1, n, src_name),
+                Lang::En => format!("task {} of {} · {}", m.pos + 1, n, src_name),
             }
         } else {
-            format!("{} · {}", tr(lang, "toate triate", "all sorted"), lang.day_title_short(m.source))
+            format!("{} · {}", tr(lang, "toate triate", "all sorted"), src_name)
         };
         self.title.set_subtitle(&sub);
 
@@ -320,9 +392,9 @@ impl App {
         }
         if let Some(prev) = previous {
             let what = match prev {
-                Decision::Moved(d) => match lang {
-                    Lang::Ro => format!("Ai ales: mutată pe {} {}.", d.day(), lang.month(d.month())),
-                    Lang::En => format!("You chose: moved to {} {}.", d.day(), lang.month(d.month())),
+                Decision::Moved(r) => match lang {
+                    Lang::Ro => format!("Ai ales: mutată {} {}.", if matches!(r, PageRef::Day(_)) { "pe" } else { "în" }, page_short(lang, r)),
+                    Lang::En => format!("You chose: moved to {}.", page_short(lang, r)),
                 },
                 Decision::Dropped => tr(lang, "Ai ales: renunț.", "You chose: drop.").into(),
                 Decision::Kept => tr(lang, "Ai ales: o las.", "You chose: keep.").into(),
@@ -351,16 +423,39 @@ impl App {
             b.append(&gtk::Label::builder().label(key).css_classes(["tasta"]).valign(gtk::Align::Center).build());
             b
         };
-        let target = self.mig.borrow().as_ref().map(|m| m.target).expect("în migrare");
-        let source = target - Duration::days(1);
-        // Dimineața (migrarea zilei de ieri), ziua din dreapta e azi.
-        let mut target_name = self.relative(target);
-        if (target - self.today.get()).num_days().abs() > 1 {
-            target_name = tr(lang, "Ziua următoare", "Next day").into();
-        }
-        let tomorrow_small = match lang {
-            Lang::Ro => format!("pe {} {}", target.day(), lang.month(target.month())),
-            Lang::En => format!("to {} {}", target.day(), lang.month(target.month())),
+        let (source, target) = self.mig.borrow().as_ref().map(|m| (m.source, m.target)).expect("în migrare");
+        let (target_name, tomorrow_small) = match target {
+            PageRef::Day(t) => {
+                // Dimineața (migrarea zilei de ieri), ziua din dreapta e azi.
+                let mut name = self.relative(t);
+                if (t - self.today.get()).num_days().abs() > 1 {
+                    name = tr(lang, "Ziua următoare", "Next day").into();
+                }
+                let small = match lang {
+                    Lang::Ro => format!("pe {} {}", t.day(), lang.month(t.month())),
+                    Lang::En => format!("to {} {}", t.day(), lang.month(t.month())),
+                };
+                (name, small)
+            }
+            PageRef::Month { year, month } => (
+                tr(lang, "Luna următoare", "Next month").to_string(),
+                match lang {
+                    Lang::Ro => format!("în lista lunii {}", lang.month(month)),
+                    Lang::En => format!("to the {} list", lang.month_title(year, month)),
+                },
+            ),
+        };
+        // Prima zi pe care se poate programa și ziua propusă în calendar.
+        let (min_day, suggested) = match source {
+            PageRef::Day(d) => (d + Duration::days(1), d + Duration::days(7)),
+            PageRef::Month { year, month } => {
+                let first = NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă");
+                let next = match next_page(source) {
+                    PageRef::Month { year, month } => NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"),
+                    PageRef::Day(d) => d,
+                };
+                (first, next)
+            }
         };
 
         let b_tomorrow = gtk::Button::builder()
@@ -375,19 +470,51 @@ impl App {
         });
 
         let b_sched = gtk::MenuButton::builder()
-            .child(&option("<", tr(lang, "Programează", "Schedule"), tr(lang, "pe altă zi", "on another day"), "P"))
+            .child(&option(
+                "<",
+                tr(lang, "Programează", "Schedule"),
+                match source {
+                    PageRef::Day(_) => tr(lang, "pe altă zi sau în lista lunii", "another day or a month's list"),
+                    PageRef::Month { .. } => tr(lang, "pe o zi anume", "on a specific day"),
+                },
+                "P",
+            ))
             .css_classes(["optiune", "opt-prog"])
             .build();
         let pop = gtk::Popover::new();
         let pbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        pbox.append(&gtk::Label::builder().label(tr(lang, "Alege ziua", "Pick the day")).css_classes(["heading"]).build());
+        // Din migrarea unei zile: și în lista lunii (aceasta sau următoarea), ca în caiet.
+        if let PageRef::Day(_) = source {
+            pbox.append(&gtk::Label::builder().label(tr(lang, "În lista unei luni", "To a month's list")).css_classes(["heading"]).xalign(0.0).build());
+            let this_month = month_of(source);
+            let next_month = next_page(this_month);
+            for (r, label) in [
+                (this_month, tr(lang, "Luna aceasta", "This month")),
+                (next_month, tr(lang, "Luna viitoare", "Next month")),
+            ] {
+                let PageRef::Month { month, .. } = r else { continue };
+                let b = gtk::Button::builder()
+                    .label(format!("{label} ({})", lang.month(month)))
+                    .css_classes(["flat", "prog-luna"])
+                    .build();
+                let (weak, pop_c) = (Rc::downgrade(self), pop.clone());
+                b.connect_clicked(move |_| {
+                    pop_c.popdown();
+                    if let Some(s) = weak.upgrade() {
+                        s.mig_decide(Choice::Schedule(r));
+                    }
+                });
+                pbox.append(&b);
+            }
+            pbox.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        }
+        pbox.append(&gtk::Label::builder().label(tr(lang, "Pe o zi anume", "On a specific day")).css_classes(["heading"]).xalign(0.0).build());
         let cal = gtk::Calendar::new();
-        let week = source + Duration::days(7);
-        if let Ok(dt) = glib::DateTime::from_local(week.year(), week.month() as i32, week.day() as i32, 12, 0, 0.0) {
+        if let Ok(dt) = glib::DateTime::from_local(suggested.year(), suggested.month() as i32, suggested.day() as i32, 12, 0, 0.0) {
             cal.select_day(&dt);
         }
         pbox.append(&cal);
-        let pick = gtk::Button::builder().label(tr(lang, "Programează", "Schedule")).css_classes(["suggested-action"]).build();
+        let pick = gtk::Button::builder().label(tr(lang, "Programează pe ziua aleasă", "Schedule on the chosen day")).css_classes(["suggested-action"]).build();
         pbox.append(&pick);
         pop.set_child(Some(&pbox));
         b_sched.set_popover(Some(&pop));
@@ -396,12 +523,16 @@ impl App {
             let dt = cal_c.date();
             let Some(d) = NaiveDate::from_ymd_opt(dt.year(), dt.month() as u32, dt.day_of_month() as u32) else { return };
             let Some(s) = weak.upgrade() else { return };
-            if d <= source {
-                s.toast(tr(s.lang, "Alege o zi de după ziua sarcinii.", "Pick a day after the task's day."));
+            if d < min_day {
+                s.toast(match source {
+                    PageRef::Day(_) => tr(s.lang, "Alege o zi de după ziua sarcinii.", "Pick a day after the task's day."),
+                    PageRef::Month { .. } => tr(s.lang, "Alege o zi din luna aceasta sau de după.", "Pick a day in this month or later."),
+                });
                 return;
             }
             pop_c.popdown();
-            s.mig_decide(if d == source + Duration::days(1) { Choice::Tomorrow } else { Choice::Schedule(d) });
+            let r = PageRef::Day(d);
+            s.mig_decide(if r == target { Choice::Tomorrow } else { Choice::Schedule(r) });
         });
         *self.sched_button.borrow_mut() = Some(b_sched.clone());
 

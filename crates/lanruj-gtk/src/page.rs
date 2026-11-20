@@ -95,7 +95,7 @@ impl Page {
             match item {
                 Item::Entry(e) => {
                     any = true;
-                    let row = entry_row(app, r, day, index, e, mig);
+                    let row = entry_row(app, r, index, e, mig);
                     self.list.append(&row);
                     if let Some(m) = mig
                         && m.is_source
@@ -454,7 +454,7 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize) {
     row.add_controller(double);
 }
 
-fn entry_row(app: &Rc<App>, r: PageRef, day: &Day, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
+fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
     let lang = app.lang;
     if mig.is_none() && app.editing.get() == Some((r, index)) {
         return edit_row(app, e);
@@ -573,11 +573,11 @@ fn entry_row(app: &Rc<App>, r: PageRef, day: &Day, index: usize, e: &Entry, mig:
     // Pe pagina din stânga: unde a plecat sarcina triată.
     if let Some(m) = mig
         && m.is_source
-        && let Some(Decision::Moved(d)) = m.decided.get(&index)
-        && *d != day.date + chrono::Duration::days(1)
+        && let Some(Decision::Moved(to)) = m.decided.get(&index)
+        && *to != lanruj_core::migrate::next_page(r)
     {
         let l = gtk::Label::builder()
-            .label(format!("→ {} {}", chrono::Datelike::day(d), lang.month(chrono::Datelike::month(d))))
+            .label(format!("→ {}", crate::migrare::page_short(lang, *to)))
             .css_classes(["migrari"])
             .valign(gtk::Align::Start)
             .build();

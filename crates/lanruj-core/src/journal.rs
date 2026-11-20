@@ -86,7 +86,7 @@ impl Journal {
     pub fn migration_count(&self, id: &str) -> usize {
         let needle = format!(" ^{id}");
         let mut n = 0;
-        for path in self.day_files() {
+        for path in self.page_files() {
             let Ok(text) = fs::read_to_string(&path) else { continue };
             for line in text.lines() {
                 let t = line.trim_start();
@@ -96,6 +96,43 @@ impl Journal {
             }
         }
         n
+    }
+
+    /// Toate paginile cu intrări, ca referințe: zilele și listele lunilor.
+    pub(crate) fn pages(&self) -> Vec<PageRef> {
+        let mut out = Vec::new();
+        for p in self.page_files() {
+            let Some(name) = p.file_name().and_then(|n| n.to_str()) else { continue };
+            if name == "luna.md" {
+                let month = p.parent().and_then(|d| d.file_name()).and_then(|n| n.to_str()).and_then(|n| n.parse::<u32>().ok());
+                let year = p.parent().and_then(|d| d.parent()).and_then(|d| d.file_name()).and_then(|n| n.to_str()).and_then(|n| n.parse::<i32>().ok());
+                if let (Some(year), Some(month)) = (year, month)
+                    && (1..=12).contains(&month)
+                {
+                    out.push(PageRef::Month { year, month });
+                }
+            } else if let Some(stem) = name.strip_suffix(".md")
+                && let Ok(d) = NaiveDate::parse_from_str(stem, "%Y-%m-%d")
+            {
+                out.push(PageRef::Day(d));
+            }
+        }
+        out
+    }
+
+    fn page_files(&self) -> Vec<PathBuf> {
+        let mut out = self.day_files();
+        let Ok(years) = fs::read_dir(&self.root) else { return out };
+        for y in years.flatten() {
+            let Ok(months) = fs::read_dir(y.path()) else { continue };
+            for m in months.flatten() {
+                let p = m.path().join("luna.md");
+                if p.is_file() {
+                    out.push(p);
+                }
+            }
+        }
+        out
     }
 
     pub(crate) fn day_files(&self) -> Vec<PathBuf> {

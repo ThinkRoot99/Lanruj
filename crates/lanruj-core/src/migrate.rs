@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Migrarea: trierea sarcinilor neterminate ale unei zile.
 //!
-//! - mutată pe mâine: `[>]` în ziua ei, sarcină nouă în ziua următoare;
-//! - programată pe altă zi: `[<]` în ziua ei, sarcină nouă în ziua aleasă;
+//! - mutată pe pagina următoare (ziua de mâine, luna următoare): `[>]`;
+//! - programată în altă parte (o zi anume, lista unei luni): `[<]`;
 //! - renunțată: `[-]`;
 //! - lăsată: rămâne `[ ]`.
 //!
 //! Sarcina mutată și copia ei primesc același semn `^k3f9`, ca să se poată
 //! număra mutările (↻N) și ca o alegere să poată fi anulată.
 
+use crate::PageRef;
 use crate::day::{Day, Entry, Item, Kind, TaskState};
 use crate::journal::Journal;
 use crate::lang::Lang;
-use chrono::NaiveDate;
+use chrono::Datelike;
 use std::hash::{BuildHasher, Hasher};
 use std::io;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Decision {
-    /// Mutată sau programată pe ziua aceasta.
-    Moved(NaiveDate),
+    /// Mutată sau programată pe pagina aceasta.
+    Moved(PageRef),
     Dropped,
     Kept,
 }
@@ -77,19 +78,45 @@ fn new_id(taken: &[&Day]) -> String {
     unreachable!()
 }
 
+/// Pagina care urmează în caiet: ziua de mâine sau luna următoare.
+pub fn next_page(r: PageRef) -> PageRef {
+    match r {
+        PageRef::Day(d) => PageRef::Day(d.succ_opt().expect("zi validă")),
+        PageRef::Month { year, month } => {
+            if month == 12 {
+                PageRef::Month { year: year + 1, month: 1 }
+            } else {
+                PageRef::Month { year, month: month + 1 }
+            }
+        }
+    }
+}
+
+/// Luna în care se află o pagină.
+pub fn month_of(r: PageRef) -> PageRef {
+    match r {
+        PageRef::Day(d) => PageRef::Month { year: d.year(), month: d.month() },
+        m => m,
+    }
+}
+
 fn not_a_task() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, "intrarea nu e o sarcină neterminată")
 }
 
 impl Journal {
-    /// Mută sarcina de pe poziția `index` din ziua `from` în ziua `to`
-    /// (`[>]` dacă `to` e ziua următoare, `[<]` altfel). Întoarce semnul ei.
-    pub fn migrate(&self, from: NaiveDate, index: usize, to: NaiveDate, lang: Lang) -> io::Result<String> {
-        if to <= from {
+    /// Mută sarcina de pe poziția `index` din pagina `from` în pagina `to`
+    /// (`[>]` dacă `to` e pagina următoare, `[<]` altfel). Întoarce semnul ei.
+    pub fn migrate(&self, from: PageRef, index: usize, to: PageRef, lang: Lang) -> io::Result<String> {
+        let wrong = match (from, to) {
+            (PageRef::Day(a), PageRef::Day(b)) => b <= a,
+            _ => from == to,
+        };
+        if wrong {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "ziua aleasă trebuie să fie după ziua sarcinii"));
         }
-        let mut source = self.load(from)?;
-        let mut target = self.load(to)?;
+        let source = self.load_ref(from)?;
+        let target = self.load_ref(to)?;
         let entry = match source.items.get(index) {
             Some(Item::Entry(e)) if e.is_open_task() => e.clone(),
             _ => return Err(not_a_task()),
@@ -100,37 +127,43 @@ impl Journal {
         copy.depth = 0;
         copy.id = Some(id.clone());
         let kids = children(&source, index);
-        target.push(copy);
-        for k in kids {
-            target.push(k);
-        }
-
-        let e = source.entry_mut(index).expect("verificat mai sus");
-        e.id = Some(id.clone());
-        let next_day = from.succ_opt() == Some(to);
-        e.kind = Kind::Task(if next_day { TaskState::Migrated } else { TaskState::Scheduled });
-
-        // Întâi ziua nouă: dacă se întrerupe ceva, sarcina apare de două ori, nu deloc.
-        self.save(&target, lang)?;
-        self.save(&source, lang)?;
+        // Întâi pagina nouă: dacă se întrerupe ceva, sarcina apare de două ori, nu deloc.
+        self.update_ref(to, lang, move |t| {
+            t.push(copy);
+            for k in kids {
+                t.push(k);
+            }
+        })?;
+        let state = if next_page(from) == to { TaskState::Migrated } else { TaskState::Scheduled };
+        let id2 = id.clone();
+        self.update_ref(from, lang, move |s| {
+            if let Some(e) = s.entry_mut(index) {
+                e.id = Some(id2);
+                e.kind = Kind::Task(state);
+            }
+        })?;
         Ok(id)
     }
 
     /// Renunță la sarcina de pe poziția `index` (o taie).
-    pub fn drop_task(&self, from: NaiveDate, index: usize, lang: Lang) -> io::Result<()> {
-        let mut day = self.load(from)?;
-        match day.entry_mut(index) {
-            Some(e) if e.is_open_task() => e.kind = Kind::Task(TaskState::Dropped),
-            _ => return Err(not_a_task()),
-        }
-        self.save(&day, lang)
+    pub fn drop_task(&self, from: PageRef, index: usize, lang: Lang) -> io::Result<()> {
+        let mut ok = false;
+        self.update_ref(from, lang, |d| {
+            if let Some(e) = d.entry_mut(index)
+                && e.is_open_task()
+            {
+                e.kind = Kind::Task(TaskState::Dropped);
+                ok = true;
+            }
+        })?;
+        if ok { Ok(()) } else { Err(not_a_task()) }
     }
 
     /// Anulează alegerea făcută pentru sarcina de pe poziția `index`:
-    /// o face din nou neterminată și scoate copia din ziua în care fusese mutată.
+    /// o face din nou neterminată și scoate copia din pagina în care fusese mutată.
     /// Nu anulează dacă acea copie a fost între timp bifată sau schimbată.
-    pub fn reopen(&self, from: NaiveDate, index: usize, lang: Lang) -> io::Result<()> {
-        let mut source = self.load(from)?;
+    pub fn reopen(&self, from: PageRef, index: usize, lang: Lang) -> io::Result<()> {
+        let source = self.load_ref(from)?;
         let entry = match source.items.get(index) {
             Some(Item::Entry(e)) => e.clone(),
             _ => return Err(not_a_task()),
@@ -145,38 +178,59 @@ impl Journal {
             Kind::Task(TaskState::Open) => return Ok(()),
             _ => return Err(not_a_task()),
         }
-        source.entry_mut(index).expect("verificat").kind = Kind::Task(TaskState::Open);
-        self.save(&source, lang)
+        self.update_ref(from, lang, |d| {
+            if let Some(e) = d.entry_mut(index) {
+                e.kind = Kind::Task(TaskState::Open);
+            }
+        })?;
+        Ok(())
     }
 
-    /// Scoate, din prima zi de după `from`, sarcina neterminată cu semnul `id` și notițele ei.
-    fn remove_copy(&self, from: NaiveDate, id: &str, lang: Lang) -> io::Result<()> {
-        let mut dates: Vec<NaiveDate> = self
-            .day_files()
-            .iter()
-            .filter_map(|p| p.file_stem()?.to_str().and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()))
-            .filter(|d| *d > from)
-            .collect();
-        dates.sort_unstable();
-        for d in dates {
-            let mut day = self.load(d)?;
-            let found = day.items.iter().position(|it| matches!(it, Item::Entry(e) if e.id.as_deref() == Some(id)));
-            let Some(pos) = found else { continue };
-            let Some(Item::Entry(e)) = day.items.get(pos) else { continue };
-            if !e.is_open_task() {
-                return Err(io::Error::other("sarcina a fost deja bifată sau mutată mai departe; alegerea nu se mai poate anula"));
+    /// Scoate copia sarcinii cu semnul `id` (și notițele ei) din pagina în care a ajuns:
+    /// singura pagină, alta decât `from`, unde sarcina apare încă neterminată.
+    fn remove_copy(&self, from: PageRef, id: &str, lang: Lang) -> io::Result<()> {
+        let mut found_done = false;
+        for r in self.pages() {
+            if r == from {
+                continue;
             }
+            let day = self.load_ref(r)?;
+            let Some(pos) = day.items.iter().position(|it| matches!(it, Item::Entry(e) if e.id.as_deref() == Some(id) && e.is_open_task())) else {
+                // O copie bifată sau mutată mai departe, după `from`, oprește anularea.
+                if day.entries().any(|e| e.id.as_deref() == Some(id) && matches!(e.kind, Kind::Task(TaskState::Done) | Kind::Task(TaskState::Migrated) | Kind::Task(TaskState::Scheduled)))
+                    && !self.was_before(from, r)
+                {
+                    found_done = true;
+                }
+                continue;
+            };
             let n = 1 + children(&day, pos).len();
-            day.items.drain(pos..pos + n);
-            return self.save(&day, lang);
+            return self.update_ref(r, lang, move |d| {
+                d.items.drain(pos..pos + n);
+            }).map(|_| ());
+        }
+        if found_done {
+            return Err(io::Error::other("sarcina a fost deja bifată sau mutată mai departe; alegerea nu se mai poate anula"));
         }
         Ok(())
+    }
+
+    /// Adevărat dacă pagina `r` vine înaintea lui `from` în caiet
+    /// (acolo sunt mutările mai vechi ale aceleiași sarcini, nu copia ei).
+    fn was_before(&self, from: PageRef, r: PageRef) -> bool {
+        let key = |p: PageRef| match p {
+            PageRef::Day(d) => (d.year(), d.month(), d.day()),
+            // Lista lunii vine înaintea zilelor ei.
+            PageRef::Month { year, month } => (year, month, 0),
+        };
+        key(r) < key(from)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::NaiveDate;
     use std::fs;
     use std::path::PathBuf;
 
@@ -189,6 +243,13 @@ mod tests {
     fn d(day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 11, day).unwrap()
     }
+
+    fn z(day: u32) -> PageRef {
+        PageRef::Day(d(day))
+    }
+
+    const NOV: PageRef = PageRef::Month { year: 2026, month: 11 };
+    const DEC: PageRef = PageRef::Month { year: 2026, month: 12 };
 
     const ZI: &str = "# Vineri, 20 noiembrie 2026
 
@@ -216,7 +277,7 @@ mod tests {
     #[test]
     fn muta_pe_maine_cu_notitele() {
         let (j, r) = setup("maine");
-        let id = j.migrate(d(20), 1, d(21), Lang::Ro).unwrap();
+        let id = j.migrate(z(20), 1, z(21), Lang::Ro).unwrap();
         let src = fs::read_to_string(r.join("2026/11/2026-11-20.md")).unwrap();
         assert!(src.contains(&format!("- [>] Becuri ^{id}\n  - LED, lumină caldă\n")));
         let dst = fs::read_to_string(r.join("2026/11/2026-11-21.md")).unwrap();
@@ -226,7 +287,7 @@ mod tests {
         // A doua zi, aceeași sarcină mutată din nou: același semn, ↻2.
         let day21 = j.load(d(21)).unwrap();
         assert_eq!(candidates(&day21), vec![0]);
-        let id2 = j.migrate(d(21), 0, d(22), Lang::Ro).unwrap();
+        let id2 = j.migrate(z(21), 0, z(22), Lang::Ro).unwrap();
         assert_eq!(id, id2);
         assert_eq!(j.migration_count(&id), 2);
         fs::remove_dir_all(r).unwrap();
@@ -235,17 +296,17 @@ mod tests {
     #[test]
     fn programeaza_renunta_anuleaza() {
         let (j, r) = setup("prog");
-        let id = j.migrate(d(20), 3, d(27), Lang::Ro).unwrap();
+        let id = j.migrate(z(20), 3, z(27), Lang::Ro).unwrap();
         let day = j.load(d(20)).unwrap();
         assert_eq!(day.entries().nth(3).unwrap().kind, Kind::Task(TaskState::Scheduled));
         assert!(fs::read_to_string(r.join("2026/11/2026-11-27.md")).unwrap().contains(&format!("- [ ] * Raport ^{id}")));
 
-        j.drop_task(d(20), 5, Lang::Ro).unwrap();
+        j.drop_task(z(20), 5, Lang::Ro).unwrap();
         assert_eq!(j.load(d(20)).unwrap().entries().nth(5).unwrap().kind, Kind::Task(TaskState::Dropped));
 
         // Anularea: sarcina redevine neterminată, copia dispare.
-        j.reopen(d(20), 3, Lang::Ro).unwrap();
-        j.reopen(d(20), 5, Lang::Ro).unwrap();
+        j.reopen(z(20), 3, Lang::Ro).unwrap();
+        j.reopen(z(20), 5, Lang::Ro).unwrap();
         let after = fs::read_to_string(r.join("2026/11/2026-11-20.md")).unwrap();
         assert!(after.contains(&format!("- [ ] * Raport ^{id}\n")));
         assert!(after.contains("- [ ] Lampă\n"));
@@ -256,19 +317,45 @@ mod tests {
     #[test]
     fn nu_anuleaza_ce_s_a_bifat_intre_timp() {
         let (j, r) = setup("bifat");
-        j.migrate(d(20), 1, d(21), Lang::Ro).unwrap();
+        j.migrate(z(20), 1, z(21), Lang::Ro).unwrap();
         j.toggle_done(d(21), 0, Lang::Ro).unwrap();
-        assert!(j.reopen(d(20), 1, Lang::Ro).is_err());
+        assert!(j.reopen(z(20), 1, Lang::Ro).is_err());
         assert_eq!(j.load(d(20)).unwrap().entries().nth(1).unwrap().kind, Kind::Task(TaskState::Migrated));
+        fs::remove_dir_all(r).unwrap();
+    }
+
+    #[test]
+    fn din_zi_in_lista_lunii_si_de_la_luna_la_luna() {
+        let (j, r) = setup("luna");
+        // Din zi în lista lunii: [<]
+        let id = j.migrate(z(20), 5, NOV, Lang::Ro).unwrap();
+        assert!(fs::read_to_string(r.join("2026/11/2026-11-20.md")).unwrap().contains(&format!("- [<] Lampă ^{id}")));
+        assert!(fs::read_to_string(r.join("2026/11/luna.md")).unwrap().contains(&format!("- [ ] Lampă ^{id}")));
+        // Sfârșitul lunii: din noiembrie în decembrie, [>]
+        let nov = j.load_ref(NOV).unwrap();
+        assert_eq!(candidates(&nov), vec![0]);
+        j.migrate(NOV, 0, DEC, Lang::Ro).unwrap();
+        assert!(fs::read_to_string(r.join("2026/11/luna.md")).unwrap().contains(&format!("- [>] Lampă ^{id}")));
+        assert!(fs::read_to_string(r.join("2026/12/luna.md")).unwrap().contains(&format!("- [ ] Lampă ^{id}")));
+        assert_eq!(j.migration_count(&id), 2);
+        // Răzgândire la lună: copia din decembrie dispare, iar cea din noiembrie redevine neterminată.
+        j.reopen(NOV, 0, Lang::Ro).unwrap();
+        assert!(j.load_ref(DEC).unwrap().entries().next().is_none());
+        assert!(j.load_ref(NOV).unwrap().entries().next().unwrap().is_open_task());
+        // Din lună pe o zi anume: [<]
+        j.migrate(NOV, 0, PageRef::Day(NaiveDate::from_ymd_opt(2026, 12, 3).unwrap()), Lang::Ro).unwrap();
+        assert!(fs::read_to_string(r.join("2026/12/2026-12-03.md")).unwrap().contains("- [ ] Lampă"));
+        assert_eq!(next_page(DEC), PageRef::Month { year: 2027, month: 1 });
+        assert_eq!(month_of(z(20)), NOV);
         fs::remove_dir_all(r).unwrap();
     }
 
     #[test]
     fn refuza_ce_nu_e_sarcina_sau_zi_gresita() {
         let (j, r) = setup("refuz");
-        assert!(j.migrate(d(20), 0, d(21), Lang::Ro).is_err());
-        assert!(j.migrate(d(20), 1, d(20), Lang::Ro).is_err());
-        assert!(j.drop_task(d(20), 4, Lang::Ro).is_err());
+        assert!(j.migrate(z(20), 0, z(21), Lang::Ro).is_err());
+        assert!(j.migrate(z(20), 1, z(20), Lang::Ro).is_err());
+        assert!(j.drop_task(z(20), 4, Lang::Ro).is_err());
         fs::remove_dir_all(r).unwrap();
     }
 }
