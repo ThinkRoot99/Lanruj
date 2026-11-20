@@ -120,6 +120,7 @@ pub fn page_short(lang: Lang, r: PageRef) -> String {
             Lang::Ro => format!("planul săptămânii {week}"),
             Lang::En => format!("week {week} plan"),
         },
+        PageRef::Topic { .. } => tr(lang, "o pagină din index", "an index page").to_string(),
     }
 }
 
@@ -209,14 +210,15 @@ impl App {
             Ok(d) => d,
             Err(e) => return self.error(&e),
         };
-        if let PageRef::Future { .. } = source {
+        // Planurile și paginile din index nu se migrează.
+        if let PageRef::Future { .. } | PageRef::Topic { .. } = source {
             return;
         }
         let order = candidates(&day);
         if order.is_empty() {
             if !auto {
                 self.toast(match source {
-                    PageRef::Day(_) => tr(self.lang, "Nicio sarcină neterminată în ziua aceasta.", "No unfinished tasks on this day."),
+                    PageRef::Day(_) | PageRef::Topic { .. } => tr(self.lang, "Nicio sarcină neterminată în ziua aceasta.", "No unfinished tasks on this day."),
                     PageRef::Month { .. } | PageRef::Future { .. } => tr(self.lang, "Nicio sarcină neterminată în lista lunii.", "No unfinished tasks in the month's list."),
                     PageRef::Week { .. } => tr(self.lang, "Nicio sarcină neterminată în planul săptămânii.", "No unfinished tasks in the week's plan."),
                 });
@@ -247,7 +249,7 @@ impl App {
                 PageRef::Day(d) => set_last_done(d),
                 PageRef::Month { year, month } => set_last_month_done(year, month),
                 PageRef::Week { year, week } => set_last_week_done(year, week),
-                PageRef::Future { .. } => {}
+                PageRef::Future { .. } | PageRef::Topic { .. } => {}
             }
         } else {
             self.dismissed.set(Some(m.source));
@@ -423,13 +425,13 @@ impl App {
         let lang = self.lang;
         let title = match m.source {
             PageRef::Day(d) if d == Local::now().date_naive() => tr(lang, "Migrarea de seară", "Evening migration"),
-            PageRef::Day(_) => tr(lang, "Migrarea", "Migration"),
+            PageRef::Day(_) | PageRef::Topic { .. } => tr(lang, "Migrarea", "Migration"),
             PageRef::Month { .. } | PageRef::Future { .. } => tr(lang, "Migrarea lunii", "Monthly migration"),
             PageRef::Week { .. } => tr(lang, "Migrarea săptămânii", "Weekly migration"),
         };
         self.title.set_title(title);
         let src_name = match m.source {
-            PageRef::Day(d) => lang.day_title_short(d),
+            PageRef::Day(d) | PageRef::Topic { date: d, .. } => lang.day_title_short(d),
             PageRef::Month { year, month } | PageRef::Future { year, month } => lang.month_title(year, month),
             PageRef::Week { week, .. } => lang.week_title(week),
         };
@@ -531,7 +533,7 @@ impl App {
         };
         let (source, target) = self.mig.borrow().as_ref().map(|m| (m.source, m.target)).expect("în migrare");
         let (target_name, tomorrow_small) = match target {
-            PageRef::Day(t) => {
+            PageRef::Day(t) | PageRef::Topic { date: t, .. } => {
                 // Dimineața (migrarea zilei de ieri), ziua din dreapta e azi.
                 let mut name = self.relative(t);
                 if (t - self.today.get()).num_days().abs() > 1 {
@@ -558,13 +560,13 @@ impl App {
 
         // Prima zi pe care se poate programa și ziua propusă în calendar.
         let (min_day, suggested) = match source {
-            PageRef::Day(d) => (d + Duration::days(1), d + Duration::days(7)),
+            PageRef::Day(d) | PageRef::Topic { date: d, .. } => (d + Duration::days(1), d + Duration::days(7)),
             PageRef::Month { year, month } | PageRef::Future { year, month } => {
                 let first = NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă");
                 let next = match next_page(source) {
                     PageRef::Month { year, month } | PageRef::Future { year, month } => NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"),
                     PageRef::Week { year, week } => lanruj_core::week_monday(year, week),
-                    PageRef::Day(d) => d,
+                    PageRef::Day(d) | PageRef::Topic { date: d, .. } => d,
                 };
                 (first, next)
             }
@@ -590,7 +592,7 @@ impl App {
                 "<",
                 tr(lang, "Programează", "Schedule"),
                 match source {
-                    PageRef::Day(_) => tr(lang, "pe altă zi sau în lista lunii", "another day or a month's list"),
+                    PageRef::Day(_) | PageRef::Topic { .. } => tr(lang, "pe altă zi sau în lista lunii", "another day or a month's list"),
                     PageRef::Month { .. } | PageRef::Future { .. } => tr(lang, "pe o zi anume", "on a specific day"),
                     PageRef::Week { .. } => tr(lang, "pe o zi sau în lista lunii", "a day or a month's list"),
                 },
@@ -691,7 +693,7 @@ impl App {
             let Some(s) = weak.upgrade() else { return };
             if d < min_day {
                 s.toast(match source {
-                    PageRef::Day(_) => tr(s.lang, "Alege o zi de după ziua sarcinii.", "Pick a day after the task's day."),
+                    PageRef::Day(_) | PageRef::Topic { .. } => tr(s.lang, "Alege o zi de după ziua sarcinii.", "Pick a day after the task's day."),
                     PageRef::Month { .. } | PageRef::Future { .. } => tr(s.lang, "Alege o zi din luna aceasta sau de după.", "Pick a day in this month or later."),
                     PageRef::Week { .. } => tr(s.lang, "Alege o zi din săptămâna aceasta sau de după.", "Pick a day in this week or later."),
                 });

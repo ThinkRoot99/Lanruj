@@ -148,14 +148,20 @@ impl Page {
     /// Clic pe o zi = o deschide.
     pub fn fill_week_days(&self, app: &Rc<App>, monday: NaiveDate) {
         let lang = app.lang;
-        self.label.set_label(&tr(lang, "Zilele săptămânii", "The week's days").to_uppercase());
+        self.fill_days(app, monday, 7, tr(lang, "Zilele săptămânii", "The week's days"), &lang.week_range(monday));
+    }
+
+    /// Zilele dintre `start` și `start + count`, pe scurt, citite din paginile zilelor.
+    pub fn fill_days(&self, app: &Rc<App>, start: NaiveDate, count: i64, label: &str, title: &str) {
+        let lang = app.lang;
+        self.label.set_label(&label.to_uppercase());
         self.label.set_visible(true);
-        self.title.set_label(&lang.week_range(monday));
+        self.title.set_label(title);
         self.footer.set_visible(false);
         self.clear();
         let today = app.today.get();
-        for i in 0..7 {
-            let d = monday + chrono::Duration::days(i);
+        for i in 0..count {
+            let d = start + chrono::Duration::days(i);
             let day = app.journal.load(d).unwrap_or_else(|_| Day::new(d));
             let head = gtk::Button::builder()
                 .label(format!("{} {}", lang.weekday(d.weekday()), d.day()))
@@ -243,31 +249,47 @@ impl Page {
             .css_classes(["adauga-index"])
             .halign(gtk::Align::Start)
             .build();
-        add.set_popover(Some(&index_form(app)));
+        let pop = gtk::Popover::new();
+        pop.set_child(Some(&index_form_box(app, None, &pop)));
+        add.set_popover(Some(&pop));
         self.list.append(&add);
         let mut any = false;
         for (i, it) in idx.items.iter().enumerate() {
             match it {
-                lanruj_core::IndexItem::Entry { title, start, range } => {
+                lanruj_core::IndexItem::Entry { title, start, end, .. } => {
                     any = true;
+                    let range = lanruj_core::index::range_text(lang, *start, *end);
                     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
                     row.add_css_class("index-rand");
                     row.append(&gtk::Label::builder().label(title.as_str()).xalign(0.0).wrap(true).css_classes(["index-titlu"]).build());
                     row.append(&gtk::Label::builder().label(range.as_str()).xalign(0.0).css_classes(["index-zile"]).build());
                     row.set_cursor_from_name(Some("pointer"));
-                    row.set_tooltip_text(Some(tr(lang, "Clic: deschide ziua; clic dreapta: scoate din index", "Click: open the day; right-click: remove from index")));
-                    let d = *start;
+                    row.set_tooltip_text(Some(tr(lang, "Clic: deschide pagina lui; clic dreapta: editează sau scoate", "Click: open its page; right-click: edit or remove")));
                     let click = gtk::GestureClick::builder().button(1).build();
                     let weak = Rc::downgrade(app);
                     click.connect_released(move |_, _, _, _| {
                         if let Some(app) = weak.upgrade() {
-                            glib::idle_add_local_once(move || app.go(d));
+                            glib::idle_add_local_once(move || app.open_index_item(i));
                         }
                     });
                     row.add_controller(click);
                     let pop = gtk::Popover::new();
+                    let stack = gtk::Stack::builder().vhomogeneous(false).hhomogeneous(false).build();
+                    let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    let ed = gtk::Button::builder().label(tr(lang, "Editează", "Edit")).css_classes(["flat", "index-editeaza"]).build();
                     let rm = gtk::Button::builder().label(tr(lang, "Scoate din index", "Remove from index")).css_classes(["flat", "error"]).build();
-                    pop.set_child(Some(&rm));
+                    for b in [&ed, &rm] {
+                        b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
+                        menu.append(b);
+                    }
+                    stack.add_named(&menu, Some("meniu"));
+                    let form = index_form_box(app, Some((i, title.clone(), *start, *end)), &pop);
+                    stack.add_named(&form, Some("editare"));
+                    let st = stack.clone();
+                    ed.connect_clicked(move |_| st.set_visible_child_name("editare"));
+                    let st = stack.clone();
+                    pop.connect_closed(move |_| st.set_visible_child_name("meniu"));
+                    pop.set_child(Some(&stack));
                     pop.set_parent(&row);
                     let p = pop.clone();
                     row.connect_destroy(move |_| p.unparent());
@@ -320,7 +342,27 @@ impl Page {
     ) {
         let lang = app.lang;
         self.header(tr(lang, "Făcut singur, din jurnal", "Made automatically"), tr(lang, "Etichete și luni", "Tags and months"));
-        self.list.append(&gtk::Label::builder().label(tr(lang, "Etichete", "Tags")).xalign(0.0).css_classes(["index-sectiune"]).build());
+        self.list.append(&gtk::Label::builder().label(tr(lang, "Luni", "Months")).xalign(0.0).css_classes(["index-sectiune"]).build());
+        for ((y, m), n) in months {
+            let (y, m) = (*y, *m);
+            let count = match lang {
+                lanruj_core::Lang::Ro => match n {
+                    1 => "o zi scrisă".to_string(),
+                    n if n % 100 >= 20 => format!("{n} de zile scrise"),
+                    n => format!("{n} zile scrise"),
+                },
+                lanruj_core::Lang::En => if *n == 1 { "1 day written".into() } else { format!("{n} days written") },
+            };
+            let b = gtk::Button::builder().label(format!("{} · {count}", lang.month_title(y, m))).css_classes(["flat", "index-luna"]).halign(gtk::Align::Start).build();
+            let weak = Rc::downgrade(app);
+            b.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    glib::idle_add_local_once(move || app.go_month(y, m));
+                }
+            });
+            self.list.append(&b);
+        }
+        self.list.append(&gtk::Label::builder().label(tr(lang, "Etichete", "Tags")).xalign(0.0).css_classes(["index-sectiune"]).margin_top(14).build());
         if tags.is_empty() {
             self.list.append(
                 &gtk::Label::builder()
@@ -352,26 +394,6 @@ impl Page {
             }
             let exp = gtk::Expander::builder().label(format!("{tag}  ({})", days.len())).child(&flow).css_classes(["index-eticheta"]).build();
             self.list.append(&exp);
-        }
-        self.list.append(&gtk::Label::builder().label(tr(lang, "Luni", "Months")).xalign(0.0).css_classes(["index-sectiune"]).margin_top(14).build());
-        for ((y, m), n) in months {
-            let (y, m) = (*y, *m);
-            let count = match lang {
-                lanruj_core::Lang::Ro => match n {
-                    1 => "o zi scrisă".to_string(),
-                    n if n % 100 >= 20 => format!("{n} de zile scrise"),
-                    n => format!("{n} zile scrise"),
-                },
-                lanruj_core::Lang::En => if *n == 1 { "1 day written".into() } else { format!("{n} days written") },
-            };
-            let b = gtk::Button::builder().label(format!("{} · {count}", lang.month_title(y, m))).css_classes(["flat", "index-luna"]).halign(gtk::Align::Start).build();
-            let weak = Rc::downgrade(app);
-            b.connect_clicked(move |_| {
-                if let Some(app) = weak.upgrade() {
-                    glib::idle_add_local_once(move || app.go_month(y, m));
-                }
-            });
-            self.list.append(&b);
         }
     }
 
@@ -800,10 +822,10 @@ fn paint_view(view: &gtk::TextView, paint: Option<lanruj_core::colors::Paint>, n
     view.grab_focus();
 }
 
-/// Formularul „Adaugă în index”: titlul, ziua și, opțional, ziua de sfârșit.
-fn index_form(app: &Rc<App>) -> gtk::Popover {
+/// Formularul unui rând din index: titlul, ziua și, opțional, ziua de sfârșit.
+/// Cu `edit` = Some((poziția, titlul, început, sfârșit)), schimbă rândul acela; altfel adaugă unul nou.
+fn index_form_box(app: &Rc<App>, edit: Option<(usize, String, NaiveDate, Option<NaiveDate>)>, pop: &gtk::Popover) -> gtk::Box {
     let lang = app.lang;
-    let pop = gtk::Popover::new();
     let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
     b.set_margin_top(6);
     b.set_margin_bottom(6);
@@ -820,19 +842,35 @@ fn index_form(app: &Rc<App>) -> gtk::Popover {
     let end = gtk::Calendar::builder().visible(false).build();
     more.bind_property("active", &end, "visible").sync_create().build();
     b.append(&end);
-    let ok = gtk::Button::builder().label(tr(lang, "Adaugă", "Add")).css_classes(["suggested-action"]).build();
+    let ok = gtk::Button::builder()
+        .label(if edit.is_some() { tr(lang, "Salvează", "Save") } else { tr(lang, "Adaugă", "Add") })
+        .css_classes(["suggested-action"])
+        .build();
     b.append(&ok);
-    pop.set_child(Some(&b));
-    // Ziua propusă: cea arătată (sau cea cerută cu Ctrl+I).
-    let d = app.index_add_date.get().unwrap_or(app.today.get());
-    if let Ok(dt) = glib::DateTime::from_local(d.year(), d.month() as i32, d.day() as i32, 12, 0, 0.0) {
-        start.select_day(&dt);
-        end.select_day(&dt);
+    let set = |c: &gtk::Calendar, d: NaiveDate| {
+        if let Ok(dt) = glib::DateTime::from_local(d.year(), d.month() as i32, d.day() as i32, 12, 0, 0.0) {
+            c.select_day(&dt);
+        }
+    };
+    match &edit {
+        Some((_, t, s, e)) => {
+            title.set_text(t);
+            set(&start, *s);
+            set(&end, e.unwrap_or(*s));
+            more.set_active(e.is_some());
+        }
+        None => {
+            // Ziua propusă: cea arătată (sau cea cerută cu Ctrl+I).
+            let d = app.index_add_date.get().unwrap_or(app.today.get());
+            set(&start, d);
+            set(&end, d);
+        }
     }
     let to_date = |c: &gtk::Calendar| {
         let dt = c.date();
         NaiveDate::from_ymd_opt(dt.year(), dt.month() as u32, dt.day_of_month() as u32)
     };
+    let pos = edit.as_ref().map(|(i, ..)| *i);
     let (weak, p) = (Rc::downgrade(app), pop.clone());
     let (t, sc, ec, m) = (title.clone(), start.clone(), end.clone(), more.clone());
     let submit = move || {
@@ -845,7 +883,10 @@ fn index_form(app: &Rc<App>) -> gtk::Popover {
         let Some(s) = to_date(&sc) else { return };
         let e = if m.is_active() { to_date(&ec) } else { None };
         p.popdown();
-        glib::idle_add_local_once(move || app.index_add(&text, s, e));
+        glib::idle_add_local_once(move || match pos {
+            Some(i) => app.index_edit(i, &text, s, e),
+            None => app.index_add(&text, s, e),
+        });
     };
     let sub = submit.clone();
     ok.connect_clicked(move |_| sub());
@@ -854,7 +895,7 @@ fn index_form(app: &Rc<App>) -> gtk::Popover {
     pop.connect_show(move |_| {
         t.grab_focus();
     });
-    pop
+    b
 }
 
 /// Unde pune bara de culori culoarea: în câmpul de editare (pe bucata selectată

@@ -30,6 +30,8 @@ pub enum PageRef {
     Future { year: i32, month: u32 },
     /// Planul unei săptămâni (an și săptămână ISO).
     Week { year: i32, week: u32 },
+    /// Pagina unui rând din index (`pagini/2026-07-12.md`, `…-2.md`).
+    Topic { date: chrono::NaiveDate, n: u8 },
 }
 
 /// Lunea săptămânii ISO.

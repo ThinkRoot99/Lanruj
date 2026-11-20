@@ -92,6 +92,8 @@ pub enum View {
     Week(i32, u32),
     /// Indexul.
     Index,
+    /// Pagina unui rând din index (ziua și numărul din numele fișierului).
+    Topic(NaiveDate, u8),
 }
 
 fn today() -> NaiveDate {
@@ -141,7 +143,7 @@ impl App {
     /// (în migrare, cea cu sarcinile de triat).
     fn layout(&self) {
         // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
-        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index) && !self.migrating();
+        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index | View::Topic(..)) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
         if month_stacked {
             self.left.root.set_visible(true);
@@ -208,8 +210,8 @@ impl App {
 
     pub fn index_add(self: &Rc<Self>, title: &str, start: NaiveDate, end: Option<NaiveDate>) {
         let res = self.journal.load_index().and_then(|mut idx| {
-            idx.add(title, start, end, self.lang);
-            self.journal.save_index(&idx)
+            idx.add(title, start, end, None);
+            self.journal.save_index(&idx, self.lang)
         });
         match res {
             Ok(()) => self.toast(tr(self.lang, "Adăugat în index", "Added to the index")),
@@ -219,12 +221,81 @@ impl App {
         self.refresh();
     }
 
+    /// Schimbă titlul și zilele unui rând (și titlul paginii lui, dacă are una).
+    pub fn index_edit(self: &Rc<Self>, i: usize, title: &str, start: NaiveDate, end: Option<NaiveDate>) {
+        let res = self.journal.load_index().and_then(|mut idx| {
+            if let Some(lanruj_core::IndexItem::Entry { title: t, start: s, end: e, page }) = idx.items.get_mut(i) {
+                *t = title.trim().to_string();
+                *s = start;
+                *e = end.filter(|x| *x > start);
+                if let Some((pd, n)) = page {
+                    self.journal.retitle_topic(*pd, *n, title)?;
+                }
+            }
+            self.journal.save_index(&idx, self.lang)
+        });
+        if let Err(e) = res {
+            self.error(&e);
+        }
+        self.refresh();
+    }
+
+    /// Clic pe un rând din index: deschide pagina lui (o creează la primul clic).
+    pub fn open_index_item(self: &Rc<Self>, i: usize) {
+        let res = self.journal.load_index().and_then(|mut idx| {
+            let Some(lanruj_core::IndexItem::Entry { title, start, page, .. }) = idx.items.get_mut(i) else {
+                return Ok(None);
+            };
+            if page.is_none() {
+                let n = self.journal.create_topic(title, *start)?;
+                *page = Some((*start, n));
+                let p = *page;
+                self.journal.save_index(&idx, self.lang)?;
+                return Ok(p);
+            }
+            Ok(*page)
+        });
+        match res {
+            Ok(Some((d, n))) => {
+                self.leave_search();
+                self.editing.set(None);
+                self.selected.set(None);
+                self.view.set(View::Topic(d, n));
+                self.refresh();
+                if let Some(q) = &self.left.quick {
+                    q.grab_focus();
+                }
+            }
+            Ok(None) => {}
+            Err(e) => self.error(&e),
+        }
+    }
+
+    /// Pagina unui rând din index: în stânga, ce scrii despre el; în dreapta, zilele lui pe scurt.
+    fn refresh_topic(self: &Rc<Self>, date: NaiveDate, n: u8) {
+        let lang = self.lang;
+        let idx = self.journal.load_index().unwrap_or_default();
+        let item = idx.items.iter().find_map(|it| match it {
+            lanruj_core::IndexItem::Entry { title, start, end, page: Some(p) } if *p == (date, n) => Some((title.clone(), *start, *end)),
+            _ => None,
+        });
+        let r = PageRef::Topic { date, n };
+        let page = self.journal.load_ref(r).unwrap_or_else(|_| Day::new(date));
+        let (title, start, end) = item.unwrap_or_else(|| (page.heading.clone().unwrap_or_default(), date, None));
+        let range = lanruj_core::index::range_text(lang, start, end);
+        self.left.fill(self, &page, r, &format!("Index · {range}"), &title, None);
+        let count = end.map(|e| (e - start).num_days() + 1).unwrap_or(1).clamp(1, 62);
+        self.right.fill_days(self, start, count, tr(lang, "Zilele lui", "Its days"), &range);
+        self.title.set_title(&title);
+        self.title.set_subtitle(&range);
+    }
+
     pub fn index_remove(self: &Rc<Self>, i: usize) {
         let res = self.journal.load_index().and_then(|mut idx| {
             if i < idx.items.len() {
                 idx.items.remove(i);
             }
-            self.journal.save_index(&idx)
+            self.journal.save_index(&idx, self.lang)
         });
         if let Err(e) = res {
             self.error(&e);
@@ -273,6 +344,10 @@ impl App {
             PageRef::Month { year, month } => self.go_month(year, month),
             PageRef::Week { year, week } => self.go_week(year, week),
             PageRef::Future { year, month } => self.go_future(year, month),
+            PageRef::Topic { date, n } => {
+                self.editing.set(None);
+                self.view.set(View::Topic(date, n));
+            }
         }
         self.selected.set(Some((r, index)));
         self.refresh();
@@ -293,6 +368,7 @@ impl App {
         let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
         let future_view = matches!(self.view.get(), View::Future(..)) && !self.migrating();
         let week_view = matches!(self.view.get(), View::Week(..)) && !self.migrating();
+        let topic_view = matches!(self.view.get(), View::Topic(..)) && !self.migrating();
         let index_view = matches!(self.view.get(), View::Index) && !self.migrating();
         if self.migrating() {
             self.refresh_migration();
@@ -304,15 +380,17 @@ impl App {
             self.refresh_week(y, w);
         } else if index_view {
             self.refresh_index();
+        } else if let View::Topic(d, n) = self.view.get() {
+            self.refresh_topic(d, n);
         } else {
             self.refresh_normal();
         }
         // Câmpurile de scriere: în viitor pe ambele pagini, în rest doar în dreapta.
         if let Some(q) = &self.left.quick {
-            q.set_visible(future_view || week_view);
+            q.set_visible(future_view || week_view || topic_view);
         }
         if let Some(q) = &self.right.quick {
-            q.set_visible(!week_view && !index_view);
+            q.set_visible(!week_view && !index_view && !topic_view);
         }
         let ph = if future_view {
             tr(self.lang, "Scrie aici; ziua la început: . 15 Revizia, o 24 Crăciun", "Write here; day first: . 15 Service, o 24 Christmas")
@@ -323,15 +401,15 @@ impl App {
             q.set_placeholder_text(Some(ph));
         }
         self.refresh_migration_header();
-        let on_today = !month_view && !future_view && !week_view && !index_view && self.shown.get() == self.today.get();
+        let on_today = !month_view && !future_view && !week_view && !index_view && !topic_view && self.shown.get() == self.today.get();
         self.today_button.set_visible(!self.migrating() && !on_today);
-        self.migrate_button.set_visible(!self.migrating() && !future_view && !index_view);
-        if index_view {
+        self.migrate_button.set_visible(!self.migrating() && !future_view && !index_view && !topic_view);
+        if index_view || topic_view {
             for w in &self.normal_header {
                 w.set_visible(false);
             }
         }
-        let row = if index_view {
+        let row = if index_view || topic_view {
             5
         } else if month_view {
             2
@@ -394,6 +472,7 @@ impl App {
                 (if rel.is_empty() { plan.to_string() } else { format!("{rel} · {plan}") }, self.lang.week_title(week))
             }
             PageRef::Day(d) => (self.relative(d), self.lang.day_title(d)),
+            PageRef::Topic { .. } => ("Index".into(), self.journal.load_ref(r).ok().and_then(|d| d.heading).unwrap_or_default()),
             PageRef::Month { year, month } => {
                 let rel = self.relative_month(year, month);
                 let tasks = tr(self.lang, "Sarcinile lunii", "Monthly tasks");
@@ -752,6 +831,7 @@ impl App {
             }
             (None, View::Week(year, week)) => PageRef::Week { year, week },
             (None, View::Index) => return,
+            (None, View::Topic(date, n)) => PageRef::Topic { date, n },
             (None, View::Day) => PageRef::Day(self.shown.get()),
         };
         match self.journal.update_ref(r, self.lang, |d| d.push(e)) {
@@ -805,6 +885,7 @@ impl App {
             View::Week(year, week) => (PageRef::Week { year, week }, &self.left),
             View::Future(year, month) => (PageRef::Future { year, month }, &self.left),
             View::Index => return None,
+            View::Topic(date, n) => (PageRef::Topic { date, n }, &self.left),
         })
     }
 
@@ -1535,7 +1616,7 @@ fn build_ui(app: &adw::Application) {
             let source = match s.view.get() {
                 View::Month(year, month) => PageRef::Month { year, month },
                 View::Week(year, week) => PageRef::Week { year, week },
-                View::Day | View::Future(..) | View::Index => PageRef::Day(s.shown.get()),
+                View::Day | View::Future(..) | View::Index | View::Topic(..) => PageRef::Day(s.shown.get()),
             };
             s.start_migration(source, false);
         }
@@ -1904,6 +1985,20 @@ fn build_ui(app: &adw::Application) {
                         Some(e) => {
                             e.set_text("Prezentarea proiectului");
                             e.emit_activate();
+                            let s4 = s2.clone();
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                                // Clic pe primul rând: deschide pagina lui (creată acum); scrie ceva în ea.
+                                s4.open_index_item(0);
+                                let q = s4.left.quick.clone().expect("câmp");
+                                q.set_text("- Cazare la Hotel Delta");
+                                q.emit_activate();
+                                eprintln!("selftest-index: pagina: {} / {}", s4.title.title(), s4.title.subtitle());
+                                s4.index_edit(0, "Concediu la mare", NaiveDate::from_ymd_opt(2026, 11, 23).unwrap(), NaiveDate::from_ymd_opt(2026, 11, 30));
+                                if let Ok(p) = std::env::var("LANRUJ_PNG3") {
+                                    let w = s4.window.clone();
+                                    glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || save_png(&w, &p));
+                                }
+                            });
                         }
                         None => eprintln!("selftest-index: nu găsesc formularul"),
                     }

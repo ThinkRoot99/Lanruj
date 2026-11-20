@@ -172,6 +172,10 @@ impl Cautare {
             PageRef::Month { year, month } => format!("{} · {}", l.month_title(year, month), tr(l, "lista lunii", "monthly list")),
             PageRef::Week { year, week } => format!("{} · {}", l.week_title(week), l.week_range(lanruj_core::week_monday(year, week))),
             PageRef::Future { year, month } => format!("{} · {}", tr(l, "Planuri", "Future log"), l.month_title(year, month)),
+            PageRef::Topic { .. } => {
+                let title = app.journal.load_ref(r).ok().and_then(|d| d.heading).unwrap_or_default();
+                format!("Index · {title}")
+            }
         }
     }
 

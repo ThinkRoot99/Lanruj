@@ -127,11 +127,23 @@ impl Journal {
         if let Ok(f) = self.load_future() {
             out.extend(f.months().into_iter().map(|(year, month)| PageRef::Future { year, month }));
         }
+        if let Ok(rd) = fs::read_dir(self.root.join("pagini")) {
+            for f in rd.flatten() {
+                let name = f.file_name();
+                let Some(name) = name.to_str() else { continue };
+                if let Some((date, n)) = crate::index::topic_of_file(name) {
+                    out.push(PageRef::Topic { date, n });
+                }
+            }
+        }
         out
     }
 
     fn page_files(&self) -> Vec<PathBuf> {
         let mut out = self.day_files();
+        if let Ok(rd) = fs::read_dir(self.root.join("pagini")) {
+            out.extend(rd.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|e| e == "md")));
+        }
         if self.future_path().is_file() {
             out.push(self.future_path());
         }
@@ -328,6 +340,11 @@ impl Journal {
                 day.items = f.items(year, month);
                 Ok(day)
             }
+            PageRef::Topic { date, n } => match fs::read_to_string(self.topic_path(date, n)) {
+                Ok(text) => Ok(Day::parse(date, &text)),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Day::new(date)),
+                Err(e) => Err(e),
+            },
             PageRef::Week { year, week } => {
                 let monday = crate::week_monday(year, week);
                 match fs::read_to_string(self.week_path(year, week)) {
@@ -355,6 +372,16 @@ impl Journal {
                 let mut fut = self.load_future()?;
                 fut.set_items(year, month, day.items.clone(), lang);
                 self.save_future(&fut, lang)?;
+                Ok(day)
+            }
+            PageRef::Topic { date, n } => {
+                let mut day = self.load_ref(r)?;
+                f(&mut day);
+                let path = self.topic_path(date, n);
+                fs::create_dir_all(path.parent().expect("are dosar"))?;
+                let tmp = path.with_extension("md.tmp");
+                fs::write(&tmp, day.to_markdown(lang))?;
+                fs::rename(&tmp, &path)?;
                 Ok(day)
             }
             PageRef::Week { year, week } => {

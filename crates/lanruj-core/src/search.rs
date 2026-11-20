@@ -58,6 +58,7 @@ fn key(r: PageRef) -> (i32, u32, u32) {
             let d = crate::week_monday(year, week);
             (d.year(), d.month(), d.day())
         }
+        PageRef::Topic { date, .. } => (date.year(), date.month(), date.day()),
     }
 }
 

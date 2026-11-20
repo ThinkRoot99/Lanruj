@@ -96,6 +96,8 @@ pub fn next_page(r: PageRef) -> PageRef {
             PageRef::Future { year, month }
         }
         PageRef::Week { year, week } => crate::week_of(crate::week_monday(year, week) + chrono::Duration::days(7)),
+        // Paginile din index nu au „pagina următoare”.
+        PageRef::Topic { .. } => r,
     }
 }
 
@@ -112,6 +114,7 @@ pub fn month_of(r: PageRef) -> PageRef {
             let d = crate::week_monday(year, week);
             PageRef::Month { year: d.year(), month: d.month() }
         }
+        PageRef::Topic { date, .. } => PageRef::Month { year: date.year(), month: date.month() },
         m => m,
     }
 }
@@ -320,6 +323,7 @@ impl Journal {
                 let d = crate::week_monday(year, week);
                 (d.year(), d.month(), d.day())
             }
+            PageRef::Topic { date, .. } => (date.year(), date.month(), date.day()),
         };
         key(r) < key(from)
     }

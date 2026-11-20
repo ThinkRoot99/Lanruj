@@ -5,11 +5,13 @@
 //! ```text
 //! # Index
 //!
-//! - [Concediu la mare](2026/07/2026-07-12.md): 12-19 iulie 2026
+//! - [Concediu la mare](pagini/2026-07-12.md): [12-19 iulie 2026](2026/07/2026-07-12.md)
 //! - [Ziua lui Andrei](2026/11/2026-11-30.md): 30 noiembrie 2026
 //! ```
 //!
-//! Fiecare rând e un link Markdown obișnuit spre prima zi, deci merge și în alte editoare.
+//! Titlul duce la pagina rândului (`pagini/…`, ca o colecție din caiet), zilele la prima zi.
+//! Un rând fără pagină (al doilea) o primește la primul clic. Sunt linkuri Markdown obișnuite,
+//! deci merg și în alte editoare.
 
 use crate::journal::Journal;
 use crate::lang::Lang;
@@ -20,7 +22,9 @@ use std::io;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IndexItem {
-    Entry { title: String, start: NaiveDate, range: String },
+    /// `page`: pagina rândului, dacă are una: ziua și numărul din numele fișierului
+    /// (`pagini/2026-07-12.md` = (12 iulie, 1), `…-2.md` = (12 iulie, 2)).
+    Entry { title: String, start: NaiveDate, end: Option<NaiveDate>, page: Option<(NaiveDate, u8)> },
     /// Un rând pe care nu-l înțelegem; se păstrează.
     Other(String),
 }
@@ -31,17 +35,74 @@ pub struct Index {
     pub items: Vec<IndexItem>,
 }
 
-fn parse_line(line: &str) -> Option<IndexItem> {
-    let rest = line.strip_prefix("- [")?;
+/// `[text](cale)` de la începutul lui `s` → (text, cale, restul).
+fn link(s: &str) -> Option<(&str, &str, &str)> {
+    let rest = s.strip_prefix('[')?;
     let close = rest.find("](")?;
-    let title = &rest[..close];
     let after = &rest[close + 2..];
     let end = after.find(')')?;
-    let path = &after[..end];
+    Some((&rest[..close], &after[..end], &after[end + 1..]))
+}
+
+/// `pagini/2026-07-12.md` → (2026-07-12, 1); `pagini/2026-07-12-2.md` → (2026-07-12, 2).
+fn page_of(path: &str) -> Option<(NaiveDate, u8)> {
+    let stem = path.strip_prefix("pagini/")?.strip_suffix(".md")?;
+    if let Ok(d) = NaiveDate::parse_from_str(stem, "%Y-%m-%d") {
+        return Some((d, 1));
+    }
+    let (date, n) = stem.rsplit_once('-')?;
+    Some((NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?, n.parse().ok()?))
+}
+
+/// Numele unui fișier din `pagini/` → (ziua, numărul paginii).
+pub fn topic_of_file(name: &str) -> Option<(NaiveDate, u8)> {
+    page_of(&format!("pagini/{name}"))
+}
+
+fn day_of(path: &str) -> Option<NaiveDate> {
     let stem = path.rsplit('/').next()?.strip_suffix(".md")?;
-    let start = NaiveDate::parse_from_str(stem, "%Y-%m-%d").ok()?;
-    let range = after[end + 1..].trim_start_matches(':').trim().to_string();
-    Some(IndexItem::Entry { title: title.to_string(), start, range })
+    NaiveDate::parse_from_str(stem, "%Y-%m-%d").ok()
+}
+
+fn parse_line(line: &str) -> Option<IndexItem> {
+    let rest = line.strip_prefix("- ")?;
+    let (title, path, after) = link(rest)?;
+    let after = after.trim_start_matches(':').trim();
+    if let Some((date, n)) = page_of(path) {
+        // Cu pagină: zilele sunt al doilea link (sau text simplu).
+        let (range, start) = match link(after) {
+            Some((r, p, _)) => (r, day_of(p).unwrap_or(date)),
+            None => (after, date),
+        };
+        let end = parse_range(range).and_then(|(_, e)| e);
+        return Some(IndexItem::Entry { title: title.to_string(), start, end, page: Some((date, n)) });
+    }
+    let start = day_of(path)?;
+    let end = parse_range(after).and_then(|(_, e)| e);
+    Some(IndexItem::Entry { title: title.to_string(), start, end, page: None })
+}
+
+fn month_number(name: &str) -> Option<u32> {
+    let lang_months = |l: Lang| (1..=12).find(|m| l.month(*m).eq_ignore_ascii_case(name));
+    lang_months(Lang::Ro).or_else(|| lang_months(Lang::En))
+}
+
+/// Citește zilele scrise de `range_text` (în română sau engleză): (început, sfârșit).
+pub fn parse_range(text: &str) -> Option<(NaiveDate, Option<NaiveDate>)> {
+    let date = |d: &str, m: &str, y: &str| NaiveDate::from_ymd_opt(y.parse().ok()?, month_number(m)?, d.parse().ok()?);
+    let w: Vec<&str> = text.split_whitespace().collect();
+    match w.as_slice() {
+        [d, m, y] => {
+            if let Some((a, b)) = d.split_once('-') {
+                Some((date(a, m, y)?, Some(date(b, m, y)?)))
+            } else {
+                Some((date(d, m, y)?, None))
+            }
+        }
+        [d1, m1, "-", d2, m2, y] => Some((date(d1, m1, y)?, Some(date(d2, m2, y)?))),
+        [d1, m1, y1, "-", d2, m2, y2] => Some((date(d1, m1, y1)?, Some(date(d2, m2, y2)?))),
+        _ => None,
+    }
 }
 
 /// „12-19 iulie 2026”, „30 noiembrie - 2 decembrie 2026”, „30 noiembrie 2026”.
@@ -81,16 +142,16 @@ impl Index {
         idx
     }
 
-    pub fn to_markdown(&self) -> String {
+    pub fn to_markdown(&self, lang: Lang) -> String {
         let mut out = format!("# {}\n\n", self.heading.as_deref().unwrap_or("Index"));
         for it in &self.items {
             match it {
-                IndexItem::Entry { title, start, range } => {
-                    let path = format!("{:04}/{:02}/{}.md", start.year(), start.month(), start.format("%Y-%m-%d"));
-                    if range.is_empty() {
-                        out.push_str(&format!("- [{title}]({path})\n"));
-                    } else {
-                        out.push_str(&format!("- [{title}]({path}): {range}\n"));
+                IndexItem::Entry { title, start, end, page } => {
+                    let day = format!("{:04}/{:02}/{}.md", start.year(), start.month(), start.format("%Y-%m-%d"));
+                    let range = range_text(lang, *start, *end);
+                    match page {
+                        Some((pd, n)) => out.push_str(&format!("- [{title}]({}): [{range}]({day})\n", topic_rel_path(*pd, *n))),
+                        None => out.push_str(&format!("- [{title}]({day}): {range}\n")),
                     }
                 }
                 IndexItem::Other(s) => {
@@ -103,8 +164,8 @@ impl Index {
     }
 
     /// Adaugă un rând și ține indexul în ordinea zilelor (rândurile scrise de mână rămân la locul lor).
-    pub fn add(&mut self, title: &str, start: NaiveDate, end: Option<NaiveDate>, lang: Lang) {
-        let item = IndexItem::Entry { title: title.trim().to_string(), start, range: range_text(lang, start, end) };
+    pub fn add(&mut self, title: &str, start: NaiveDate, end: Option<NaiveDate>, page: Option<(NaiveDate, u8)>) {
+        let item = IndexItem::Entry { title: title.trim().to_string(), start, end: end.filter(|e| *e > start), page };
         let at = self
             .items
             .iter()
@@ -114,7 +175,34 @@ impl Index {
     }
 }
 
+/// `pagini/2026-07-12.md` sau `pagini/2026-07-12-2.md`.
+pub fn topic_rel_path(date: NaiveDate, n: u8) -> String {
+    if n <= 1 { format!("pagini/{}.md", date.format("%Y-%m-%d")) } else { format!("pagini/{}-{n}.md", date.format("%Y-%m-%d")) }
+}
+
 impl Journal {
+    pub fn topic_path(&self, date: NaiveDate, n: u8) -> std::path::PathBuf {
+        self.root().join(topic_rel_path(date, n))
+    }
+
+    /// Creează pagina unui rând din index (cu titlul ca antet); întoarce numărul ei.
+    pub fn create_topic(&self, title: &str, date: NaiveDate) -> io::Result<u8> {
+        let n = (1..=99u8).find(|n| !self.topic_path(date, *n).exists()).unwrap_or(99);
+        let path = self.topic_path(date, n);
+        fs::create_dir_all(path.parent().expect("are dosar"))?;
+        fs::write(&path, format!("# {}\n", title.trim()))?;
+        Ok(n)
+    }
+
+    /// Schimbă titlul din antetul paginii unui rând.
+    pub fn retitle_topic(&self, date: NaiveDate, n: u8, title: &str) -> io::Result<()> {
+        let path = self.topic_path(date, n);
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        let mut day = crate::day::Day::parse(date, &text);
+        day.heading = Some(title.trim().to_string());
+        fs::write(&path, day.to_markdown(Lang::Ro))
+    }
+
     pub fn index_path(&self) -> std::path::PathBuf {
         self.root().join("index.md")
     }
@@ -127,11 +215,11 @@ impl Journal {
         }
     }
 
-    pub fn save_index(&self, idx: &Index) -> io::Result<()> {
+    pub fn save_index(&self, idx: &Index, lang: Lang) -> io::Result<()> {
         fs::create_dir_all(self.root())?;
         let path = self.index_path();
         let tmp = path.with_extension("md.tmp");
-        fs::write(&tmp, idx.to_markdown())?;
+        fs::write(&tmp, idx.to_markdown(lang))?;
         fs::rename(&tmp, &path)
     }
 
@@ -174,17 +262,41 @@ mod tests {
 
     #[test]
     fn citit_scris_adaugat() {
-        let text = "# Index\n\n- [Concediu la mare](2026/07/2026-07-12.md): 12-19 iulie 2026\nO notă scrisă de mână\n";
+        let text = "# Index\n\n- [Concediu la mare](2026/07/2026-07-12.md): 12-19 iulie 2026\n- [Munte](pagini/2026-08-02.md): [2-9 august 2026](2026/08/2026-08-02.md)\nO notă scrisă de mână\n";
         let mut idx = Index::parse(text);
-        assert_eq!(idx.to_markdown(), text);
-        idx.add("Ziua lui Andrei", d(2026, 11, 30), None, Lang::Ro);
-        idx.add("Revelion", d(2026, 12, 31), Some(d(2027, 1, 1)), Lang::Ro);
-        idx.add("Paște", d(2026, 4, 12), Some(d(2026, 4, 13)), Lang::Ro);
-        let out = idx.to_markdown();
+        assert_eq!(idx.to_markdown(Lang::Ro), text);
+        assert_eq!(idx.items[0], IndexItem::Entry { title: "Concediu la mare".into(), start: d(2026, 7, 12), end: Some(d(2026, 7, 19)), page: None });
+        assert_eq!(idx.items[1], IndexItem::Entry { title: "Munte".into(), start: d(2026, 8, 2), end: Some(d(2026, 8, 9)), page: Some((d(2026, 8, 2), 1)) });
+        idx.add("Ziua lui Andrei", d(2026, 11, 30), None, None);
+        idx.add("Revelion", d(2026, 12, 31), Some(d(2027, 1, 1)), Some((d(2026, 12, 31), 2)));
+        idx.add("Paște", d(2026, 4, 12), Some(d(2026, 4, 13)), None);
+        let out = idx.to_markdown(Lang::Ro);
         assert!(out.starts_with("# Index\n\n- [Paște](2026/04/2026-04-12.md): 12-13 aprilie 2026\n- [Concediu la mare]"));
-        assert!(out.contains("- [Revelion](2026/12/2026-12-31.md): 31 decembrie 2026 - 1 ianuarie 2027\n"));
+        assert!(out.contains("- [Revelion](pagini/2026-12-31-2.md): [31 decembrie 2026 - 1 ianuarie 2027](2026/12/2026-12-31.md)\n"));
+        assert_eq!(Index::parse(&out), idx, "rescris și citit la fel");
+        assert_eq!(parse_range("30 noiembrie - 2 decembrie 2026"), Some((d(2026, 11, 30), Some(d(2026, 12, 2)))));
+        assert_eq!(parse_range("12 July 2026"), Some((d(2026, 7, 12), None)));
         assert!(out.contains("O notă scrisă de mână"));
         assert_eq!(range_text(Lang::Ro, d(2026, 11, 30), Some(d(2026, 12, 2))), "30 noiembrie - 2 decembrie 2026");
+    }
+
+    #[test]
+    fn pagina_unui_rand() {
+        let root = std::env::temp_dir().join(format!("lanruj-tema-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let j = Journal::new(&root);
+        let n1 = j.create_topic("Concediu", d(2026, 11, 23)).unwrap();
+        let n2 = j.create_topic("Altceva", d(2026, 11, 23)).unwrap();
+        assert_eq!((n1, n2), (1, 2));
+        let r = crate::PageRef::Topic { date: d(2026, 11, 23), n: 1 };
+        j.update_ref(r, Lang::Ro, |p| p.push(crate::day::parse_quick("- Cazare la Hotel Delta").unwrap())).unwrap();
+        assert_eq!(fs::read_to_string(root.join("pagini/2026-11-23.md")).unwrap(), "# Concediu\n\n- Cazare la Hotel Delta\n");
+        j.retitle_topic(d(2026, 11, 23), 1, "Concediu la mare").unwrap();
+        assert!(fs::read_to_string(root.join("pagini/2026-11-23.md")).unwrap().starts_with("# Concediu la mare\n"));
+        assert!(j.pages().contains(&crate::PageRef::Topic { date: d(2026, 11, 23), n: 2 }));
+        let found = j.search("hotel", crate::search::Filter::default(), 10);
+        assert_eq!(found[0].0, r);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
