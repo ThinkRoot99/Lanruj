@@ -632,13 +632,45 @@ impl Page {
     }
 }
 
+/// Textul, cu adresele simple (`https://…`) făcute legături (markup Pango).
+fn autolink(text: &str) -> String {
+    let mut out = String::new();
+    let mut word = String::new();
+    let push_word = |w: &str, out: &mut String| {
+        // Punctuația de la sfârșit nu face parte din adresă: „vezi https://x.ro.”
+        let trimmed = w.trim_end_matches(['.', ',', ';', ':', '!', '?', ')', '”']);
+        if lanruj_core::colors::is_url(trimmed) {
+            let e = glib::markup_escape_text(trimmed);
+            out.push_str(&format!("<a href=\"{e}\">{e}</a>"));
+            out.push_str(&glib::markup_escape_text(&w[trimmed.len()..]));
+        } else {
+            out.push_str(&glib::markup_escape_text(w));
+        }
+    };
+    for c in text.chars() {
+        if c.is_whitespace() {
+            push_word(&word, &mut out);
+            word.clear();
+            out.push(c);
+        } else {
+            word.push(c);
+        }
+    }
+    push_word(&word, &mut out);
+    out
+}
+
 /// Textul intrării cu culorile lui, ca markup Pango. Noaptea, textul colorat se
 /// luminează și markerul devine pe jumătate transparent, ca cerneala să se vadă.
 pub fn rich_markup(text: &str, night: bool) -> String {
     use lanruj_core::colors::{night_color, runs};
     let mut out = String::new();
     for r in runs(text) {
-        let esc = glib::markup_escape_text(&r.text);
+        // Legăturile: `[text](adresă)` și adresele simple scrise în text.
+        let esc = match &r.link {
+            Some(url) => format!("<a href=\"{}\">{}</a>", glib::markup_escape_text(url), glib::markup_escape_text(&r.text)),
+            None => autolink(&r.text),
+        };
         let mut attrs = String::new();
         if let Some(c) = &r.color {
             let c = if night { night_color(c) } else { c.as_str() };
@@ -726,6 +758,7 @@ fn topic_box(app: &Rc<App>, t: &lanruj_core::index::TopicOnDay, big: bool) -> gt
 /// cu culorile arătate direct (fără etichetele din fișier). Enter salvează, Esc renunță.
 fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    row.add_css_class("rand-editare");
     row.set_margin_start(26 * e.depth as i32);
     let view = gtk::TextView::builder()
         .wrap_mode(gtk::WrapMode::WordChar)
@@ -757,6 +790,37 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
                 glib::idle_add_local_once(move || app.finish_edit(None));
                 glib::Propagation::Stop
             }
+            gtk::gdk::Key::k | gtk::gdk::Key::K if mods.contains(gtk::gdk::ModifierType::CONTROL_MASK) => {
+                // Ctrl+K: fereastra mică pentru legătură, de la butonul ei din bara de culori.
+                let mut w = v.parent().and_then(|p| p.parent());
+                while let Some(x) = w.clone() {
+                    if x.has_css_class("rand-editare") {
+                        break;
+                    }
+                    w = x.parent();
+                }
+                if let Some(row) = w {
+                    fn find(w: &gtk::Widget) -> Option<gtk::MenuButton> {
+                        if let Some(m) = w.downcast_ref::<gtk::MenuButton>()
+                            && m.has_css_class("buton-legatura")
+                        {
+                            return Some(m.clone());
+                        }
+                        let mut c = w.first_child();
+                        while let Some(ch) = c {
+                            if let Some(m) = find(&ch) {
+                                return Some(m);
+                            }
+                            c = ch.next_sibling();
+                        }
+                        None
+                    }
+                    if let Some(m) = find(&row) {
+                        m.popup();
+                    }
+                }
+                glib::Propagation::Stop
+            }
             gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter if !mods.contains(gtk::gdk::ModifierType::SHIFT_MASK) => {
                 let text = serialize_colored(&v.buffer());
                 glib::idle_add_local_once(move || app.finish_edit(Some(text)));
@@ -776,7 +840,7 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     row.append(&color_bar(app.lang, ColorTarget::Field(view.clone(), night)));
     row.append(
         &gtk::Label::builder()
-            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare; fără selecție, se colorează tot textul. Enter salvează, Esc renunță.", "Select some text, then a color; with no selection, all the text is colored. Enter saves, Esc cancels."))
+            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare sau o legătură (Ctrl+K); fără selecție, culoarea merge pe tot textul. Enter salvează, Esc renunță.", "Select some text, then a color or a link (Ctrl+K); with no selection, the color goes on all the text. Enter saves, Esc cancels."))
             .css_classes(["mic", "dim-label"])
             .wrap(true)
             .xalign(0.0)
@@ -787,6 +851,19 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
 
 /// Eticheta de culoare din câmpul de editare. Numele ține culoarea din fișier
 /// („f#c01c28” = text, „b#8ff0a4” = marker); afișarea folosește varianta de noapte când e cazul.
+/// Eticheta unei legături în câmpul de editare: „l” + adresa; albastră și subliniată.
+fn link_tag(buf: &gtk::TextBuffer, url: &str, night: bool) -> gtk::TextTag {
+    let name = format!("l{url}");
+    if let Some(t) = buf.tag_table().lookup(&name) {
+        return t;
+    }
+    let tag = gtk::TextTag::new(Some(&name));
+    tag.set_underline(gtk::pango::Underline::Single);
+    tag.set_foreground(Some(if night { "#99c1f1" } else { "#1c71d8" }));
+    buf.tag_table().add(&tag);
+    tag
+}
+
 fn color_tag(buf: &gtk::TextBuffer, marker: bool, hex: &str, night: bool) -> gtk::TextTag {
     let name = format!("{}{}", if marker { 'b' } else { 'f' }, hex.to_lowercase());
     if let Some(t) = buf.tag_table().lookup(&name) {
@@ -832,6 +909,9 @@ fn load_colored(buf: &gtk::TextBuffer, prefix: &str, text: &str, night: bool) {
         if let Some(m) = &r.marker {
             buf.apply_tag(&color_tag(buf, true, m, night), &a, &b);
         }
+        if let Some(l) = &r.link {
+            buf.apply_tag(&link_tag(buf, l, night), &a, &b);
+        }
     }
 }
 
@@ -842,18 +922,20 @@ pub fn serialize_colored(buf: &gtk::TextBuffer) -> String {
     let mut it = buf.start_iter();
     while !it.is_end() {
         let c = it.char();
-        let (mut color, mut marker) = (None, None);
+        let (mut color, mut marker, mut link) = (None, None, None);
         for t in it.tags() {
             let name = t.name().map(|n| n.to_string()).unwrap_or_default();
             if let Some(h) = name.strip_prefix('f') {
                 color = Some(h.to_string());
             } else if let Some(h) = name.strip_prefix('b') {
                 marker = Some(h.to_string());
+            } else if let Some(u) = name.strip_prefix('l') {
+                link = Some(u.to_string());
             }
         }
         match runs.last_mut() {
-            Some(last) if last.color == color && last.marker == marker => last.text.push(c),
-            _ => runs.push(Run { text: c.to_string(), color, marker }),
+            Some(last) if last.color == color && last.marker == marker && last.link == link => last.text.push(c),
+            _ => runs.push(Run { text: c.to_string(), color, marker, link }),
         }
         it.forward_char();
     }
@@ -986,6 +1068,102 @@ pub enum ColorTarget {
     Entry(std::rc::Weak<App>, PageRef, usize, gtk::Popover),
 }
 
+/// Butonul de legătură (și Ctrl+K în câmp): pune adresa pe textul selectat; fără selecție,
+/// scrie adresa la cursor, ca legătură. „Scoate legătura” o scoate de pe selecție.
+fn link_button(lang: lanruj_core::Lang, view: &gtk::TextView, night: bool) -> gtk::MenuButton {
+    let mb = gtk::MenuButton::builder()
+        .icon_name("insert-link-symbolic")
+        .focus_on_click(false)
+        .css_classes(["flat", "buton-legatura"])
+        .tooltip_text(tr(lang, "Legătură (Ctrl+K): selectează textul, apoi lipește adresa", "Link (Ctrl+K): select the text, then paste the address"))
+        .build();
+    let pop = gtk::Popover::new();
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let url = gtk::Entry::builder().placeholder_text("https://…").width_chars(34).css_classes(["adresa-legatura"]).build();
+    b.append(&url);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let put = gtk::Button::builder().label(tr(lang, "Pune legătura", "Add link")).css_classes(["suggested-action"]).build();
+    let rm = gtk::Button::builder().label(tr(lang, "Scoate legătura", "Remove link")).build();
+    row.append(&put);
+    row.append(&rm);
+    b.append(&row);
+    pop.set_child(Some(&b));
+    mb.set_popover(Some(&pop));
+    // Selecția din câmp se ține minte când se deschide fereastra mică (focusul pleacă în ea).
+    let sel: std::rc::Rc<std::cell::Cell<Option<(i32, i32)>>> = Default::default();
+    let (v, sc, u) = (view.clone(), sel.clone(), url.clone());
+    pop.connect_show(move |_| {
+        let buf = v.buffer();
+        sc.set(buf.selection_bounds().map(|(a, b)| (a.offset(), b.offset())));
+        u.set_text("");
+        u.grab_focus();
+    });
+    let apply = {
+        let (v, sc, p) = (view.clone(), sel.clone(), pop.clone());
+        move |address: Option<String>| {
+            let buf = v.buffer();
+            // Tag-urile de legătură existente pe selecție se scot întâi.
+            let remove_links = |a: &gtk::TextIter, b: &gtk::TextIter| {
+                let mut tags = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with('l')) {
+                        tags.push(t.clone());
+                    }
+                });
+                for t in &tags {
+                    buf.remove_tag(t, a, b);
+                }
+            };
+            match (sc.get(), address) {
+                (Some((a, b)), Some(url)) => {
+                    let (ia, ib) = (buf.iter_at_offset(a), buf.iter_at_offset(b));
+                    remove_links(&ia, &ib);
+                    buf.apply_tag(&link_tag(&buf, &url, night), &ia, &ib);
+                }
+                (None, Some(url)) => {
+                    // Fără selecție: adresa se scrie la cursor, ca legătură.
+                    let mut at = buf.iter_at_mark(&buf.get_insert());
+                    let start = at.offset();
+                    buf.insert(&mut at, &url);
+                    let (ia, ib) = (buf.iter_at_offset(start), buf.iter_at_offset(start + url.chars().count() as i32));
+                    buf.apply_tag(&link_tag(&buf, &url, night), &ia, &ib);
+                }
+                (Some((a, b)), None) => remove_links(&buf.iter_at_offset(a), &buf.iter_at_offset(b)),
+                (None, None) => {}
+            }
+            p.popdown();
+            v.grab_focus();
+        }
+    };
+    let (ap, u) = (apply.clone(), url.clone());
+    put.connect_clicked(move |_| {
+        let t = u.text().trim().to_string();
+        if !t.is_empty() {
+            ap(Some(normalize_url(&t)));
+        }
+    });
+    let (ap, u) = (apply.clone(), url.clone());
+    url.connect_activate(move |_| {
+        let t = u.text().trim().to_string();
+        if !t.is_empty() {
+            ap(Some(normalize_url(&t)));
+        }
+    });
+    rm.connect_clicked(move |_| apply(None));
+    mb
+}
+
+/// „exemplu.ro” → „https://exemplu.ro”; o adresă de e-mail → „mailto:…”.
+fn normalize_url(t: &str) -> String {
+    if lanruj_core::colors::is_url(t) {
+        t.to_string()
+    } else if t.contains('@') && !t.contains('/') {
+        format!("mailto:{t}")
+    } else {
+        format!("https://{t}")
+    }
+}
+
 /// Bara de culori: textul colorat (A colorat), markerul (pătrățele) și „fără culoare”.
 pub fn color_bar(lang: lanruj_core::Lang, target: ColorTarget) -> gtk::Box {
     use lanruj_core::colors::{MARKER_COLORS, Paint, TEXT_COLORS};
@@ -1022,6 +1200,9 @@ pub fn color_bar(lang: lanruj_core::Lang, target: ColorTarget) -> gtk::Box {
         bar.append(&b);
     }
     bar.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    if let ColorTarget::Field(v, night) = &target {
+        bar.append(&link_button(lang, v, *night));
+    }
     let none = gtk::Button::builder().icon_name("edit-clear-symbolic").focus_on_click(false).css_classes(["flat", "fara-culoare"]).build();
     none.set_tooltip_text(Some(tr(lang, "Fără culoare", "No color")));
     let t = target.clone();

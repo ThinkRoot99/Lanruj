@@ -1005,6 +1005,7 @@ impl App {
                     (tr(l, "Bifează sau debifează sarcina aleasă", "Check or uncheck the selected task"), "<Control>Return"),
                     (tr(l, "Șterge intrarea aleasă", "Delete the selected entry"), "Delete"),
                     (tr(l, "Înapoi în câmpul de scriere", "Back to the writing field"), "Escape"),
+                    (tr(l, "Legătură pe textul selectat (la editare)", "Link on the selected text (while editing)"), "<Control>k"),
                     (tr(l, "Salvează intrarea editată", "Save the edited entry"), "Return"),
                     (tr(l, "Renunță la editare", "Cancel editing"), "Escape"),
                 ],
@@ -2021,6 +2022,57 @@ fn build_ui(app: &adw::Application) {
                             save_png(&s3.window, &p);
                         }
                     });
+                });
+            });
+        }
+        Ok("test-legaturi") => {
+            let s = state.clone();
+            glib::idle_add_local_once(move || {
+                let q = s.right.quick.clone().expect("câmp");
+                for t in ["- Harta: https://www.openstreetmap.org/#map=12/44.1/28.6", ". Rezervă la Delfinariu"] {
+                    q.set_text(t);
+                    q.emit_activate();
+                }
+                let date = s.shown.get();
+                let r = PageRef::Day(date);
+                let base = s.journal.load(date).expect("zi").items.len() - 1;
+                s.start_edit(r, base);
+                let s2 = s.clone();
+                glib::idle_add_local_once(move || {
+                    fn find<T: IsA<gtk::Widget>>(w: &gtk::Widget, class: &str) -> Vec<T> {
+                        let mut out = Vec::new();
+                        if w.has_css_class(class) && let Ok(t) = w.clone().downcast::<T>() {
+                            out.push(t);
+                        }
+                        let mut c = w.first_child();
+                        while let Some(ch) = c {
+                            out.extend(find::<T>(&ch, class));
+                            c = ch.next_sibling();
+                        }
+                        out
+                    }
+                    let root = s2.right.root.clone().upcast::<gtk::Widget>();
+                    let v: gtk::TextView = find::<gtk::TextView>(&root, "editare").pop().expect("câmpul");
+                    let buf = v.buffer();
+                    let t = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+                    let a = t.find("Delfinariu").map(|b| t[..b].chars().count() as i32).expect("cuvântul");
+                    buf.select_range(&buf.iter_at_offset(a), &buf.iter_at_offset(a + 10));
+                    let mb: gtk::MenuButton = find::<gtk::MenuButton>(&root, "buton-legatura").pop().expect("butonul de legătură");
+                    mb.popup();
+                    let pop = mb.popover().expect("fereastra mică");
+                    let e: gtk::Entry = find::<gtk::Entry>(pop.upcast_ref(), "adresa-legatura").pop().expect("adresa");
+                    e.set_text("delfinariu-constanta.ro");
+                    e.emit_activate();
+                    eprintln!("selftest-legaturi: se salvează: {}", page::serialize_colored(&buf));
+                    s2.finish_edit(Some(page::serialize_colored(&buf)));
+                    let text = std::fs::read_to_string(s2.journal.day_path(date)).unwrap_or_default();
+                    for l in text.lines().filter(|l| l.contains("http")) {
+                        eprintln!("selftest-legaturi: fișier: {l}");
+                    }
+                    if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                        let w = s2.window.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || save_png(&w, &p));
+                    }
                 });
             });
         }
