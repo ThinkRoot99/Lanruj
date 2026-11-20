@@ -333,3 +333,41 @@ window.hartie-alba .pagina { background-image: none; }
 .rezultate row.titlu-pagina-rezultat {
   background-color: alpha(currentColor, 0.04);
 }
+
+/* Bara de culori */
+.bara-culori button.culoare-text {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  font-weight: 800;
+  font-size: 15px;
+  background-color: alpha(currentColor, 0.06);
+}
+
+.bara-culori button.culoare-marker {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  margin: 2px;
+  border-radius: 5px;
+  border: 1px solid alpha(black, 0.15);
+}
+
+.text-c01c28 { color: #c01c28; }
+.text-c64600 { color: #c64600; }
+.text-26a269 { color: #26a269; }
+.text-1c71d8 { color: #1c71d8; }
+.text-813d9c { color: #813d9c; }
+.text-865e3c { color: #865e3c; }
+.noapte .text-c01c28 { color: #ff7b63; }
+.noapte .text-c64600 { color: #ffa348; }
+.noapte .text-26a269 { color: #8ff0a4; }
+.noapte .text-1c71d8 { color: #99c1f1; }
+.noapte .text-813d9c { color: #dc8add; }
+.noapte .text-865e3c { color: #cdab8f; }
+
+button.mark-f9f06b { background-color: #f9f06b; }
+button.mark-8ff0a4 { background-color: #8ff0a4; }
+button.mark-99c1f1 { background-color: #99c1f1; }
+button.mark-f6a6c1 { background-color: #f6a6c1; }
+button.mark-ffbe6f { background-color: #ffbe6f; }

@@ -595,6 +595,25 @@ impl App {
     }
 
     /// Șterge intrarea (cu notițele ei); un buton „Anulează” o pune la loc.
+    pub fn window_night(&self) -> bool {
+        self.window.has_css_class("noapte")
+    }
+
+    /// Culoarea întregii intrări (din meniul „Culoare…”): `(marker?, culoare)` sau `None` = fără culoare.
+    pub fn color_entry(self: &Rc<Self>, r: PageRef, index: usize, paint: Option<(bool, String)>) {
+        use lanruj_core::colors::{Paint, paint as do_paint};
+        let res = self.journal.update_ref(r, self.lang, |d| {
+            if let Some(e) = d.entry_mut(index) {
+                let p = paint.as_ref().map(|(m, c)| if *m { Paint::Marker(c) } else { Paint::Color(c) });
+                e.text = do_paint(&e.text, 0, usize::MAX, p);
+            }
+        });
+        if let Err(e) = res {
+            self.error(&e);
+        }
+        self.refresh();
+    }
+
     /// Mută intrarea pe altă pagină (din meniul „Mută…”).
     pub fn move_entry(self: &Rc<Self>, r: PageRef, index: usize, to: PageRef) {
         match self.journal.move_entry(r, index, to, self.lang) {
@@ -1751,6 +1770,70 @@ fn build_ui(app: &adw::Application) {
                     let w3 = w2.clone();
                     glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
                         eprintln!("selftest-f11: din nou F11 mărită={}", w3.is_maximized());
+                    });
+                });
+            });
+        }
+        Ok("test-culori") => {
+            let s = state.clone();
+            glib::idle_add_local_once(move || {
+                let q = s.right.quick.clone().expect("câmp");
+                for t in [". Sună la service pentru mașină", "- Prima zăpadă", "o 18:00 Cină cu familia"] {
+                    q.set_text(t);
+                    q.emit_activate();
+                }
+                let date = s.shown.get();
+                let r = PageRef::Day(date);
+                let day = s.journal.load(date).expect("zi");
+                let base = day.items.len() - 3;
+                // 1. din câmpul de editare: „Sună” în roșu, „mașină” cu marker galben
+                s.start_edit(r, base);
+                let s2 = s.clone();
+                glib::idle_add_local_once(move || {
+                    fn find<T: IsA<gtk::Widget>>(w: &gtk::Widget, class: &str) -> Vec<T> {
+                        let mut out = Vec::new();
+                        if w.has_css_class(class) && let Ok(t) = w.clone().downcast::<T>() {
+                            out.push(t);
+                        }
+                        let mut c = w.first_child();
+                        while let Some(ch) = c {
+                            out.extend(find::<T>(&ch, class));
+                            c = ch.next_sibling();
+                        }
+                        out
+                    }
+                    let root = s2.right.root.clone().upcast::<gtk::Widget>();
+                    let e: gtk::Entry = find::<gtk::Entry>(&root, "editare").pop().expect("câmpul de editare");
+                    e.select_region(2, 6); // „Sună” (după „. ”)
+                    find::<gtk::Button>(&root, "text-c01c28")[0].emit_clicked();
+                    let t = e.text().to_string();
+                    let start = t.find("mașină").map(|b| t[..b].chars().count() as i32).expect("mașină");
+                    e.select_region(start, start + 6);
+                    find::<gtk::Button>(&root, "mark-f9f06b")[0].emit_clicked();
+                    eprintln!("selftest-culori: câmpul: {}", e.text());
+                    e.emit_activate();
+                    let s3 = s2.clone();
+                    glib::idle_add_local_once(move || {
+                        // 2. toată intrarea, din meniu: nota în verde, evenimentul cu marker albastru
+                        s3.color_entry(r, base + 1, Some((false, "#26a269".into())));
+                        s3.color_entry(r, base + 2, Some((true, "#99c1f1".into())));
+                        let text = std::fs::read_to_string(s3.journal.day_path(date)).unwrap_or_default();
+                        for l in text.lines().filter(|l| l.contains("<") || l.contains("==")) {
+                            eprintln!("selftest-culori: fișier: {l}");
+                        }
+                        if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                            let w = s3.window.clone();
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || save_png(&w, &p));
+                        }
+                        // Încă o captură, cu bara de culori deschisă pe prima intrare.
+                        if let Ok(p2) = std::env::var("LANRUJ_PNG2") {
+                            let s4 = s3.clone();
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                                s4.start_edit(r, base);
+                                let w = s4.window.clone();
+                                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || save_png(&w, &p2));
+                            });
+                        }
                     });
                 });
             });

@@ -246,7 +246,7 @@ fn result_row(e: &Entry, words: &[String]) -> gtk::ListBoxRow {
     if let Some(t) = &e.time {
         markup.push_str(&format!("{}  ", highlight(t, words)));
     }
-    markup.push_str(&highlight(&e.text, words));
+    markup.push_str(&highlight(&lanruj_core::colors::plain(&e.text), words));
     if e.kind == Kind::Task(TaskState::Dropped) {
         markup = format!("<s>{markup}</s>");
     }

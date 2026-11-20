@@ -82,7 +82,7 @@ impl Journal {
                 if !filter.accepts(e) {
                     continue;
                 }
-                let text = fold(&format!("{} {}", e.time.as_deref().unwrap_or(""), e.text));
+                let text = fold(&format!("{} {}", e.time.as_deref().unwrap_or(""), crate::colors::plain(&e.text)));
                 if words.iter().all(|w| text.contains(w.as_str())) {
                     hits.push((i, e.clone()));
                     count += 1;

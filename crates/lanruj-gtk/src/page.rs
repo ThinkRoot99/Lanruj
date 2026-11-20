@@ -198,7 +198,7 @@ impl Page {
                     Priority::Inspiration => text.push_str("! "),
                     Priority::None => {}
                 }
-                let esc = glib::markup_escape_text(&e.text);
+                let esc = rich_markup(&e.text, app.window_night());
                 if e.kind == Kind::Task(TaskState::Dropped) {
                     text.push_str(&format!("<s>{esc}</s>"));
                 } else {
@@ -430,6 +430,36 @@ impl Page {
     }
 }
 
+/// Textul intrării cu culorile lui, ca markup Pango. Noaptea, textul colorat se
+/// luminează și markerul devine pe jumătate transparent, ca cerneala să se vadă.
+pub fn rich_markup(text: &str, night: bool) -> String {
+    use lanruj_core::colors::{night_color, runs};
+    let mut out = String::new();
+    for r in runs(text) {
+        let esc = glib::markup_escape_text(&r.text);
+        let mut attrs = String::new();
+        if let Some(c) = &r.color {
+            let c = if night { night_color(c) } else { c.as_str() };
+            attrs.push_str(&format!(" foreground=\"{c}\""));
+        }
+        if let Some(m) = &r.marker {
+            attrs.push_str(&format!(" background=\"{m}\""));
+            if night {
+                attrs.push_str(" bgalpha=\"40%\"");
+            } else if r.color.is_none() {
+                // Pe marker, cerneala închisă (și în paginile cu altă culoare de cerneală).
+                attrs.push_str(" foreground=\"#1c3d6b\"");
+            }
+        }
+        if attrs.is_empty() {
+            out.push_str(&esc);
+        } else {
+            out.push_str(&format!("<span{attrs}>{esc}</span>"));
+        }
+    }
+    out
+}
+
 fn sign_of(kind: Kind) -> &'static str {
     match kind {
         Kind::Task(TaskState::Open) | Kind::Task(TaskState::Dropped) => "•",
@@ -443,7 +473,7 @@ fn sign_of(kind: Kind) -> &'static str {
 
 /// Rândul în editare: un câmp cu intrarea scrisă ca jos („. text”, „o 10:00 text”, „- text”).
 fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 6);
     row.set_margin_start(26 * e.depth as i32);
     let entry = gtk::Entry::builder().text(e.to_quick()).hexpand(true).css_classes(["editare"]).build();
     let weak = Rc::downgrade(app);
@@ -471,7 +501,100 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
         en.set_position(-1);
     });
     row.append(&entry);
+    row.append(&color_bar(app.lang, ColorTarget::Field(entry.clone())));
+    row.append(
+        &gtk::Label::builder()
+            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare; fără selecție, se colorează tot textul.", "Select some text, then a color; with no selection, all the text is colored."))
+            .css_classes(["mic", "dim-label"])
+            .wrap(true)
+            .xalign(0.0)
+            .build(),
+    );
     row
+}
+
+/// Unde pune bara de culori culoarea: în câmpul de editare (pe bucata selectată
+/// sau pe tot textul) ori direct pe o intrare (din meniul de la clic dreapta).
+#[derive(Clone)]
+pub enum ColorTarget {
+    Field(gtk::Entry),
+    Entry(std::rc::Weak<App>, PageRef, usize, gtk::Popover),
+}
+
+/// Pune culoarea în câmpul de editare: pe bucata selectată sau, fără selecție, pe tot textul
+/// (fără semnul de la început, „. ”, „o 10:00 ”…).
+fn paint_field(entry: &gtk::Entry, paint: Option<lanruj_core::colors::Paint>) {
+    use lanruj_core::colors::{paint as do_paint, plain};
+    let full = entry.text().to_string();
+    let Some(parsed) = lanruj_core::parse_quick(&full) else { return };
+    let trimmed = full.trim_end();
+    let body_start = if trimmed.ends_with(&parsed.text) { trimmed.len() - parsed.text.len() } else { 0 };
+    let (prefix, body) = full.split_at(body_start);
+    let prefix_chars = prefix.chars().count() as i32;
+    let body_chars: Vec<char> = body.chars().collect();
+    let to_plain = |raw: i32| -> usize {
+        let raw = (raw - prefix_chars).clamp(0, body_chars.len() as i32) as usize;
+        plain(&body_chars[..raw].iter().collect::<String>()).chars().count()
+    };
+    let (start, end) = match entry.selection_bounds() {
+        Some((a, b)) if a != b => (to_plain(a.min(b)), to_plain(a.max(b))),
+        _ => (0, usize::MAX),
+    };
+    let new_body = do_paint(body, start, end, paint);
+    entry.set_text(&format!("{prefix}{new_body}"));
+    entry.grab_focus();
+    entry.set_position(-1);
+}
+
+/// Bara de culori: textul colorat (A colorat), markerul (pătrățele) și „fără culoare”.
+pub fn color_bar(lang: lanruj_core::Lang, target: ColorTarget) -> gtk::Box {
+    use lanruj_core::colors::{MARKER_COLORS, Paint, TEXT_COLORS};
+    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    bar.add_css_class("bara-culori");
+    let apply = move |target: &ColorTarget, paint: Option<Paint>| match target {
+        ColorTarget::Field(e) => paint_field(e, paint),
+        ColorTarget::Entry(weak, r, i, pop) => {
+            pop.popdown();
+            if let Some(app) = weak.upgrade() {
+                let (r, i) = (*r, *i);
+                let owned = paint.map(|p| match p {
+                    Paint::Color(c) => (false, c.to_string()),
+                    Paint::Marker(m) => (true, m.to_string()),
+                });
+                glib::idle_add_local_once(move || app.color_entry(r, i, owned));
+            }
+        }
+    };
+    for (ro, en, day, _) in TEXT_COLORS {
+        // Butoanele nu iau focusul, ca selecția din câmpul de editare să rămână.
+        let b = gtk::Button::builder().label("A").focus_on_click(false).css_classes(["culoare-text", &format!("text-{}", &day[1..])]).build();
+        b.set_tooltip_text(Some(&format!("{} {}", if lang == lanruj_core::Lang::Ro { "Text" } else { "Text" }, if lang == lanruj_core::Lang::Ro { ro } else { en })));
+        let t = target.clone();
+        b.connect_clicked(move |_| apply(&t, Some(Paint::Color(day))));
+        bar.append(&b);
+    }
+    bar.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    for (ro, en, color) in MARKER_COLORS {
+        let b = gtk::Button::builder().focus_on_click(false).css_classes(["culoare-marker", &format!("mark-{}", &color[1..])]).build();
+        b.set_tooltip_text(Some(&format!("Marker {}", if lang == lanruj_core::Lang::Ro { ro.to_lowercase() } else { en.to_lowercase() })));
+        let t = target.clone();
+        b.connect_clicked(move |_| apply(&t, Some(Paint::Marker(color))));
+        bar.append(&b);
+    }
+    bar.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    let none = gtk::Button::builder().icon_name("edit-clear-symbolic").focus_on_click(false).css_classes(["flat", "fara-culoare"]).build();
+    none.set_tooltip_text(Some(tr(lang, "Fără culoare", "No color")));
+    let t = target.clone();
+    none.connect_clicked(move |_| apply(&t, None));
+    bar.append(&none);
+    for b in [bar.clone().upcast::<gtk::Widget>()] {
+        let mut c = b.first_child();
+        while let Some(ch) = c {
+            ch.set_valign(gtk::Align::Center);
+            c = ch.next_sibling();
+        }
+    }
+    bar
 }
 
 /// Unde se poate muta o intrare: azi, mâine, lista lunii aceasteia și a celei viitoare.
@@ -573,8 +696,9 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let edit = gtk::Button::builder().label(tr(lang, "Editează", "Edit")).css_classes(["flat"]).build();
     let mv = gtk::Button::builder().label(tr(lang, "Mută…", "Move…")).css_classes(["flat", "muta"]).visible(movable).build();
+    let col = gtk::Button::builder().label(tr(lang, "Culoare…", "Color…")).css_classes(["flat", "culoare"]).build();
     let del = gtk::Button::builder().label(tr(lang, "Șterge", "Delete")).css_classes(["flat", "error"]).build();
-    for b in [&edit, &mv, &del] {
+    for b in [&edit, &mv, &col, &del] {
         b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
         menu.append(b);
     }
@@ -589,6 +713,22 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
             build_move_page(&app, &p, &st, date, index);
         }
         st.set_visible_child_name("muta");
+    });
+    let (st, weak, p) = (stack.clone(), Rc::downgrade(app), pop.clone());
+    col.connect_clicked(move |_| {
+        if st.child_by_name("culoare").is_none()
+            && let Some(app) = weak.upgrade()
+        {
+            let page = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            let back = gtk::Button::builder().icon_name("go-previous-symbolic").css_classes(["flat"]).halign(gtk::Align::Start).build();
+            let st2 = st.clone();
+            back.connect_clicked(move |_| st2.set_visible_child_name("meniu"));
+            page.append(&back);
+            page.append(&gtk::Label::builder().label(tr(app.lang, "Culoarea întregii intrări", "Color of the whole entry")).css_classes(["heading"]).xalign(0.0).build());
+            page.append(&color_bar(app.lang, ColorTarget::Entry(Rc::downgrade(&app), date, index, p.clone())));
+            st.add_named(&page, Some("culoare"));
+        }
+        st.set_visible_child_name("culoare");
     });
     let st = stack.clone();
     pop.connect_closed(move |_| st.set_visible_child_name("meniu"));
@@ -715,7 +855,7 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
     if let Some(t) = &e.time {
         markup.push_str(&format!("<b>{}</b>  ", glib::markup_escape_text(t)));
     }
-    let text = glib::markup_escape_text(ftext);
+    let text = rich_markup(ftext, app.window_night());
     if e.kind == Kind::Task(TaskState::Dropped) {
         markup.push_str(&format!("<s>{text}</s>"));
     } else {
