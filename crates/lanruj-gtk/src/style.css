@@ -324,3 +324,12 @@ window.hartie-alba .pagina { background-image: none; }
   padding: 8px 0;
   min-width: 0;
 }
+
+/* Căutarea */
+.rezultat-pagina {
+  margin: 10px 12px 6px 12px;
+}
+
+.rezultate row.titlu-pagina-rezultat {
+  background-color: alpha(currentColor, 0.04);
+}

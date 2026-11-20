@@ -2,6 +2,7 @@
 //! Lanruj: jurnal în stilul Bullet Journal, pe fișiere Markdown.
 
 mod bara;
+mod cautare;
 mod migrare;
 mod page;
 mod setari;
@@ -69,6 +70,10 @@ pub struct App {
     tray: RefCell<Option<ksni::blocking::Handle<tava::LanrujTray>>>,
     /// Bara laterală (lățimea și dacă e strânsă).
     bara: Rc<bara::Bara>,
+    /// Căutarea și foaia care o arată în locul caietului.
+    pub cautare: Rc<cautare::Cautare>,
+    content_stack: gtk::Stack,
+    searching: Cell<bool>,
 }
 
 /// Ce ecran se vede.
@@ -154,7 +159,69 @@ impl App {
         }
     }
 
+    #[cfg(debug_assertions)]
+    fn cautare_first_target(&self) -> Option<(PageRef, usize)> {
+        self.cautare.first_target()
+    }
+
+    /// Mersul pe altă pagină închide căutarea (fără să mute cursorul).
+    fn leave_search(&self) {
+        if self.searching.get() {
+            self.searching.set(false);
+            self.content_stack.set_visible_child_name("caiet");
+        }
+    }
+
+    /// Ctrl+F: arată căutarea în locul caietului.
+    pub fn open_search(self: &Rc<Self>) {
+        if self.migrating() {
+            return;
+        }
+        self.searching.set(true);
+        self.content_stack.set_visible_child_name("cautare");
+        self.refresh();
+        self.cautare.entry.grab_focus();
+        self.cautare.run(self);
+    }
+
+    pub fn close_search(self: &Rc<Self>) {
+        if !self.searching.get() {
+            return;
+        }
+        self.searching.set(false);
+        self.content_stack.set_visible_child_name("caiet");
+        self.refresh();
+        if let Some(q) = &self.right.quick {
+            q.grab_focus();
+        }
+    }
+
+    /// Un rezultat al căutării: deschide pagina lui, cu intrarea aleasă.
+    pub fn open_result(self: &Rc<Self>, r: PageRef, index: usize) {
+        self.searching.set(false);
+        self.content_stack.set_visible_child_name("caiet");
+        match r {
+            PageRef::Day(d) => self.go(d),
+            PageRef::Month { year, month } => self.go_month(year, month),
+            PageRef::Week { year, week } => self.go_week(year, week),
+            PageRef::Future { year, month } => self.go_future(year, month),
+        }
+        self.selected.set(Some((r, index)));
+        self.refresh();
+        gtk::prelude::GtkWindowExt::set_focus(&self.window, None::<&gtk::Widget>);
+    }
+
     pub fn refresh(self: &Rc<Self>) {
+        if self.searching.get() {
+            for w in &self.normal_header {
+                w.set_visible(false);
+            }
+            self.today_button.set_visible(false);
+            self.migrate_button.set_visible(false);
+            self.title.set_title(tr(self.lang, "Căutare", "Search"));
+            self.title.set_subtitle(tr(self.lang, "Esc închide căutarea", "Esc closes the search"));
+            return;
+        }
         let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
         let future_view = matches!(self.view.get(), View::Future(..)) && !self.migrating();
         let week_view = matches!(self.view.get(), View::Week(..)) && !self.migrating();
@@ -330,6 +397,7 @@ impl App {
     }
 
     pub fn go_week(self: &Rc<Self>, y: i32, w: u32) {
+        self.leave_search();
         if self.migrating() {
             self.end_migration(false);
         }
@@ -380,6 +448,7 @@ impl App {
     }
 
     pub fn go_future(self: &Rc<Self>, y: i32, m: u32) {
+        self.leave_search();
         if self.migrating() {
             self.end_migration(false);
         }
@@ -402,6 +471,7 @@ impl App {
     }
 
     pub fn go_month(self: &Rc<Self>, y: i32, m: u32) {
+        self.leave_search();
         if self.migrating() {
             self.end_migration(false);
         }
@@ -460,6 +530,7 @@ impl App {
     }
 
     pub fn go(self: &Rc<Self>, d: NaiveDate) {
+        self.leave_search();
         // Plecarea din migrare spre altă zi e ca „Mai târziu”.
         if self.migrating() {
             self.end_migration(false);
@@ -627,7 +698,7 @@ impl App {
     /// Pagina pe care lucrează tastatura: cea cu câmpul de scriere
     /// (în dreapta; în Planuri și Pagina săptămânii, cea din stânga).
     fn key_page(&self) -> Option<(PageRef, &page::Page)> {
-        if self.migrating() {
+        if self.migrating() || self.searching.get() {
             return None;
         }
         Some(match self.view.get() {
@@ -731,6 +802,7 @@ impl App {
                     (tr(l, "Scurtăturile de taste", "Keyboard shortcuts"), "<Control>question"),
                     (tr(l, "Ieșire", "Quit"), "<Control>q"),
                     (tr(l, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "F9"),
+                    (tr(l, "Caută în tot jurnalul", "Search the whole journal"), "<Control>f"),
                     (tr(l, "Închide fereastra", "Close window"), "<Control>w"),
                 ],
             ),
@@ -1065,8 +1137,8 @@ fn build_ui(app: &adw::Application) {
         .build();
     side_header.pack_start(&toggle);
     let search = gtk::Button::from_icon_name("edit-find-symbolic");
-    search.set_sensitive(false);
-    search.set_tooltip_text(Some(tr(lang, "Căutarea vine într-un pas următor", "Search comes in a later step")));
+    search.set_action_name(Some("win.search"));
+    search.set_tooltip_text(Some(tr(lang, "Caută în tot jurnalul (Ctrl+F)", "Search the whole journal (Ctrl+F)")));
     side_header.pack_end(&search);
     hide_when_compact.push(search.clone().upcast());
     hide_when_compact.push(cal_box.clone().upcast());
@@ -1086,8 +1158,13 @@ fn build_ui(app: &adw::Application) {
     caiet.append(&left.root);
     caiet.append(&cotor);
     caiet.append(&right.root);
+    // Caietul și, în locul lui, căutarea.
+    let content_stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
+    content_stack.add_named(&caiet, Some("caiet"));
+    let cautare = Rc::new(cautare::Cautare::new(lang));
+    content_stack.add_named(&cautare.root, Some("cautare"));
     let toasts = adw::ToastOverlay::new();
-    toasts.set_child(Some(&caiet));
+    toasts.set_child(Some(&content_stack));
 
     let title = adw::WindowTitle::new("", "");
     let header = adw::HeaderBar::new();
@@ -1198,6 +1275,9 @@ fn build_ui(app: &adw::Application) {
         settings: RefCell::new(settings),
         tray: RefCell::new(None),
         bara: bara.clone(),
+        cautare: cautare.clone(),
+        content_stack,
+        searching: Cell::new(false),
         selected: Cell::new(None),
     });
     if state.settings.borrow().tray {
@@ -1213,6 +1293,20 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.preferences", &["<Control>comma"]);
+    cautare.connect(&state);
+    let a = gio::SimpleAction::new("search", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        if let Some(s) = weak.upgrade() {
+            if s.searching.get() {
+                s.close_search();
+            } else {
+                s.open_search();
+            }
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.search", &["<Control>f"]);
     let a = gio::SimpleAction::new("sidebar", None);
     let b = bara.clone();
     a.connect_activate(move |_, _| b.flip());
@@ -1499,6 +1593,32 @@ fn build_ui(app: &adw::Application) {
                 });
             });
         }
+        Ok("test-cautare") => {
+            let s = state.clone();
+            glib::idle_add_local_once(move || {
+                gtk::prelude::WidgetExt::activate_action(&s.window, "win.search", None).ok();
+                s.cautare.entry.set_text("sedinta");
+                s.cautare.run(&s);
+                eprintln!("selftest-cautare: titlu={} vizibil={:?}", s.title.title(), s.content_stack.visible_child_name());
+                if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                    let w = s.window.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || save_png(&w, &p));
+                }
+                if std::env::var("LANRUJ_CAUTARE_RAMANE").is_err() {
+                    let s2 = s.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                        // primul rezultat din lista (rândul 1, după titlul paginii)
+                        let t = s2.cautare_first_target();
+                        eprintln!("selftest-cautare: primul rezultat {:?}", t.map(|(r, i)| (format!("{r:?}"), i)));
+                        if let Some((r, i)) = t {
+                            s2.open_result(r, i);
+                        }
+                        eprintln!("selftest-cautare: după clic titlu={} ales={:?}", s2.title.title(), s2.selected.get().map(|(_, i)| i));
+                        s2.window.close();
+                    });
+                }
+            });
+        }
         Ok("taste") => {
             let w = state.window.clone();
             glib::idle_add_local_once(move || {
@@ -1740,6 +1860,24 @@ fn selftest(s: &Rc<App>) {
             });
         });
     });
+}
+
+/// Doar la dezvoltare: salvează fereastra ca imagine PNG (pentru probe fără ecran).
+#[cfg(debug_assertions)]
+pub fn save_png(w: &impl IsA<gtk::Widget>, path: &str) {
+    let w = w.as_ref();
+    let paintable = gtk::WidgetPaintable::new(Some(w));
+    let (width, height) = (w.width() as f64, w.height() as f64);
+    let snap = gtk::Snapshot::new();
+    paintable.snapshot(&snap, width, height);
+    let Some(node) = snap.to_node() else { return eprintln!("save_png: nimic de desenat") };
+    let Some(native) = w.native() else { return };
+    let Some(renderer) = native.renderer() else { return };
+    let tex = renderer.render_texture(&node, None);
+    match tex.save_to_png(path) {
+        Ok(()) => eprintln!("save_png: {path}"),
+        Err(e) => eprintln!("save_png: {e}"),
+    }
 }
 
 fn main() -> glib::ExitCode {

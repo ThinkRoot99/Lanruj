@@ -8,6 +8,7 @@ pub mod journal;
 pub mod lang;
 pub mod migrate;
 pub mod month;
+pub mod search;
 
 pub use day::{parse_quick, Day, Entry, Item, Kind, Priority, TaskState};
 pub use journal::Journal;
@@ -15,6 +16,7 @@ pub use lang::Lang;
 pub use migrate::Decision;
 pub use future::Future;
 pub use month::{CalLine, Month};
+pub use search::Filter;
 
 /// O pagină cu intrări: o zi sau lista de sarcini a unei luni.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
