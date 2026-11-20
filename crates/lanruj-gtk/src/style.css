@@ -308,3 +308,19 @@ window.hartie-alba .pagina { background-image: none; }
   outline-offset: 1px;
   border-radius: 4px;
 }
+
+/* Bara laterală strânsă: doar iconițele, cu margini mici */
+.sidebar-pane.stransa headerbar {
+  padding-left: 4px;
+  padding-right: 4px;
+  min-width: 0;
+}
+
+.sidebar-pane.stransa .navigation-sidebar {
+  margin: 6px 4px;
+}
+
+.sidebar-pane.stransa .navigation-sidebar > row {
+  padding: 8px 0;
+  min-width: 0;
+}

@@ -1056,7 +1056,8 @@ fn build_ui(app: &adw::Application) {
     menu.append(Some(tr(lang, "Despre Lanruj", "About Lanruj")), Some("app.about"));
     menu.append(Some(tr(lang, "Ieșire", "Quit")), Some("app.quit"));
     let side_header = adw::HeaderBar::builder().show_end_title_buttons(false).show_start_title_buttons(false).build();
-    side_header.set_title_widget(Some(&gtk::Label::builder().label("Lanruj").css_classes(["heading"]).ellipsize(gtk::pango::EllipsizeMode::End).build()));
+    let side_title = gtk::Label::builder().label("Lanruj").css_classes(["heading"]).ellipsize(gtk::pango::EllipsizeMode::End).build();
+    side_header.set_title_widget(Some(&side_title));
     let toggle = gtk::Button::builder()
         .icon_name("sidebar-show-symbolic")
         .action_name("win.sidebar")
@@ -1143,6 +1144,8 @@ fn build_ui(app: &adw::Application) {
         hide_when_compact,
         row_boxes,
         side_header.clone(),
+        toggle.clone(),
+        side_title.clone().upcast(),
         settings.sidebar_compact,
     ));
     bara.apply();
@@ -1484,6 +1487,8 @@ fn build_ui(app: &adw::Application) {
                 let s2 = s.clone();
                 glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
                     eprintln!("selftest-bara: după F9 lățimea={} strânsă={}", s2.bara.side.width(), s2.bara.compact());
+                    let (_, nat, _, _) = s2.bara.side.measure(gtk::Orientation::Horizontal, -1);
+                    eprintln!("selftest-bara: strânsă, lățimea dorită={nat}");
                     if std::env::var("LANRUJ_BARA_RAMANE").is_err() {
                         gtk::prelude::WidgetExt::activate_action(&s2.window, "win.sidebar", None).ok();
                         let s3 = s2.clone();
