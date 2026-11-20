@@ -2119,9 +2119,16 @@ fn build_ui(app: &adw::Application) {
                     state.go_week(d.iso_week().year(), d.iso_week().week());
                 }
             }
+            if std::env::var_os("LANRUJ_MARIT").is_some() {
+                state.window.maximize();
+            }
             if let Ok(p) = std::env::var("LANRUJ_PNG") {
                 let w = state.window.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
+                let st = state.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+                    if std::env::var_os("LANRUJ_MASOARA").is_some() {
+                        st.right.debug_heights();
+                    }
                     save_png(&w, &p);
                     w.close();
                 });

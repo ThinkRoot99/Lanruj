@@ -114,9 +114,18 @@ pub fn single(app: &Rc<App>, r: PageRef, index: usize, a: &Attachment, images: R
         None => holder.append(&missing(app.lang, path)),
     }
     if !name.is_empty() {
-        holder.append(&gtk::Label::builder().label(name.as_str()).xalign(0.0).wrap(true).css_classes(["poza-nume"]).build());
+        // Numele are lățimea pozei: un nume care se rupe pe rânduri nu mai lasă gol sub poză
+        // (GTK măsura înălțimea etichetei pentru o lățime foarte mică).
+        let cap = gtk::Label::builder().label(name.as_str()).xalign(0.0).wrap(true).css_classes(["poza-nume"]).build();
+        cap.set_size_request(w, -1);
+        cap.set_max_width_chars((w / 7).max(8));
+        holder.append(&cap);
     }
-    holder.upcast()
+    // Într-un rând orizontal: pagina măsoară poza la lățimea ei, nu la lățimea paginii
+    // (altfel GTK îi rezerva înălțimea pentru toată lățimea și lăsa un gol sub ea).
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.append(&holder);
+    row.upcast()
 }
 
 /// Galeria: mai multe poze una după alta, ca pătrățele egale, cu numele dedesubt.

@@ -299,6 +299,22 @@ impl Page {
         }
     }
 
+    /// Doar la dezvoltare: înălțimea fiecărui rând din pagină.
+    #[cfg(debug_assertions)]
+    pub fn debug_heights(&self) {
+        let mut c = self.list.first_child();
+        while let Some(ch) = c {
+            let (_, nat, _, _) = ch.measure(gtk::Orientation::Vertical, ch.width());
+            eprintln!("rând: {} lățime={} înălțime={} (dorită {nat})", ch.type_().name(), ch.width(), ch.height());
+            let mut g = ch.first_child();
+            while let Some(x) = g {
+                eprintln!("    {} {}x{} vizibil={}", x.type_().name(), x.width(), x.height(), x.is_visible());
+                g = x.next_sibling();
+            }
+            c = ch.next_sibling();
+        }
+    }
+
     fn header(&self, label: &str, title: &str) {
         self.label.set_label(&label.to_uppercase());
         self.label.set_visible(!label.is_empty());
