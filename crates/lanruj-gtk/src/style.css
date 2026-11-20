@@ -444,3 +444,7 @@ picture.poza {
 
 .poza-nume { font-size: 12px; opacity: 0.75; color: var(--cerneala); }
 .galerie picture.poza { border-radius: 8px; }
+
+/* Ghidul */
+.ghid-text { font-size: 15px; line-height: 1.4; }
+button.ghid-capitol { font-size: 13px; padding: 4px 10px; min-height: 0; border-radius: 99px; }

@@ -3,6 +3,7 @@
 
 mod bara;
 mod cautare;
+mod ghid;
 mod migrare;
 mod page;
 mod poze;
@@ -1086,6 +1087,7 @@ impl App {
                 vec![
                     (tr(l, "Setări", "Preferences"), "<Control>comma"),
                     (tr(l, "Scurtăturile de taste", "Keyboard shortcuts"), "<Control>question"),
+                    (tr(l, "Ghidul", "Guide"), "F1"),
                     (tr(l, "Ieșire", "Quit"), "<Control>q"),
                     (tr(l, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "F9"),
                     (tr(l, "Caută în tot jurnalul", "Search the whole journal"), "<Control>f"),
@@ -1458,6 +1460,7 @@ fn build_ui(app: &adw::Application) {
         None,
         &section(&[
             (tr(lang, "Setări", "Preferences"), "win.preferences"),
+            (tr(lang, "Ghid", "Guide"), "win.guide"),
             (tr(lang, "Scurtături de taste", "Keyboard Shortcuts"), "win.shortcuts"),
             (tr(lang, "Despre Lanruj", "About Lanruj"), "app.about"),
         ]),
@@ -1695,6 +1698,15 @@ fn build_ui(app: &adw::Application) {
     a.connect_activate(move |_, _| b.flip());
     window.add_action(&a);
     app.set_accels_for_action("win.sidebar", &["F9"]);
+    let a = gio::SimpleAction::new("guide", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        if let Some(s) = weak.upgrade() {
+            ghid::show(&s);
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.guide", &["F1"]);
     let a = gio::SimpleAction::new("shortcuts", None);
     let weak = Rc::downgrade(&state);
     a.connect_activate(move |_, _| {
@@ -2412,6 +2424,16 @@ fn build_ui(app: &adw::Application) {
                         }
                     });
                 });
+            });
+        }
+        Ok("ghid") => {
+            let w = state.window.clone();
+            glib::idle_add_local_once(move || {
+                gtk::prelude::WidgetExt::activate_action(&w, "win.guide", None).ok();
+                if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                    let w2 = w.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || save_png(&w2, &p));
+                }
             });
         }
         Ok("taste") => {
