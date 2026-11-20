@@ -412,11 +412,27 @@ fn build_ui(app: &adw::Application) {
         glib::ControlFlow::Continue
     });
 
+    // Fereastra ține starea în viață; toate celelalte legături sunt slabe.
+    // Fără asta, starea dispărea la ieșirea din build_ui și niciun buton nu mai mergea.
+    let keep = state.clone();
+    window.connect_close_request(move |_| {
+        let _ = &keep;
+        glib::Propagation::Proceed
+    });
+
     state.refresh();
     window.present();
     #[cfg(debug_assertions)]
     if std::env::var_os("LANRUJ_SELFTEST").is_some() {
-        selftest(&state);
+        // După ce build_ui s-a terminat, ca la un clic adevărat.
+        let weak = Rc::downgrade(&state);
+        glib::idle_add_local_once(move || match weak.upgrade() {
+            Some(s) => selftest(&s),
+            None => {
+                eprintln!("selftest: EȘUAT, starea aplicației s-a pierdut");
+                std::process::exit(1);
+            }
+        });
     }
     if let Some(q) = &state.right.quick {
         q.grab_focus();
