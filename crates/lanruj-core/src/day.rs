@@ -90,6 +90,26 @@ impl Entry {
         Entry { kind, priority: Priority::None, time: None, text: text.into(), id: None, depth: 0 }
     }
 
+    /// Intrarea scrisă ca în câmpul rapid, pentru editare: „. * text”, „o 10:00 text”, „- text”.
+    pub fn to_quick(&self) -> String {
+        let mut s = String::from(match self.kind {
+            Kind::Task(_) => ". ",
+            Kind::Event => "o ",
+            Kind::Note => "- ",
+        });
+        match self.priority {
+            Priority::Important => s.push_str("* "),
+            Priority::Inspiration => s.push_str("! "),
+            Priority::None => {}
+        }
+        if let Some(t) = &self.time {
+            s.push_str(t);
+            s.push(' ');
+        }
+        s.push_str(&self.text);
+        s
+    }
+
     pub fn is_open_task(&self) -> bool {
         self.kind == Kind::Task(TaskState::Open)
     }
@@ -342,6 +362,39 @@ impl Day {
         self.entries().filter(|e| e.depth == 0 && e.is_open_task()).count()
     }
 
+    /// Câte intrări de sub intrarea `index` (notițele ei) îi aparțin.
+    pub fn children_count(&self, index: usize) -> usize {
+        let Some(Item::Entry(parent)) = self.items.get(index) else { return 0 };
+        self.items[index + 1..]
+            .iter()
+            .take_while(|it| matches!(it, Item::Entry(e) if e.depth > parent.depth))
+            .count()
+    }
+
+    /// Șterge intrarea `index` împreună cu notițele de sub ea.
+    pub fn remove(&mut self, index: usize) -> bool {
+        if !matches!(self.items.get(index), Some(Item::Entry(_))) {
+            return false;
+        }
+        let n = 1 + self.children_count(index);
+        self.items.drain(index..index + n);
+        true
+    }
+
+    /// Înlocuiește intrarea `index` cu ce s-a scris în câmpul de editare
+    /// (aceeași scriere ca jos: `.`, `o`, `-`). Păstrează nivelul și semnul `^id`;
+    /// o sarcină rămâne în starea ei (făcută rămâne făcută).
+    pub fn edit(&mut self, index: usize, input: &str) -> bool {
+        let Some(new) = parse_quick(input) else { return false };
+        let Some(Item::Entry(old)) = self.items.get_mut(index) else { return false };
+        let kind = match (old.kind, new.kind) {
+            (Kind::Task(st), Kind::Task(_)) => Kind::Task(st),
+            (_, k) => k,
+        };
+        *old = Entry { kind, depth: old.depth, id: old.id.clone(), ..new };
+        true
+    }
+
     pub fn push(&mut self, entry: Entry) {
         self.trim_trailing_blank();
         self.items.push(Item::Entry(entry));
@@ -469,6 +522,35 @@ Ziua: 4/5
         assert_eq!(e.kind, Kind::Note);
         assert!(parse_quick("   ").is_none());
         assert!(parse_quick(". ").is_none());
+    }
+
+    #[test]
+    fn editeaza_si_sterge() {
+        let mut day = Day::parse(d(), EXEMPLU);
+        let e: Vec<_> = day.entries().cloned().collect();
+        assert_eq!(e[0].to_quick(), "o 18:30 Cină cu familia");
+        assert_eq!(e[2].to_quick(), ". * Trimite raportul lunar");
+        assert_eq!(e[6].to_quick(), "- ! Un articol despre Syncthing");
+
+        // Sarcina făcută rămâne făcută; semnul ^id rămâne.
+        assert!(day.edit(1, ". Cumpără două becuri"));
+        assert_eq!(day.items[1], Item::Entry(Entry { text: "Cumpără două becuri".into(), id: Some("k3f9".into()), ..Entry::new(Kind::Task(TaskState::Open), "") }));
+        assert!(day.edit(3, ". * Plimbare lungă"));
+        let Item::Entry(p) = &day.items[3] else { panic!() };
+        assert_eq!(p.kind, Kind::Task(TaskState::Done));
+        assert_eq!(p.priority, Priority::Important);
+        // O notă devenită eveniment.
+        assert!(day.edit(6, "o 20:00 Film"));
+        let Item::Entry(f) = &day.items[6] else { panic!() };
+        assert_eq!((f.kind, f.time.as_deref(), f.text.as_str()), (Kind::Event, Some("20:00"), "Film"));
+        assert!(!day.edit(6, "   "), "un rând gol nu șterge intrarea");
+
+        // Ștergerea ia și notița de dedesubt.
+        let before = day.items.len();
+        assert_eq!(day.children_count(3), 1);
+        assert!(day.remove(3));
+        assert_eq!(day.items.len(), before - 2);
+        assert!(!day.remove(100));
     }
 
     #[test]

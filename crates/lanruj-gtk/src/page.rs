@@ -236,10 +236,107 @@ fn sign_of(kind: Kind) -> &'static str {
     }
 }
 
+/// Rândul în editare: un câmp cu intrarea scrisă ca jos („. text”, „o 10:00 text”, „- text”).
+fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.set_margin_start(26 * e.depth as i32);
+    let entry = gtk::Entry::builder().text(e.to_quick()).hexpand(true).css_classes(["editare"]).build();
+    let weak = Rc::downgrade(app);
+    entry.connect_activate(move |en| {
+        let text = en.text().to_string();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.finish_edit(Some(text)));
+        }
+    });
+    let keys = gtk::EventControllerKey::new();
+    let weak = Rc::downgrade(app);
+    keys.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            if let Some(app) = weak.upgrade() {
+                glib::idle_add_local_once(move || app.finish_edit(None));
+            }
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
+    entry.add_controller(keys);
+    let en = entry.clone();
+    glib::idle_add_local_once(move || {
+        en.grab_focus();
+        en.set_position(-1);
+    });
+    row.append(&entry);
+    row
+}
+
+/// Meniul de la clic dreapta: Editează, Șterge. Dublu clic = editează.
+fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: chrono::NaiveDate, index: usize) {
+    let lang = app.lang;
+    let pop = gtk::Popover::builder().has_arrow(true).build();
+    let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let edit = gtk::Button::builder().label(tr(lang, "Editează", "Edit")).css_classes(["flat"]).build();
+    let del = gtk::Button::builder().label(tr(lang, "Șterge", "Delete")).css_classes(["flat", "error"]).build();
+    for b in [&edit, &del] {
+        b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
+        menu.append(b);
+    }
+    pop.set_child(Some(&menu));
+    pop.set_parent(row);
+    let p = pop.clone();
+    row.connect_destroy(move |_| p.unparent());
+
+    let (weak, p) = (Rc::downgrade(app), pop.clone());
+    edit.connect_clicked(move |_| {
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.start_edit(date, index));
+        }
+    });
+    let (weak, p) = (Rc::downgrade(app), pop.clone());
+    del.connect_clicked(move |_| {
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.delete_entry(date, index));
+        }
+    });
+
+    let right = gtk::GestureClick::builder().button(3).build();
+    let p = pop.clone();
+    right.connect_pressed(move |g, _, x, y| {
+        p.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        p.popup();
+        g.set_state(gtk::EventSequenceState::Claimed);
+    });
+    row.add_controller(right);
+    let long = gtk::GestureLongPress::new();
+    let p = pop.clone();
+    long.connect_pressed(move |_, x, y| {
+        p.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        p.popup();
+    });
+    row.add_controller(long);
+    let double = gtk::GestureClick::builder().button(1).build();
+    let weak = Rc::downgrade(app);
+    double.connect_pressed(move |_, n, _, _| {
+        if n == 2
+            && let Some(app) = weak.upgrade()
+        {
+            glib::idle_add_local_once(move || app.start_edit(date, index));
+        }
+    });
+    row.add_controller(double);
+}
+
 fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
     let lang = app.lang;
+    if mig.is_none() && app.editing.get() == Some((day.date, index)) {
+        return edit_row(app, e);
+    }
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("intrare");
+    if mig.is_none() {
+        add_entry_menu(app, &row, day.date, index);
+    }
     // În migrare: sarcina curentă încadrată, cele triate și restul stinse;
     // un clic pe o sarcină de triat o face curentă.
     if let Some(m) = mig.filter(|m| m.is_source) {

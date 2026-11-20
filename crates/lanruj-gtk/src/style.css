@@ -221,3 +221,10 @@ window.lanruj.noapte {
 
 .progres-pas.gata { background-color: var(--accent-bg-color); }
 .progres-pas.acum { background-color: alpha(@accent_bg_color, 0.5); }
+
+.pagina entry.editare {
+  font-size: 15px;
+  min-height: 30px;
+  color: var(--cerneala);
+  background-color: var(--rapid);
+}

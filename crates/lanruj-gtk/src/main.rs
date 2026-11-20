@@ -49,6 +49,8 @@ pub struct App {
     progress: gtk::Box,
     done_button: gtk::Button,
     sched_button: RefCell<Option<gtk::MenuButton>>,
+    /// Intrarea care se editează acum: (ziua, poziția).
+    pub editing: Cell<Option<(NaiveDate, usize)>>,
 }
 
 fn today() -> NaiveDate {
@@ -203,6 +205,65 @@ impl App {
             self.error(&e);
         }
         self.refresh();
+    }
+
+    pub fn start_edit(self: &Rc<Self>, date: NaiveDate, index: usize) {
+        self.editing.set(Some((date, index)));
+        self.refresh();
+    }
+
+    /// Enter salvează (`Some`), Esc renunță (`None`).
+    pub fn finish_edit(self: &Rc<Self>, text: Option<String>) {
+        let Some((date, index)) = self.editing.take() else { return };
+        if let Some(text) = text {
+            let mut ok = true;
+            if let Err(e) = self.journal.update(date, self.lang, |d| ok = d.edit(index, &text)) {
+                self.error(&e);
+            } else if !ok {
+                self.toast(tr(
+                    self.lang,
+                    "Intrarea nu poate rămâne goală. Ca s-o scoți, folosește Șterge.",
+                    "An entry can't be empty. To remove it, use Delete.",
+                ));
+            }
+        }
+        self.refresh();
+        if let Some(q) = &self.right.quick {
+            q.grab_focus();
+        }
+    }
+
+    /// Șterge intrarea (cu notițele ei); un buton „Anulează” o pune la loc.
+    pub fn delete_entry(self: &Rc<Self>, date: NaiveDate, index: usize) {
+        let day = self.load(date);
+        if !matches!(day.items.get(index), Some(lanruj_core::Item::Entry(_))) {
+            return;
+        }
+        let removed: Vec<lanruj_core::Item> = day.items[index..=index + day.children_count(index)].to_vec();
+        if let Err(e) = self.journal.update(date, self.lang, |d| {
+            d.remove(index);
+        }) {
+            self.error(&e);
+            return;
+        }
+        self.refresh();
+        let toast = adw::Toast::builder()
+            .title(tr(self.lang, "Intrare ștearsă", "Entry deleted"))
+            .button_label(tr(self.lang, "Anulează", "Undo"))
+            .build();
+        let weak = Rc::downgrade(self);
+        toast.connect_button_clicked(move |_| {
+            let Some(s) = weak.upgrade() else { return };
+            let items = removed.clone();
+            if let Err(e) = s.journal.update(date, s.lang, move |d| {
+                let at = index.min(d.items.len());
+                d.items.splice(at..at, items);
+            }) {
+                s.error(&e);
+            }
+            s.refresh();
+        });
+        self.toasts.add_toast(toast);
     }
 
     fn quick_add(self: &Rc<Self>, entry: &gtk::Entry) {
@@ -394,6 +455,7 @@ fn build_ui(app: &adw::Application) {
         progress,
         done_button: done_button.clone(),
         sched_button: RefCell::new(None),
+        editing: Cell::new(None),
     });
 
     for (bp_apply, narrow) in [(true, true), (false, false)] {
@@ -620,7 +682,43 @@ fn selftest(s: &Rc<App>) {
     eprintln!("selftest: titlu în migrare={} / {}", s.title.title(), s.title.subtitle());
     s.done_button.emit_clicked();
     eprintln!("selftest: după migrare, în migrare={} titlu={}", s.migrating(), s.title.title());
-    s.window.close();
+    // Editarea: „o 9:30 Dentist” devine sarcina „. Dentist” (poziția 3 în zi).
+    let date = s.shown.get();
+    s.start_edit(date, 3);
+    let s2 = s.clone();
+    glib::idle_add_local_once(move || {
+        fn find_entry(w: &gtk::Widget) -> Option<gtk::Entry> {
+            if let Some(e) = w.downcast_ref::<gtk::Entry>()
+                && e.has_css_class("editare")
+            {
+                return Some(e.clone());
+            }
+            let mut c = w.first_child();
+            while let Some(ch) = c {
+                if let Some(e) = find_entry(&ch) {
+                    return Some(e);
+                }
+                c = ch.next_sibling();
+            }
+            None
+        }
+        match find_entry(s2.right.root.upcast_ref()) {
+            Some(e) => {
+                eprintln!("selftest: câmpul de editare are „{}”", e.text());
+                e.set_text(". Dentist");
+                e.emit_activate();
+            }
+            None => eprintln!("selftest: EȘUAT, nu apare câmpul de editare"),
+        }
+        let s3 = s2.clone();
+        glib::idle_add_local_once(move || {
+            // Ștergerea primei intrări (Becuri), apoi „Anulează” din notificare nu se poate apăsa de aici;
+            // verificăm doar ștergerea.
+            s3.delete_entry(date, 0);
+            eprintln!("selftest: gata, editare={:?}", s3.editing.get());
+            s3.window.close();
+        });
+    });
 }
 
 fn main() -> glib::ExitCode {
