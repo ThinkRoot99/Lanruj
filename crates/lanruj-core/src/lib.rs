@@ -5,7 +5,9 @@
 pub mod day;
 pub mod journal;
 pub mod lang;
+pub mod migrate;
 
 pub use day::{parse_quick, Day, Entry, Item, Kind, Priority, TaskState};
 pub use journal::Journal;
 pub use lang::Lang;
+pub use migrate::Decision;

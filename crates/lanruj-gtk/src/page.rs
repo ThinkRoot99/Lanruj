@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! O pagină din caiet: titlul zilei, intrările, etichetele și nota zilei.
 
+use crate::migrare::MigView;
 use crate::{App, tr};
 use adw::prelude::*;
 use gtk::glib;
-use lanruj_core::{Day, Entry, Item, Kind, Priority, TaskState};
+use lanruj_core::{Day, Decision, Entry, Item, Kind, Priority, TaskState};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,7 +73,7 @@ impl Page {
         Page { root, label, title, list, footer, quick }
     }
 
-    pub fn fill(&self, app: &Rc<App>, day: &Day, label: &str) {
+    pub fn fill(&self, app: &Rc<App>, day: &Day, label: &str, mig: Option<&MigView>) {
         let lang = app.lang;
         self.label.set_label(&label.to_uppercase());
         self.label.set_visible(!label.is_empty());
@@ -86,7 +87,15 @@ impl Page {
             match item {
                 Item::Entry(e) => {
                     any = true;
-                    self.list.append(&entry_row(app, day, index, e));
+                    let row = entry_row(app, day, index, e, mig);
+                    self.list.append(&row);
+                    if let Some(m) = mig
+                        && m.is_source
+                        && m.current == Some(index)
+                        && let Some(p) = &m.panel
+                    {
+                        self.list.append(p);
+                    }
                 }
                 Item::Other(s) if !s.trim().is_empty() => {
                     any = true;
@@ -105,6 +114,14 @@ impl Page {
                     self.list.append(&spacer);
                 }
             }
+        }
+        // Totul triat: panoul de sfârșit stă sub listă.
+        if let Some(m) = mig
+            && m.is_source
+            && m.current.is_none()
+            && let Some(p) = &m.panel
+        {
+            self.list.append(p);
         }
         if !any {
             let l = gtk::Label::builder()
@@ -219,10 +236,30 @@ fn sign_of(kind: Kind) -> &'static str {
     }
 }
 
-fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry) -> gtk::Box {
+fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
     let lang = app.lang;
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("intrare");
+    // În migrare: sarcina curentă încadrată, cele triate și restul stinse;
+    // un clic pe o sarcină de triat o face curentă.
+    if let Some(m) = mig.filter(|m| m.is_source) {
+        if m.current == Some(index) {
+            row.add_css_class("acum");
+        } else if !m.candidates.contains(&index) || m.decided.contains_key(&index) {
+            row.add_css_class("terminat");
+        }
+        if m.candidates.contains(&index) {
+            let click = gtk::GestureClick::new();
+            let weak = Rc::downgrade(app);
+            click.connect_released(move |_, _, _, _| {
+                if let Some(app) = weak.upgrade() {
+                    app.mig_select(index);
+                }
+            });
+            row.add_controller(click);
+            row.set_cursor_from_name(Some("pointer"));
+        }
+    }
     row.set_margin_start(26 * e.depth as i32);
     match e.kind {
         Kind::Task(TaskState::Done) => row.add_css_class("facut"),
@@ -232,7 +269,7 @@ fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry) -> gtk::Box {
     }
 
     let sign = sign_of(e.kind);
-    if matches!(e.kind, Kind::Task(TaskState::Open) | Kind::Task(TaskState::Done)) {
+    if mig.is_none() && matches!(e.kind, Kind::Task(TaskState::Open) | Kind::Task(TaskState::Done)) {
         let b = gtk::Button::with_label(sign);
         b.add_css_class("semn");
         b.set_valign(gtk::Align::Start);
@@ -300,6 +337,29 @@ fn entry_row(app: &Rc<App>, day: &Day, index: usize, e: &Entry) -> gtk::Box {
                 text_box.append(&m);
             }
         }
+    // Pe pagina din dreapta: ce a ajuns acum, din migrare.
+    if let Some(m) = mig
+        && !m.is_source
+        && e.id.as_ref().is_some_and(|id| m.new_ids.contains(id))
+    {
+        let n = gtk::Label::builder().label(tr(lang, "nou", "new")).css_classes(["nou"]).valign(gtk::Align::Start).build();
+        n.set_margin_top(3);
+        text_box.append(&n);
+    }
+    // Pe pagina din stânga: unde a plecat sarcina triată.
+    if let Some(m) = mig
+        && m.is_source
+        && let Some(Decision::Moved(d)) = m.decided.get(&index)
+        && *d != day.date + chrono::Duration::days(1)
+    {
+        let l = gtk::Label::builder()
+            .label(format!("→ {} {}", chrono::Datelike::day(d), lang.month(chrono::Datelike::month(d))))
+            .css_classes(["migrari"])
+            .valign(gtk::Align::Start)
+            .build();
+        l.set_margin_top(3);
+        text_box.append(&l);
+    }
     row.append(&text_box);
     row
 }

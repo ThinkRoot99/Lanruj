@@ -80,7 +80,7 @@ impl Journal {
         days
     }
 
-    /// De câte ori a fost mutată sarcina cu semnul `id` (zilele în care apare cu `[>]`).
+    /// De câte ori a fost mutată sarcina cu semnul `id` (zilele în care apare cu `[>]` sau `[<]`).
     pub fn migration_count(&self, id: &str) -> usize {
         let needle = format!(" ^{id}");
         let mut n = 0;
@@ -88,7 +88,7 @@ impl Journal {
             let Ok(text) = fs::read_to_string(&path) else { continue };
             for line in text.lines() {
                 let t = line.trim_start();
-                if t.starts_with("- [>] ") && t.ends_with(&needle) {
+                if (t.starts_with("- [>] ") || t.starts_with("- [<] ")) && t.ends_with(&needle) {
                     n += 1;
                 }
             }
@@ -96,7 +96,7 @@ impl Journal {
         n
     }
 
-    fn day_files(&self) -> Vec<PathBuf> {
+    pub(crate) fn day_files(&self) -> Vec<PathBuf> {
         let mut out = Vec::new();
         let Ok(years) = fs::read_dir(&self.root) else { return out };
         for y in years.flatten() {

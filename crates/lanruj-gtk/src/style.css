@@ -153,3 +153,71 @@ window.lanruj.noapte {
   margin: 0 12px 14px 12px;
   border-radius: 10px;
 }
+
+/* Migrarea */
+.intrare.acum {
+  background-color: alpha(@accent_bg_color, 0.12);
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.intrare.terminat { opacity: 0.45; }
+
+.nou {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 99px;
+  background-color: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+}
+
+.alegere {
+  padding: 14px;
+  border-radius: 10px;
+  background-color: var(--window-bg-color);
+  color: var(--window-fg-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.alegere .intrebare { color: var(--portocaliu); font-size: 13px; }
+.alegere .ales { font-size: 13px; opacity: 0.8; }
+.alegere .mic { font-size: 12px; opacity: 0.6; }
+
+.alegere button.optiune,
+.alegere menubutton.optiune > button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid alpha(currentColor, 0.15);
+  background-color: alpha(currentColor, 0.05);
+  font-weight: 400;
+}
+
+.alegere button.optiune.rec,
+.alegere menubutton.optiune.rec > button {
+  border-color: var(--accent-color);
+}
+
+.alegere .s {
+  min-width: 16px;
+  font-weight: 700;
+}
+
+.alegere .tasta {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background-color: alpha(currentColor, 0.12);
+}
+
+.progres-pas {
+  min-width: 18px;
+  min-height: 5px;
+  border-radius: 3px;
+  background-color: alpha(currentColor, 0.2);
+}
+
+.progres-pas.gata { background-color: var(--accent-bg-color); }
+.progres-pas.acum { background-color: alpha(@accent_bg_color, 0.5); }

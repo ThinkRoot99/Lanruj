@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Lanruj: jurnal în stilul Bullet Journal, pe fișiere Markdown.
 
+mod migrare;
 mod page;
 
 use adw::prelude::*;
@@ -8,7 +9,8 @@ use chrono::{Datelike, Duration, Local, NaiveDate};
 use gtk::{gdk, gio, glib};
 use lanruj_core::{Day, Journal, Lang, parse_quick};
 use page::{Page, Side};
-use std::cell::Cell;
+use migrare::{MigView, Migration};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub const APP_ID: &str = "io.github.ThinkRoot99.Lanruj";
@@ -27,7 +29,7 @@ pub struct App {
     pub lang: Lang,
     /// Ziua din pagina din dreapta; în stânga e ziua dinainte.
     shown: Cell<NaiveDate>,
-    today: Cell<NaiveDate>,
+    pub today: Cell<NaiveDate>,
     window: adw::ApplicationWindow,
     left: Page,
     right: Page,
@@ -36,6 +38,17 @@ pub struct App {
     today_count: gtk::Label,
     toasts: adw::ToastOverlay,
     calendar_busy: Cell<bool>,
+    cotor: gtk::Box,
+    /// Fereastra îngustă: o singură pagină.
+    narrow: Cell<bool>,
+    mig: RefCell<Option<Migration>>,
+    /// Migrarea amânată cu „Mai târziu” (până la următoarea pornire).
+    dismissed: Cell<Option<NaiveDate>>,
+    normal_header: Vec<gtk::Widget>,
+    mig_header: Vec<gtk::Widget>,
+    progress: gtk::Box,
+    done_button: gtk::Button,
+    sched_button: RefCell<Option<gtk::MenuButton>>,
 }
 
 fn today() -> NaiveDate {
@@ -44,7 +57,7 @@ fn today() -> NaiveDate {
 
 impl App {
     /// Cum se numește o zi față de azi: „Azi”, „Ieri”, „Mâine”, „Acum 5 zile”.
-    fn relative(&self, d: NaiveDate) -> String {
+    pub fn relative(&self, d: NaiveDate) -> String {
         let n = (d - self.today.get()).num_days();
         let l = self.lang;
         match n {
@@ -74,33 +87,86 @@ impl App {
 
     fn error(&self, e: &std::io::Error) {
         let msg = format!("{} {e}", tr(self.lang, "Nu am putut citi sau scrie jurnalul:", "Could not read or write the journal:"));
-        self.toasts.add_toast(adw::Toast::new(&msg));
+        self.toast(&msg);
+    }
+
+    pub fn toast(&self, msg: &str) {
+        self.toasts.add_toast(adw::Toast::new(msg));
+    }
+
+    /// Ce pagini se văd: pe fereastră îngustă una singură
+    /// (în migrare, cea cu sarcinile de triat).
+    fn layout(&self) {
+        let (show_left, show_right) = match (self.narrow.get(), self.migrating()) {
+            (false, _) => (true, true),
+            (true, true) => (true, false),
+            (true, false) => (false, true),
+        };
+        self.left.root.set_visible(show_left);
+        self.right.root.set_visible(show_right);
+        self.cotor.set_visible(show_left && show_right);
+        let single = !(show_left && show_right);
+        for p in [&self.left.root, &self.right.root] {
+            if single { p.add_css_class("singura") } else { p.remove_css_class("singura") }
+        }
     }
 
     pub fn refresh(self: &Rc<Self>) {
+        if self.migrating() {
+            self.refresh_migration();
+        } else {
+            self.refresh_normal();
+        }
+        self.refresh_migration_header();
+        self.layout();
+        let t = self.today.get();
+        self.today_count.set_label(&match self.load(t).open_tasks() {
+            0 => String::new(),
+            n => n.to_string(),
+        });
+        self.sync_calendar();
+    }
+
+    fn refresh_migration(self: &Rc<Self>) {
+        let (source, target, current, order, decided, new_ids) = {
+            let m = self.mig.borrow();
+            let m = m.as_ref().expect("în migrare");
+            (m.source, m.target, m.current(), m.order.clone(), m.decided.clone(), m.new_ids.clone())
+        };
+        let left = self.load(source);
+        let right = self.load(target);
+        let panel = match current {
+            Some(i) => match left.items.get(i) {
+                Some(lanruj_core::Item::Entry(e)) => Some(self.build_panel(e, decided.get(&i).copied())),
+                _ => None,
+            },
+            None => Some(self.build_done_panel()),
+        };
+        let view = MigView { current, candidates: &order, decided: &decided, panel, new_ids: &new_ids, is_source: true };
+        self.left.fill(self, &left, &self.relative(source), Some(&view));
+        let view = MigView { current: None, candidates: &[], decided: &decided, panel: None, new_ids: &new_ids, is_source: false };
+        self.right.fill(self, &right, &self.relative(target), Some(&view));
+    }
+
+    fn refresh_normal(self: &Rc<Self>) {
         let shown = self.shown.get();
         let prev = shown - Duration::days(1);
         let right = self.load(shown);
         let left = self.load(prev);
-        self.right.fill(self, &right, &self.relative(shown));
-        self.left.fill(self, &left, &self.relative(prev));
+        self.right.fill(self, &right, &self.relative(shown), None);
+        self.left.fill(self, &left, &self.relative(prev), None);
         self.title.set_title(&self.lang.day_title_short(shown));
         let mut sub = self.relative(shown);
         if shown.year() != self.today.get().year() {
             sub = format!("{} · {}", shown.year(), sub);
         }
         self.title.set_subtitle(&sub);
-
-        let t = self.today.get();
-        let open = if shown == t { right.open_tasks() } else { self.load(t).open_tasks() };
-        self.today_count.set_label(&if open > 0 { open.to_string() } else { String::new() });
-        self.sync_calendar();
     }
 
     /// Calendarul mic: ziua arătată selectată, zilele scrise cu un punct.
     fn sync_calendar(&self) {
         self.calendar_busy.set(true);
-        let d = self.shown.get();
+        let d = self.mig.borrow().as_ref().map(|m| m.source).unwrap_or(self.shown.get());
         if let Ok(dt) = glib::DateTime::from_local(d.year(), d.month() as i32, d.day() as i32, 12, 0, 0.0) {
             self.calendar.select_day(&dt);
         }
@@ -117,6 +183,10 @@ impl App {
     }
 
     pub fn go(self: &Rc<Self>, d: NaiveDate) {
+        // Plecarea din migrare spre altă zi e ca „Mai târziu”.
+        if self.migrating() {
+            self.end_migration(false);
+        }
         self.shown.set(d);
         self.refresh();
     }
@@ -137,7 +207,9 @@ impl App {
 
     fn quick_add(self: &Rc<Self>, entry: &gtk::Entry) {
         let Some(e) = parse_quick(&entry.text()) else { return };
-        match self.journal.add(self.shown.get(), e, self.lang) {
+        // În migrare, câmpul de jos scrie pe ziua din dreapta (mâine).
+        let date = self.mig.borrow().as_ref().map(|m| m.target).unwrap_or(self.shown.get());
+        match self.journal.add(date, e, self.lang) {
             Ok(_) => entry.set_text(""),
             Err(err) => self.error(&err),
         }
@@ -264,10 +336,22 @@ fn build_ui(app: &adw::Application) {
     header.pack_end(&next);
     let migrate = gtk::Button::builder()
         .child(&adw::ButtonContent::builder().icon_name("go-jump-symbolic").label(tr(lang, "Migrează", "Migrate")).build())
-        .sensitive(false)
-        .tooltip_text(soon)
+        .action_name("win.migrate")
+        .tooltip_text(tr(lang, "Triază sarcinile neterminate ale zilei (Ctrl+M)", "Sort the day's unfinished tasks (Ctrl+M)"))
         .build();
     header.pack_end(&migrate);
+    // Antetul din timpul migrării
+    let later = gtk::Button::builder()
+        .label(tr(lang, "Mai târziu", "Later"))
+        .tooltip_text(tr(lang, "Oprește migrarea; ce ai ales rămâne (Esc)", "Stop the migration; your choices stay (Esc)"))
+        .visible(false)
+        .build();
+    header.pack_start(&later);
+    let done_button = gtk::Button::builder().label(tr(lang, "Gata", "Done")).visible(false).build();
+    header.pack_end(&done_button);
+    let progress = gtk::Box::builder().spacing(4).visible(false).valign(gtk::Align::Center).build();
+    progress.add_css_class("progres");
+    header.pack_end(&progress);
     let content_view = adw::ToolbarView::new();
     content_view.add_top_bar(&header);
     content_view.set_content(Some(&toasts));
@@ -283,13 +367,6 @@ fn build_ui(app: &adw::Application) {
 
     // Pe ecran îngust: o singură pagină; și mai îngust: bara laterală ascunsă.
     let one_page = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 900sp").expect("condiție"));
-    one_page.add_setter(&left.root, "visible", Some(&false.to_value()));
-    one_page.add_setter(&cotor, "visible", Some(&false.to_value()));
-    let right_root = right.root.clone();
-    one_page.connect_apply(move |_| right_root.add_css_class("singura"));
-    let right_root = right.root.clone();
-    one_page.connect_unapply(move |_| right_root.remove_css_class("singura"));
-    window.add_breakpoint(one_page);
     let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 600sp").expect("condiție"));
     narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
     window.add_breakpoint(narrow);
@@ -308,7 +385,59 @@ fn build_ui(app: &adw::Application) {
         today_count,
         toasts,
         calendar_busy: Cell::new(false),
+        cotor,
+        narrow: Cell::new(false),
+        mig: RefCell::new(None),
+        dismissed: Cell::new(None),
+        normal_header: vec![prev.upcast(), next.upcast(), migrate.upcast()],
+        mig_header: vec![later.clone().upcast(), progress.clone().upcast(), done_button.clone().upcast()],
+        progress,
+        done_button: done_button.clone(),
+        sched_button: RefCell::new(None),
     });
+
+    for (bp_apply, narrow) in [(true, true), (false, false)] {
+        let weak = Rc::downgrade(&state);
+        let f = move |_: &adw::Breakpoint| {
+            if let Some(s) = weak.upgrade() {
+                s.narrow.set(narrow);
+                s.layout();
+            }
+        };
+        if bp_apply { one_page.connect_apply(f); } else { one_page.connect_unapply(f); }
+    }
+    window.add_breakpoint(one_page);
+
+    // Migrarea
+    let weak = Rc::downgrade(&state);
+    later.connect_clicked(move |_| {
+        if let Some(s) = weak.upgrade() {
+            s.end_migration(false);
+        }
+    });
+    let weak = Rc::downgrade(&state);
+    done_button.connect_clicked(move |_| {
+        if let Some(s) = weak.upgrade() {
+            s.end_migration(true);
+        }
+    });
+    let a = gio::SimpleAction::new("migrate", None);
+    let weak = Rc::downgrade(&state);
+    a.connect_activate(move |_, _| {
+        if let Some(s) = weak.upgrade() {
+            s.start_migration(s.shown.get(), false);
+        }
+    });
+    window.add_action(&a);
+    app.set_accels_for_action("win.migrate", &["<Control>m"]);
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(&state);
+    keys.connect_key_pressed(move |_, key, _, mods| match weak.upgrade() {
+        Some(s) => s.migration_key(key, mods),
+        None => glib::Propagation::Proceed,
+    });
+    window.add_controller(keys);
 
     // Scrierea rapidă
     if let Some(q) = &state.right.quick {
@@ -409,6 +538,7 @@ fn build_ui(app: &adw::Application) {
             }
             s.refresh();
         }
+        s.auto_migration();
         glib::ControlFlow::Continue
     });
 
@@ -422,6 +552,12 @@ fn build_ui(app: &adw::Application) {
 
     state.refresh();
     window.present();
+    let weak = Rc::downgrade(&state);
+    glib::idle_add_local_once(move || {
+        if let Some(s) = weak.upgrade() {
+            s.auto_migration();
+        }
+    });
     #[cfg(debug_assertions)]
     if std::env::var_os("LANRUJ_SELFTEST").is_some() {
         // După ce build_ui s-a terminat, ca la un clic adevărat.
@@ -454,23 +590,36 @@ fn selftest(s: &Rc<App>) {
             c = ch.next_sibling();
         }
     }
+    let click = |root: &gtk::Widget, class: &str, nth: usize| {
+        let mut v = Vec::new();
+        find_buttons(root, class, &mut v);
+        match v.get(nth) {
+            Some(b) => b.emit_clicked(),
+            None => eprintln!("selftest: nu găsesc butonul .{class}"),
+        }
+    };
     let q = s.right.quick.clone().expect("câmpul rapid");
-    q.set_text(". * Caută o lampă de birou");
-    q.emit_activate();
-    q.set_text("o 9:30 Dentist");
-    q.emit_activate();
-    let mut signs = Vec::new();
-    find_buttons(s.right.root.upcast_ref(), "semn", &mut signs);
-    if let Some(b) = signs.first() {
-        b.emit_clicked();
+    for t in [". Becuri", ". * Raport", ". Lampă", "o 9:30 Dentist"] {
+        q.set_text(t);
+        q.emit_activate();
     }
-    let mut dots = Vec::new();
-    find_buttons(s.right.root.upcast_ref(), "punct", &mut dots);
-    if let Some(b) = dots.get(1) {
-        b.emit_clicked();
-    }
-    s.go(s.shown.get() - Duration::days(1));
-    eprintln!("selftest: titlu={} câmp=„{}”", s.title.title(), q.text());
+    click(s.right.root.upcast_ref(), "punct", 3);
+    click(s.right.root.upcast_ref(), "semn", 2); // Lampă: făcută
+    click(s.right.root.upcast_ref(), "semn", 2); // și înapoi
+    // Migrarea zilei arătate
+    gtk::prelude::WidgetExt::activate_action(&s.window, "win.migrate", None).ok();
+    let left = s.left.root.clone().upcast::<gtk::Widget>();
+    click(&left, "opt-maine", 0); // Becuri -> mâine
+    click(&left, "opt-renunt", 0); // Raport -> renunț
+    click(&left, "opt-las", 0); // Lampă -> o las
+    // Răzgândire: Becuri rămâne totuși azi (copia de mâine trebuie să dispară)
+    s.mig_select(0);
+    click(&left, "opt-las", 0);
+    s.mig_select(0);
+    click(&left, "opt-maine", 0);
+    eprintln!("selftest: titlu în migrare={} / {}", s.title.title(), s.title.subtitle());
+    s.done_button.emit_clicked();
+    eprintln!("selftest: după migrare, în migrare={} titlu={}", s.migrating(), s.title.title());
     s.window.close();
 }
 
