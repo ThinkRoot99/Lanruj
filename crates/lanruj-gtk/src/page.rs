@@ -568,7 +568,7 @@ pub fn color_bar(lang: lanruj_core::Lang, target: ColorTarget) -> gtk::Box {
     for (ro, en, day, _) in TEXT_COLORS {
         // Butoanele nu iau focusul, ca selecția din câmpul de editare să rămână.
         let b = gtk::Button::builder().label("A").focus_on_click(false).css_classes(["culoare-text", &format!("text-{}", &day[1..])]).build();
-        b.set_tooltip_text(Some(&format!("{} {}", if lang == lanruj_core::Lang::Ro { "Text" } else { "Text" }, if lang == lanruj_core::Lang::Ro { ro } else { en })));
+        b.set_tooltip_text(Some(&format!("Text {}", if lang == lanruj_core::Lang::Ro { ro.to_lowercase() } else { en.to_lowercase() })));
         let t = target.clone();
         b.connect_clicked(move |_| apply(&t, Some(Paint::Color(day))));
         bar.append(&b);
