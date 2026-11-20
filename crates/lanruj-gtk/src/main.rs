@@ -1130,28 +1130,22 @@ fn build_ui(app: &adw::Application) {
     content_view.add_top_bar(&header);
     content_view.set_content(Some(&toasts));
 
-    // Bara laterală și caietul, despărțite de o margine care se trage.
-    let paned = gtk::Paned::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .start_child(&side_view)
-        .end_child(&content_view)
-        .resize_start_child(false)
-        .shrink_start_child(false)
-        .resize_end_child(true)
-        .shrink_end_child(false)
-        .build();
-    window.set_content(Some(&paned));
+    // Bara laterală (lățime fixă) și caietul.
+    side_view.set_hexpand(false);
+    let main_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    main_box.append(&side_view);
+    main_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    content_view.set_hexpand(true);
+    main_box.append(&content_view);
+    window.set_content(Some(&main_box));
     let bara = Rc::new(bara::Bara::new(
-        paned.clone(),
+        side_view.clone().upcast(),
         hide_when_compact,
         row_boxes,
         side_header.clone(),
-        settings.sidebar_width,
         settings.sidebar_compact,
     ));
     bara.apply();
-    let b = bara.clone();
-    paned.connect_position_notify(move |_| b.dragged());
 
     // Pe ecran îngust: o singură pagină; și mai îngust: bara laterală ascunsă.
     let one_page = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 900sp").expect("condiție"));
@@ -1425,12 +1419,8 @@ fn build_ui(app: &adw::Application) {
     // Cu iconița din systray pornită, închiderea doar ascunde fereastra.
     let keep = state.clone();
     window.connect_close_request(move |w| {
-        // Lățimea și starea barei se țin minte.
-        {
-            let mut st = keep.settings.borrow_mut();
-            st.sidebar_width = keep.bara.width.get();
-            st.sidebar_compact = keep.bara.user_compact.get();
-        }
+        // Starea barei (strânsă sau nu) se ține minte.
+        keep.settings.borrow_mut().sidebar_compact = keep.bara.user_compact.get();
         let _ = keep.settings.borrow().save();
         if keep.tray.borrow().as_ref().is_some_and(|h| !h.is_closed()) {
             w.set_visible(false);
@@ -1489,17 +1479,17 @@ fn build_ui(app: &adw::Application) {
         Ok("test-bara") => {
             let s = state.clone();
             glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
-                eprintln!("selftest-bara: la pornire poziția={} strânsă={}", s.bara.paned.position(), s.bara.compact());
+                eprintln!("selftest-bara: la pornire lățimea={} strânsă={}", s.bara.side.width(), s.bara.compact());
                 gtk::prelude::WidgetExt::activate_action(&s.window, "win.sidebar", None).ok();
                 let s2 = s.clone();
                 glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-                    eprintln!("selftest-bara: după F9 poziția={} strânsă={}", s2.bara.paned.position(), s2.bara.compact());
+                    eprintln!("selftest-bara: după F9 lățimea={} strânsă={}", s2.bara.side.width(), s2.bara.compact());
                     if std::env::var("LANRUJ_BARA_RAMANE").is_err() {
                         gtk::prelude::WidgetExt::activate_action(&s2.window, "win.sidebar", None).ok();
-                        s2.bara.paned.set_position(120);
-                        eprintln!("selftest-bara: trasă la 120 → poziția={} strânsă={}", s2.bara.paned.position(), s2.bara.compact());
-                        s2.bara.paned.set_position(320);
-                        eprintln!("selftest-bara: trasă la 320 → poziția={} strânsă={} lățime ținută={}", s2.bara.paned.position(), s2.bara.compact(), s2.bara.width.get());
+                        let s3 = s2.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                            eprintln!("selftest-bara: din nou F9 lățimea={} strânsă={}", s3.bara.side.width(), s3.bara.compact());
+                        });
                     }
                 });
             });
