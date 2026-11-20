@@ -95,6 +95,7 @@ pub fn next_page(r: PageRef) -> PageRef {
             let (year, month) = next_month(year, month);
             PageRef::Future { year, month }
         }
+        PageRef::Week { year, week } => crate::week_of(crate::week_monday(year, week) + chrono::Duration::days(7)),
     }
 }
 
@@ -107,6 +108,10 @@ pub fn month_of(r: PageRef) -> PageRef {
     match r {
         PageRef::Day(d) => PageRef::Month { year: d.year(), month: d.month() },
         PageRef::Future { year, month } => PageRef::Month { year, month },
+        PageRef::Week { year, week } => {
+            let d = crate::week_monday(year, week);
+            PageRef::Month { year: d.year(), month: d.month() }
+        }
         m => m,
     }
 }
@@ -311,6 +316,10 @@ impl Journal {
             PageRef::Day(d) => (d.year(), d.month(), d.day()),
             // Lista lunii vine înaintea zilelor ei.
             PageRef::Month { year, month } | PageRef::Future { year, month } => (year, month, 0),
+            PageRef::Week { year, week } => {
+                let d = crate::week_monday(year, week);
+                (d.year(), d.month(), d.day())
+            }
         };
         key(r) < key(from)
     }
@@ -498,6 +507,30 @@ mod tests {
         assert!(fs::read_to_string(r.join("2026/11/2026-11-21.md")).unwrap().contains("- o 18:30 Cină"));
         // O sarcină făcută nu se mută.
         assert!(j.move_entry(z(20), 3, z(21), Lang::Ro).is_err());
+        fs::remove_dir_all(r).unwrap();
+    }
+
+    #[test]
+    fn planul_saptamanii() {
+        let (j, r) = setup("sapt");
+        let s47 = crate::week_of(d(20));
+        assert_eq!(s47, PageRef::Week { year: 2026, week: 47 });
+        j.update_ref(s47, Lang::Ro, |w| w.push(crate::day::parse_quick(". Curățenie în debara").unwrap())).unwrap();
+        let text = fs::read_to_string(r.join("2026/saptamani/2026-S47.md")).unwrap();
+        assert_eq!(text, "# Săptămâna 47, 16-22 noiembrie 2026\n\n- [ ] Curățenie în debara\n");
+        // Din zi în planul săptămânii, apoi din plan în săptămâna următoare.
+        j.migrate(z(20), 5, s47, Lang::Ro).unwrap();
+        let s48 = next_page(s47);
+        assert_eq!(s48, PageRef::Week { year: 2026, week: 48 });
+        let id = j.migrate(s47, 0, s48, Lang::Ro).unwrap();
+        assert!(fs::read_to_string(r.join("2026/saptamani/2026-S47.md")).unwrap().contains(&format!("- [>] Curățenie în debara ^{id}")));
+        assert!(fs::read_to_string(r.join("2026/saptamani/2026-S48.md")).unwrap().starts_with("# Săptămâna 48, 23-29 noiembrie 2026\n"));
+        assert_eq!(j.migration_count(&id), 1);
+        // Răzgândirea caută copia și în săptămâni.
+        j.reopen(s47, 0, Lang::Ro).unwrap();
+        assert!(j.load_ref(s48).unwrap().entries().next().is_none());
+        assert_eq!(month_of(s47), NOV);
+        assert_eq!(next_page(PageRef::Week { year: 2026, week: 53 }), PageRef::Week { year: 2027, week: 1 });
         fs::remove_dir_all(r).unwrap();
     }
 

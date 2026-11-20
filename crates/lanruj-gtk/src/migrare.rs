@@ -119,6 +119,27 @@ pub fn page_short(lang: Lang, r: PageRef) -> String {
             Lang::Ro => format!("planuri, {}", lang.month_title(year, month).to_lowercase()),
             Lang::En => format!("future log, {}", lang.month_title(year, month)),
         },
+        PageRef::Week { week, .. } => match lang {
+            Lang::Ro => format!("planul săptămânii {week}"),
+            Lang::En => format!("week {week} plan"),
+        },
+    }
+}
+
+/// Ultima săptămână pentru care s-a încheiat migrarea: (an ISO, săptămână).
+fn last_week_done() -> Option<(i32, u32)> {
+    let s = std::fs::read_to_string(state_path("migrare-saptamana")).ok()?;
+    let (y, w) = s.trim().split_once("-S")?;
+    Some((y.parse().ok()?, w.parse().ok()?))
+}
+
+fn set_last_week_done(y: i32, w: u32) {
+    let p = state_path("migrare-saptamana");
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if last_week_done().is_none_or(|old| (y, w) > old) {
+        let _ = std::fs::write(p, format!("{y:04}-S{w:02}\n"));
     }
 }
 
@@ -151,6 +172,11 @@ fn set_last_done(d: NaiveDate) {
     if last_done().is_none_or(|old| d > old) {
         let _ = std::fs::write(p, d.format("%Y-%m-%d\n").to_string());
     }
+}
+
+/// Săptămâna dinaintea celei de azi.
+fn next_page_back_week(today: NaiveDate) -> PageRef {
+    lanruj_core::week_of(today - Duration::days(7))
 }
 
 fn plural_intrare(n: usize) -> String {
@@ -195,6 +221,7 @@ impl App {
                 self.toast(match source {
                     PageRef::Day(_) => tr(self.lang, "Nicio sarcină neterminată în ziua aceasta.", "No unfinished tasks on this day."),
                     PageRef::Month { .. } | PageRef::Future { .. } => tr(self.lang, "Nicio sarcină neterminată în lista lunii.", "No unfinished tasks in the month's list."),
+                    PageRef::Week { .. } => tr(self.lang, "Nicio sarcină neterminată în planul săptămânii.", "No unfinished tasks in the week's plan."),
                 });
             }
             return;
@@ -222,6 +249,7 @@ impl App {
             match m.source {
                 PageRef::Day(d) => set_last_done(d),
                 PageRef::Month { year, month } => set_last_month_done(year, month),
+                PageRef::Week { year, week } => set_last_week_done(year, week),
                 PageRef::Future { .. } => {}
             }
         } else {
@@ -328,12 +356,21 @@ impl App {
         let prev = first - Duration::days(1);
         let (y, m) = (prev.year(), prev.month());
         let r = PageRef::Month { year: y, month: m };
-        if last_month_done().is_some_and(|d| d >= (y, m)) || self.dismissed.get() == Some(r) {
+        if !(last_month_done().is_some_and(|d| d >= (y, m)) || self.dismissed.get() == Some(r)) {
+            match self.journal.load_ref(r) {
+                Ok(d) if !candidates(&d).is_empty() => return self.start_migration(r, true),
+                _ => set_last_month_done(y, m),
+            }
+        }
+        // Săptămâna trecută, de luni încolo
+        let PageRef::Week { year: wy, week: ww } = next_page_back_week(today) else { return };
+        let wr = PageRef::Week { year: wy, week: ww };
+        if last_week_done().is_some_and(|d| d >= (wy, ww)) || self.dismissed.get() == Some(wr) {
             return;
         }
-        match self.journal.load_ref(r) {
-            Ok(d) if !candidates(&d).is_empty() => self.start_migration(r, true),
-            _ => set_last_month_done(y, m),
+        match self.journal.load_ref(wr) {
+            Ok(d) if !candidates(&d).is_empty() => self.start_migration(wr, true),
+            _ => set_last_week_done(wy, ww),
         }
     }
 
@@ -384,11 +421,13 @@ impl App {
             PageRef::Day(d) if d == Local::now().date_naive() => tr(lang, "Migrarea de seară", "Evening migration"),
             PageRef::Day(_) => tr(lang, "Migrarea", "Migration"),
             PageRef::Month { .. } | PageRef::Future { .. } => tr(lang, "Migrarea lunii", "Monthly migration"),
+            PageRef::Week { .. } => tr(lang, "Migrarea săptămânii", "Weekly migration"),
         };
         self.title.set_title(title);
         let src_name = match m.source {
             PageRef::Day(d) => lang.day_title_short(d),
             PageRef::Month { year, month } | PageRef::Future { year, month } => lang.month_title(year, month),
+            PageRef::Week { week, .. } => lang.week_title(week),
         };
         let n = m.order.len();
         let done = m.decided.len();
@@ -507,7 +546,12 @@ impl App {
                     Lang::En => format!("to the {} list", lang.month_title(year, month)),
                 },
             ),
+            PageRef::Week { year, week } => (
+                tr(lang, "Săptămâna următoare", "Next week").to_string(),
+                lang.week_range(lanruj_core::week_monday(year, week)),
+            ),
         };
+
         // Prima zi pe care se poate programa și ziua propusă în calendar.
         let (min_day, suggested) = match source {
             PageRef::Day(d) => (d + Duration::days(1), d + Duration::days(7)),
@@ -515,9 +559,14 @@ impl App {
                 let first = NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă");
                 let next = match next_page(source) {
                     PageRef::Month { year, month } | PageRef::Future { year, month } => NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"),
+                    PageRef::Week { year, week } => lanruj_core::week_monday(year, week),
                     PageRef::Day(d) => d,
                 };
                 (first, next)
+            }
+            PageRef::Week { year, week } => {
+                let monday = lanruj_core::week_monday(year, week);
+                (monday, monday + Duration::days(7))
             }
         };
 
@@ -539,6 +588,7 @@ impl App {
                 match source {
                     PageRef::Day(_) => tr(lang, "pe altă zi sau în lista lunii", "another day or a month's list"),
                     PageRef::Month { .. } | PageRef::Future { .. } => tr(lang, "pe o zi anume", "on a specific day"),
+                    PageRef::Week { .. } => tr(lang, "pe o zi sau în lista lunii", "a day or a month's list"),
                 },
                 "P",
             ))
@@ -547,7 +597,7 @@ impl App {
         let pop = gtk::Popover::new();
         let pbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
         // Din migrarea unei zile: și în lista lunii (aceasta sau următoarea), ca în caiet.
-        if let PageRef::Day(_) = source {
+        if let PageRef::Day(_) | PageRef::Week { .. } = source {
             pbox.append(&gtk::Label::builder().label(tr(lang, "În lista unei luni", "To a month's list")).css_classes(["heading"]).xalign(0.0).build());
             let this_month = month_of(source);
             let next_month = next_page(this_month);
@@ -560,6 +610,26 @@ impl App {
                     .label(format!("{label} ({})", lang.month(month)))
                     .css_classes(["flat", "prog-luna"])
                     .build();
+                let (weak, pop_c) = (Rc::downgrade(self), pop.clone());
+                b.connect_clicked(move |_| {
+                    pop_c.popdown();
+                    if let Some(s) = weak.upgrade() {
+                        s.mig_decide(Choice::Schedule(r));
+                    }
+                });
+                pbox.append(&b);
+            }
+            pbox.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        }
+        // Din migrarea unei zile: și în planul unei săptămâni.
+        if let PageRef::Day(d) = source {
+            pbox.append(&gtk::Label::builder().label(tr(lang, "În planul unei săptămâni", "To a week's plan")).css_classes(["heading"]).xalign(0.0).build());
+            let this_week = lanruj_core::week_of(d);
+            for (r, label) in [
+                (this_week, tr(lang, "Săptămâna aceasta", "This week")),
+                (next_page(this_week), tr(lang, "Săptămâna viitoare", "Next week")),
+            ] {
+                let b = gtk::Button::builder().label(label).css_classes(["flat", "prog-sapt"]).build();
                 let (weak, pop_c) = (Rc::downgrade(self), pop.clone());
                 b.connect_clicked(move |_| {
                     pop_c.popdown();
@@ -619,6 +689,7 @@ impl App {
                 s.toast(match source {
                     PageRef::Day(_) => tr(s.lang, "Alege o zi de după ziua sarcinii.", "Pick a day after the task's day."),
                     PageRef::Month { .. } | PageRef::Future { .. } => tr(s.lang, "Alege o zi din luna aceasta sau de după.", "Pick a day in this month or later."),
+                    PageRef::Week { .. } => tr(s.lang, "Alege o zi din săptămâna aceasta sau de după.", "Pick a day in this week or later."),
                 });
                 return;
             }

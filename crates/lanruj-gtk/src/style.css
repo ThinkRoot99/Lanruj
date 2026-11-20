@@ -259,3 +259,18 @@ window.lanruj.noapte {
   opacity: 0.55;
   margin-top: 2px;
 }
+
+/* Pagina săptămânii: zilele pe scurt */
+.pagina button.zi-sapt-titlu {
+  padding: 0 4px;
+  min-height: 0;
+  font-weight: 700;
+  font-size: 14px;
+  background: none;
+  box-shadow: none;
+  color: var(--cerneala);
+}
+
+.pagina button.zi-sapt-titlu:hover { background-color: var(--bulina); }
+.pagina button.zi-sapt-titlu.azi { background-color: alpha(@accent_bg_color, 0.15); }
+.zi-pe-scurt { font-size: 13px; min-height: 19px; }

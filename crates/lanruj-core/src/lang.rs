@@ -66,6 +66,26 @@ impl Lang {
         format!("{}{} {}", first, c.as_str(), year)
     }
 
+    /// „Săptămâna 47” / „Week 47”
+    pub fn week_title(self, week: u32) -> String {
+        match self {
+            Lang::Ro => format!("Săptămâna {week}"),
+            Lang::En => format!("Week {week}"),
+        }
+    }
+
+    /// „16-22 noiembrie 2026”, „30 noiembrie - 6 decembrie 2026”, „28 decembrie 2026 - 3 ianuarie 2027”
+    pub fn week_range(self, monday: NaiveDate) -> String {
+        let sunday = monday + chrono::Duration::days(6);
+        if monday.year() != sunday.year() {
+            format!("{} {} {} - {} {} {}", monday.day(), self.month(monday.month()), monday.year(), sunday.day(), self.month(sunday.month()), sunday.year())
+        } else if monday.month() != sunday.month() {
+            format!("{} {} - {} {} {}", monday.day(), self.month(monday.month()), sunday.day(), self.month(sunday.month()), sunday.year())
+        } else {
+            format!("{}-{} {} {}", monday.day(), sunday.day(), self.month(monday.month()), monday.year())
+        }
+    }
+
     pub fn tags_label(self) -> &'static str {
         match self {
             Lang::Ro => "Etichete",
@@ -91,5 +111,9 @@ mod tests {
         assert_eq!(Lang::Ro.day_title(d), "Vineri, 20 noiembrie 2026");
         assert_eq!(Lang::En.day_title(d), "Friday, 20 November 2026");
         assert_eq!(Lang::Ro.month_title(2026, 11), "Noiembrie 2026");
+        let m = NaiveDate::from_ymd_opt(2026, 11, 16).unwrap();
+        assert_eq!(Lang::Ro.week_range(m), "16-22 noiembrie 2026");
+        assert_eq!(Lang::Ro.week_range(NaiveDate::from_ymd_opt(2026, 11, 30).unwrap()), "30 noiembrie - 6 decembrie 2026");
+        assert_eq!(Lang::Ro.week_range(NaiveDate::from_ymd_opt(2026, 12, 28).unwrap()), "28 decembrie 2026 - 3 ianuarie 2027");
     }
 }

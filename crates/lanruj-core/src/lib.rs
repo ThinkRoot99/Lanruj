@@ -23,4 +23,18 @@ pub enum PageRef {
     Month { year: i32, month: u32 },
     /// Secțiunea unei luni din jurnalul viitor.
     Future { year: i32, month: u32 },
+    /// Planul unei săptămâni (an și săptămână ISO).
+    Week { year: i32, week: u32 },
+}
+
+/// Lunea săptămânii ISO.
+pub fn week_monday(year: i32, week: u32) -> chrono::NaiveDate {
+    chrono::NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon).expect("săptămână validă")
+}
+
+/// Săptămâna ISO a unei zile.
+pub fn week_of(d: chrono::NaiveDate) -> PageRef {
+    use chrono::Datelike;
+    let w = d.iso_week();
+    PageRef::Week { year: w.year(), week: w.week() }
 }

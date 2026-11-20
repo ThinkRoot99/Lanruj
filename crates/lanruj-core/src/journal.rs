@@ -116,6 +116,12 @@ impl Journal {
                 && let Ok(d) = NaiveDate::parse_from_str(stem, "%Y-%m-%d")
             {
                 out.push(PageRef::Day(d));
+            } else if let Some(stem) = name.strip_suffix(".md")
+                && let Some((y, w)) = stem.split_once("-S")
+                && let (Ok(year), Ok(week)) = (y.parse::<i32>(), w.parse::<u32>())
+                && NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon).is_some()
+            {
+                out.push(PageRef::Week { year, week });
             }
         }
         if let Ok(f) = self.load_future() {
@@ -301,6 +307,11 @@ impl Journal {
         Ok(moved)
     }
 
+    /// `2026/saptamani/2026-S47.md`
+    pub fn week_path(&self, year: i32, week: u32) -> PathBuf {
+        self.root.join(format!("{year:04}")).join("saptamani").join(format!("{year:04}-S{week:02}.md"))
+    }
+
     /// O pagină cu intrări, ca zi: pentru o lună, lista ei de sarcini.
     pub fn load_ref(&self, r: PageRef) -> io::Result<Day> {
         match r {
@@ -316,6 +327,14 @@ impl Journal {
                 let mut day = Day::new(NaiveDate::from_ymd_opt(year, month, 1).expect("lună validă"));
                 day.items = f.items(year, month);
                 Ok(day)
+            }
+            PageRef::Week { year, week } => {
+                let monday = crate::week_monday(year, week);
+                match fs::read_to_string(self.week_path(year, week)) {
+                    Ok(text) => Ok(Day::parse(monday, &text)),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Day::new(monday)),
+                    Err(e) => Err(e),
+                }
             }
         }
     }
@@ -336,6 +355,24 @@ impl Journal {
                 let mut fut = self.load_future()?;
                 fut.set_items(year, month, day.items.clone(), lang);
                 self.save_future(&fut, lang)?;
+                Ok(day)
+            }
+            PageRef::Week { year, week } => {
+                let mut day = self.load_ref(r)?;
+                f(&mut day);
+                if day.heading.is_none() {
+                    let title = lang.week_title(week);
+                    let range = lang.week_range(day.date);
+                    day.heading = Some(format!("{title}, {range}"));
+                }
+                let path = self.week_path(year, week);
+                if day.is_empty() && !path.exists() {
+                    return Ok(day);
+                }
+                fs::create_dir_all(path.parent().expect("are dosar"))?;
+                let tmp = path.with_extension("md.tmp");
+                fs::write(&tmp, day.to_markdown(lang))?;
+                fs::rename(&tmp, &path)?;
                 Ok(day)
             }
         }

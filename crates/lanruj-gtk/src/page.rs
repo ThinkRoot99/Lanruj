@@ -144,6 +144,87 @@ impl Page {
         }
     }
 
+    /// Cele șapte zile ale săptămânii, pe scurt, citite din paginile zilelor.
+    /// Clic pe o zi = o deschide.
+    pub fn fill_week_days(&self, app: &Rc<App>, monday: NaiveDate) {
+        let lang = app.lang;
+        self.label.set_label(&tr(lang, "Zilele săptămânii", "The week's days").to_uppercase());
+        self.label.set_visible(true);
+        self.title.set_label(&lang.week_range(monday));
+        self.footer.set_visible(false);
+        self.clear();
+        let today = app.today.get();
+        for i in 0..7 {
+            let d = monday + chrono::Duration::days(i);
+            let day = app.journal.load(d).unwrap_or_else(|_| Day::new(d));
+            let head = gtk::Button::builder()
+                .label(format!("{} {}", lang.weekday(d.weekday()), d.day()))
+                .css_classes(["zi-sapt-titlu"])
+                .halign(gtk::Align::Start)
+                .build();
+            if d == today {
+                head.add_css_class("azi");
+            }
+            head.set_tooltip_text(Some(&lang.day_title(d)));
+            let weak = Rc::downgrade(app);
+            head.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    glib::idle_add_local_once(move || app.go(d));
+                }
+            });
+            if i > 0 {
+                head.set_margin_top(8);
+            }
+            self.list.append(&head);
+            let mut any = false;
+            for e in day.entries() {
+                any = true;
+                let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                row.add_css_class("zi-pe-scurt");
+                row.set_margin_start(10 + 18 * e.depth as i32);
+                match e.kind {
+                    Kind::Task(TaskState::Done) => row.add_css_class("facut"),
+                    Kind::Task(TaskState::Migrated) | Kind::Task(TaskState::Scheduled) => row.add_css_class("mutat"),
+                    Kind::Task(TaskState::Dropped) => row.add_css_class("renuntat"),
+                    _ => {}
+                }
+                row.append(&gtk::Label::builder().label(sign_of(e.kind)).css_classes(["semn"]).valign(gtk::Align::Start).build());
+                let mut text = String::new();
+                if let Some(t) = &e.time {
+                    text.push_str(&format!("<b>{}</b>  ", glib::markup_escape_text(t)));
+                }
+                match e.priority {
+                    Priority::Important => text.push_str("★ "),
+                    Priority::Inspiration => text.push_str("! "),
+                    Priority::None => {}
+                }
+                let esc = glib::markup_escape_text(&e.text);
+                if e.kind == Kind::Task(TaskState::Dropped) {
+                    text.push_str(&format!("<s>{esc}</s>"));
+                } else {
+                    text.push_str(&esc);
+                }
+                row.append(
+                    &gtk::Label::builder()
+                        .label(text)
+                        .use_markup(true)
+                        .xalign(0.0)
+                        .wrap(true)
+                        .wrap_mode(gtk::pango::WrapMode::WordChar)
+                        .hexpand(true)
+                        .css_classes(["text"])
+                        .build(),
+                );
+                self.list.append(&row);
+            }
+            if !any {
+                let l = gtk::Label::builder().label("-").xalign(0.0).css_classes(["gol"]).build();
+                l.set_margin_start(10);
+                self.list.append(&l);
+            }
+        }
+    }
+
     /// Calendarul lunii: toate zilele, fiecare cu rândul ei scurt.
     /// Clic pe număr = deschide ziua; dublu clic pe rând = scrie la ziua aceea.
     pub fn fill_calendar(&self, app: &Rc<App>, month: &Month, title: &str) {
@@ -398,6 +479,8 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
 fn move_targets(app: &App, from: PageRef) -> Vec<(PageRef, String)> {
     let lang = app.lang;
     let t = app.today.get();
+    let this_week = lanruj_core::week_of(t);
+    let next_week = lanruj_core::migrate::next_page(this_week);
     let this_month = PageRef::Month { year: t.year(), month: t.month() };
     let next_month = lanruj_core::migrate::next_page(this_month);
     let name = |r: PageRef| match r {
@@ -407,6 +490,8 @@ fn move_targets(app: &App, from: PageRef) -> Vec<(PageRef, String)> {
     [
         (PageRef::Day(t), tr(lang, "Azi", "Today").to_string()),
         (PageRef::Day(t.succ_opt().expect("zi")), tr(lang, "Mâine", "Tomorrow").to_string()),
+        (this_week, tr(lang, "Planul săptămânii aceasteia", "This week's plan").to_string()),
+        (next_week, tr(lang, "Planul săptămânii viitoare", "Next week's plan").to_string()),
         (this_month, format!("{} ({})", tr(lang, "Lista lunii aceasteia", "This month's list"), name(this_month))),
         (next_month, format!("{} ({})", tr(lang, "Lista lunii viitoare", "Next month's list"), name(next_month))),
     ]

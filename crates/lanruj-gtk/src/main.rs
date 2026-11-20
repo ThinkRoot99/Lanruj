@@ -68,6 +68,8 @@ pub enum View {
     Month(i32, u32),
     /// Jurnalul viitor: luna din stânga (în dreapta, cea de după).
     Future(i32, u32),
+    /// Pagina săptămânii (an și săptămână ISO).
+    Week(i32, u32),
 }
 
 fn today() -> NaiveDate {
@@ -117,7 +119,7 @@ impl App {
     /// (în migrare, cea cu sarcinile de triat).
     fn layout(&self) {
         // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
-        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..)) && !self.migrating();
+        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..)) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
         if month_stacked {
             self.left.root.set_visible(true);
@@ -145,21 +147,24 @@ impl App {
     pub fn refresh(self: &Rc<Self>) {
         let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
         let future_view = matches!(self.view.get(), View::Future(..)) && !self.migrating();
+        let week_view = matches!(self.view.get(), View::Week(..)) && !self.migrating();
         if self.migrating() {
             self.refresh_migration();
         } else if let View::Month(y, m) = self.view.get() {
             self.refresh_month(y, m);
         } else if let View::Future(y, m) = self.view.get() {
             self.refresh_future(y, m);
+        } else if let View::Week(y, w) = self.view.get() {
+            self.refresh_week(y, w);
         } else {
             self.refresh_normal();
         }
         // Câmpurile de scriere: în viitor pe ambele pagini, în rest doar în dreapta.
         if let Some(q) = &self.left.quick {
-            q.set_visible(future_view);
+            q.set_visible(future_view || week_view);
         }
         if let Some(q) = &self.right.quick {
-            q.set_visible(true);
+            q.set_visible(!week_view);
         }
         let ph = if future_view {
             tr(self.lang, "Scrie aici; ziua la început: . 15 Revizia, o 24 Crăciun", "Write here; day first: . 15 Service, o 24 Christmas")
@@ -170,11 +175,13 @@ impl App {
             q.set_placeholder_text(Some(ph));
         }
         self.refresh_migration_header();
-        let on_today = !month_view && !future_view && self.shown.get() == self.today.get();
+        let on_today = !month_view && !future_view && !week_view && self.shown.get() == self.today.get();
         self.today_button.set_visible(!self.migrating() && !on_today);
         self.migrate_button.set_visible(!self.migrating() && !future_view);
         let row = if month_view {
             2
+        } else if week_view {
+            1
         } else if future_view {
             3
         } else {
@@ -226,6 +233,11 @@ impl App {
     fn page_labels(&self, r: PageRef) -> (String, String) {
         match r {
             PageRef::Future { year, month } => (self.future_label(year, month), self.lang.month_title(year, month)),
+            PageRef::Week { year, week } => {
+                let plan = tr(self.lang, "Planul săptămânii", "Week plan");
+                let rel = self.relative_week(year, week);
+                (if rel.is_empty() { plan.to_string() } else { format!("{rel} · {plan}") }, self.lang.week_title(week))
+            }
             PageRef::Day(d) => (self.relative(d), self.lang.day_title(d)),
             PageRef::Month { year, month } => {
                 let rel = self.relative_month(year, month);
@@ -279,6 +291,49 @@ impl App {
         self.right.fill(self, &tasks, r, tr(self.lang, "Sarcinile lunii", "Monthly tasks"), &title, None);
         self.title.set_title(&title);
         self.title.set_subtitle(&self.relative_month(y, m));
+    }
+
+    /// „Săptămâna aceasta”, „Săptămâna trecută”, „Săptămâna viitoare”.
+    fn relative_week(&self, y: i32, w: u32) -> String {
+        let monday = lanruj_core::week_monday(y, w);
+        let this = lanruj_core::week_monday(self.today.get().iso_week().year(), self.today.get().iso_week().week());
+        match (monday - this).num_days() / 7 {
+            0 => tr(self.lang, "Săptămâna aceasta", "This week").into(),
+            -1 => tr(self.lang, "Săptămâna trecută", "Last week").into(),
+            1 => tr(self.lang, "Săptămâna viitoare", "Next week").into(),
+            _ => String::new(),
+        }
+    }
+
+    fn refresh_week(self: &Rc<Self>, y: i32, w: u32) {
+        let r = PageRef::Week { year: y, week: w };
+        let plan = self.journal.load_ref(r).unwrap_or_else(|e| {
+            self.error(&e);
+            Day::new(lanruj_core::week_monday(y, w))
+        });
+        let (label, title) = self.page_labels(r);
+        self.left.fill(self, &plan, r, &label, &title, None);
+        let monday = lanruj_core::week_monday(y, w);
+        self.right.fill_week_days(self, monday);
+        self.title.set_title(&self.lang.week_title(w));
+        self.title.set_subtitle(&self.lang.week_range(monday));
+    }
+
+    pub fn go_week(self: &Rc<Self>, y: i32, w: u32) {
+        if self.migrating() {
+            self.end_migration(false);
+        }
+        self.editing.set(None);
+        self.cal_editing.set(None);
+        self.view.set(View::Week(y, w));
+        self.refresh();
+    }
+
+    fn shift_week(self: &Rc<Self>, delta: i32) {
+        if let View::Week(y, w) = self.view.get() {
+            let d = lanruj_core::week_monday(y, w) + Duration::days(7 * delta as i64);
+            self.go_week(d.iso_week().year(), d.iso_week().week());
+        }
     }
 
     /// „Luna viitoare”, „Peste 3 luni”.
@@ -513,6 +568,7 @@ impl App {
                 let (year, month) = if left { (year, month) } else { lanruj_core::migrate::next_month(year, month) };
                 PageRef::Future { year, month }
             }
+            (None, View::Week(year, week)) => PageRef::Week { year, week },
             (None, View::Day) => PageRef::Day(self.shown.get()),
         };
         match self.journal.update_ref(r, self.lang, |d| d.push(e)) {
@@ -591,7 +647,7 @@ fn build_ui(app: &adw::Application) {
         nav_row("view-list-bullet-symbolic", "Index", None),
     ];
     for (i, r) in rows.iter().enumerate() {
-        if !matches!(i, 0 | 2 | 3) {
+        if !matches!(i, 0..=3) {
             r.set_sensitive(false);
             r.set_tooltip_text(Some(if i == 4 { tr(lang, "În versiunea a doua", "In version two") } else { soon }));
         }
@@ -753,6 +809,7 @@ fn build_ui(app: &adw::Application) {
         if let Some(s) = weak.upgrade() {
             let source = match s.view.get() {
                 View::Month(year, month) => PageRef::Month { year, month },
+                View::Week(year, week) => PageRef::Week { year, week },
                 View::Day | View::Future(..) => PageRef::Day(s.shown.get()),
             };
             s.start_migration(source, false);
@@ -789,6 +846,10 @@ fn build_ui(app: &adw::Application) {
             2 => {
                 let t = s.today.get();
                 s.go_month(t.year(), t.month());
+            }
+            1 => {
+                let w = s.today.get().iso_week();
+                s.go_week(w.year(), w.week());
             }
             3 => {
                 let (y, m) = s.future_start();
@@ -830,6 +891,8 @@ fn build_ui(app: &adw::Application) {
                     s.shift_month(delta as i32);
                 } else if matches!(s.view.get(), View::Future(..)) {
                     s.shift_future(delta as i32);
+                } else if matches!(s.view.get(), View::Week(..)) {
+                    s.shift_week(delta as i32);
                 } else {
                     s.go(s.shown.get() + Duration::days(delta));
                 }
@@ -910,6 +973,10 @@ fn build_ui(app: &adw::Application) {
         Ok("luna") => {
             let t = state.today.get();
             state.go_month(t.year(), t.month());
+        }
+        Ok("saptamana") => {
+            let w = state.today.get().iso_week();
+            state.go_week(w.year(), w.week());
         }
         Ok("viitor") => {
             let (y, m) = state.future_start();
@@ -1040,6 +1107,17 @@ fn selftest(s: &Rc<App>) {
             eprintln!("selftest: după migrarea lunii, în migrare={} titlu={}", s3.migrating(), s3.title.title());
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
             eprintln!("selftest: după „înainte” titlu={}", s3.title.title());
+            // Pagina săptămânii: o sarcină în plan, apoi migrarea săptămânii spre cea următoare.
+            s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[1]]);
+            eprintln!("selftest: săptămâna {} / {}", s3.title.title(), s3.title.subtitle());
+            let q = s3.left.quick.clone().expect("câmp");
+            q.set_text(". Curățenie în debara");
+            q.emit_activate();
+            gtk::prelude::WidgetExt::activate_action(&s3.window, "win.migrate", None).ok();
+            eprintln!("selftest: migrarea săptămânii: {} / {}", s3.title.title(), s3.title.subtitle());
+            click(&s3.left.root.clone().upcast::<gtk::Widget>(), "opt-maine", 0);
+            s3.done_button.emit_clicked();
+            eprintln!("selftest: după migrarea săptămânii titlu={}", s3.title.title());
             // Jurnalul viitor: câte o intrare pe fiecare pagină, apoi următoarele două luni.
             s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[3]]);
             eprintln!("selftest: viitor {} / {}", s3.title.title(), s3.title.subtitle());
@@ -1050,7 +1128,7 @@ fn selftest(s: &Rc<App>) {
             }
             // „Mută…” din meniul primei intrări din stânga: în lista lunii aceasteia.
             click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta", 0);
-            click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta-spre", 2);
+            click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta-spre", 4); // Azi, Mâine, 2 săptămâni, apoi luna aceasta
             let s3 = s3.clone();
             glib::idle_add_local_once(move || {
                 let nov = s3.journal.load_month(2026, 11).map(|m| m.tasks.len()).unwrap_or(0);
