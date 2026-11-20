@@ -25,6 +25,40 @@ pub fn is_url(s: &str) -> bool {
         && !s.contains(char::is_whitespace)
 }
 
+/// O adresă de e-mail simplă: „nume@domeniu.ro”.
+pub fn is_email(s: &str) -> bool {
+    let Some((user, domain)) = s.split_once('@') else { return false };
+    !user.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && s.chars().all(|c| c.is_alphanumeric() || "@._-+".contains(c))
+}
+
+/// Toate legăturile dintr-un text: `[text](adresă)`, adresele simple și adresele de e-mail
+/// (acestea ca „mailto:…”), în ordinea în care apar, fără repetări.
+pub fn urls(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for r in runs(text) {
+        match r.link {
+            Some(u) => out.push(u),
+            None => {
+                for w in r.text.split_whitespace() {
+                    let w = w.trim_end_matches(['.', ',', ';', ':', '!', '?', ')', '”']).trim_start_matches(['(', '„']);
+                    if is_url(w) {
+                        out.push(w.to_string());
+                    } else if is_email(w) {
+                        out.push(format!("mailto:{w}"));
+                    }
+                }
+            }
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|u| seen.insert(u.clone()));
+    out
+}
+
 /// `[conținut](adresă)` la începutul lui `s` → (conținut, adresă, lungimea totală).
 fn md_link(s: &str) -> Option<(&str, &str, usize)> {
     let rest = s.strip_prefix('[')?;
@@ -302,6 +336,11 @@ mod tests {
         assert_eq!(runs(&lc).last().unwrap().link.as_deref(), Some("https://example.ro/service"));
         assert_eq!(link(&lc, 0, 100, None), "Sună la <span style=\"color:#1c71d8\">service</span>");
         assert_eq!(to_markdown(&runs("Vezi [harta](https://maps.example) și [nu e legătură](abc)")), "Vezi [harta](https://maps.example) și [nu e legătură](abc)");
+        assert_eq!(
+            urls("Scrie la root@thinkroot.xyz, vezi https://thinkroot.xyz/ și [Delfinariu](https://d.ro)."),
+            vec!["mailto:root@thinkroot.xyz", "https://thinkroot.xyz/", "https://d.ro"]
+        );
+        assert!(!is_email("a@b") && !is_email("@x.ro") && is_email("ana.pop@mail.example.ro"));
         assert_eq!(t2, "<span style=\"color:#c01c28\">Sună</span> la service");
         let t3 = paint(&t2, 8, 15, Some(Paint::Marker(YELLOW_MARKER)));
         assert_eq!(t3, "<span style=\"color:#c01c28\">Sună</span> la ==service==");

@@ -2076,6 +2076,37 @@ fn build_ui(app: &adw::Application) {
                 });
             });
         }
+        Ok("test-deschide") => {
+            // Legăturile din ziua arătată: activate-link pe etichete și „Deschide…” din meniu.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                fn all<T: IsA<gtk::Widget>>(w: &gtk::Widget, out: &mut Vec<T>) {
+                    if let Ok(t) = w.clone().downcast::<T>() {
+                        out.push(t);
+                    }
+                    let mut c = w.first_child();
+                    while let Some(ch) = c {
+                        all::<T>(&ch, out);
+                        c = ch.next_sibling();
+                    }
+                }
+                let mut labels: Vec<gtk::Label> = Vec::new();
+                all(s.right.root.upcast_ref(), &mut labels);
+                for l in labels.iter().filter(|l| l.label().contains("<a href")) {
+                    eprintln!("selftest-deschide: etichetă: {}", l.label());
+                    let _: bool = l.emit_by_name("activate-link", &[&"https://thinkroot.xyz/"]);
+                }
+                let mut buttons: Vec<gtk::Button> = Vec::new();
+                all(s.right.root.upcast_ref(), &mut buttons);
+                for b in buttons.iter().filter(|b| b.has_css_class("deschide-legatura")) {
+                    eprintln!("selftest-deschide: meniu: {}", b.label().unwrap_or_default());
+                    b.emit_clicked();
+                }
+                if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                    save_png(&s.window, &p);
+                }
+            });
+        }
         Ok("test-culori") => {
             let s = state.clone();
             glib::idle_add_local_once(move || {

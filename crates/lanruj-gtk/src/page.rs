@@ -632,6 +632,47 @@ impl Page {
     }
 }
 
+/// Deschide o legătură în programul implicit (browserul, programul de e-mail) și o notează
+/// în jurnalul de legături (`~/.local/state/lanruj/legaturi.log`), ca să se vadă dacă a mers.
+pub fn open_uri(widget: &impl IsA<gtk::Widget>, uri: &str) {
+    fn log(line: &str) {
+        let dir = std::env::var_os("XDG_STATE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| glib::home_dir().join(".local").join("state"))
+            .join("lanruj");
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("legaturi.log")) {
+            use std::io::Write;
+            let _ = writeln!(f, "{} {line}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+        }
+        eprintln!("legătură: {line}");
+    }
+    log(&format!("deschid {uri}"));
+    // La probe (LANRUJ_NU_DESCHIDE), doar se notează; nu se pornește niciun program.
+    if std::env::var_os("LANRUJ_NU_DESCHIDE").is_some() {
+        return;
+    }
+    let window = widget.as_ref().root().and_then(|r| r.downcast::<gtk::Window>().ok());
+    let u = uri.to_string();
+    gtk::UriLauncher::new(uri).launch(window.as_ref(), gtk::gio::Cancellable::NONE, move |res| match res {
+        Ok(()) => log(&format!("deschisă {u}")),
+        Err(e) => {
+            log(&format!("eroare {u}: {e}; încerc altfel"));
+            if let Err(e2) = gtk::gio::AppInfo::launch_default_for_uri(&u, gtk::gio::AppLaunchContext::NONE) {
+                log(&format!("eroare și a doua oară {u}: {e2}"));
+            }
+        }
+    });
+}
+
+/// Legăturile dintr-o etichetă se deschid cu `open_uri` (nu doar cu felul implicit al GTK).
+pub fn hook_links(label: &gtk::Label) {
+    label.connect_activate_link(|l, uri| {
+        open_uri(l, uri);
+        glib::Propagation::Stop
+    });
+}
+
 /// Textul, cu adresele simple (`https://…`) făcute legături (markup Pango).
 fn autolink(text: &str) -> String {
     let mut out = String::new();
@@ -642,6 +683,10 @@ fn autolink(text: &str) -> String {
         if lanruj_core::colors::is_url(trimmed) {
             let e = glib::markup_escape_text(trimmed);
             out.push_str(&format!("<a href=\"{e}\">{e}</a>"));
+            out.push_str(&glib::markup_escape_text(&w[trimmed.len()..]));
+        } else if lanruj_core::colors::is_email(trimmed) {
+            let e = glib::markup_escape_text(trimmed);
+            out.push_str(&format!("<a href=\"mailto:{e}\">{e}</a>"));
             out.push_str(&glib::markup_escape_text(&w[trimmed.len()..]));
         } else {
             out.push_str(&glib::markup_escape_text(w));
@@ -729,16 +774,16 @@ fn topic_box(app: &Rc<App>, t: &lanruj_core::index::TopicOnDay, big: bool) -> gt
             row.add_css_class("facut");
         }
         row.append(&gtk::Label::builder().label(sign_of(e.kind)).css_classes(["semn"]).valign(gtk::Align::Start).build());
-        row.append(
-            &gtk::Label::builder()
-                .label(rich_markup(&e.text, app.window_night()))
-                .use_markup(true)
-                .xalign(0.0)
-                .wrap(true)
-                .hexpand(true)
-                .css_classes(["text"])
-                .build(),
-        );
+        let l = gtk::Label::builder()
+            .label(rich_markup(&e.text, app.window_night()))
+            .use_markup(true)
+            .xalign(0.0)
+            .wrap(true)
+            .hexpand(true)
+            .css_classes(["text"])
+            .build();
+        hook_links(&l);
+        row.append(&l);
         b.append(&row);
     }
     b.set_tooltip_text(Some(tr(lang, "Clic: deschide pagina din index", "Click: open the index page")));
@@ -1310,7 +1355,7 @@ fn build_move_page(app: &Rc<App>, pop: &gtk::Popover, stack: &gtk::Stack, date: 
 }
 
 /// Meniul de la clic dreapta: Editează, Mută…, Șterge. Dublu clic = editează.
-fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, movable: bool) {
+fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, movable: bool, urls: Vec<String>) {
     let lang = app.lang;
     let pop = gtk::Popover::builder().has_arrow(true).build();
     let stack = gtk::Stack::builder().vhomogeneous(false).hhomogeneous(false).transition_type(gtk::StackTransitionType::SlideLeftRight).build();
@@ -1319,6 +1364,24 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     let mv = gtk::Button::builder().label(tr(lang, "Mută…", "Move…")).css_classes(["flat", "muta"]).visible(movable).build();
     let col = gtk::Button::builder().label(tr(lang, "Culoare…", "Color…")).css_classes(["flat", "culoare"]).build();
     let del = gtk::Button::builder().label(tr(lang, "Șterge", "Delete")).css_classes(["flat", "error"]).build();
+    // Legăturile din intrare: câte un rând „Deschide …”, cale sigură pe lângă clicul pe legătură.
+    for u in &urls {
+        let shown = u.strip_prefix("mailto:").map(|m| format!("{} {m}", tr(lang, "Scrie la", "Write to"))).unwrap_or_else(|| {
+            let short: String = u.trim_start_matches("https://").trim_start_matches("http://").chars().take(40).collect();
+            format!("{} {short}", tr(lang, "Deschide", "Open"))
+        });
+        let b = gtk::Button::builder().label(shown).css_classes(["flat", "deschide-legatura"]).build();
+        b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
+        let (p, u2) = (pop.clone(), u.clone());
+        b.connect_clicked(move |btn| {
+            p.popdown();
+            open_uri(btn, &u2);
+        });
+        menu.append(&b);
+    }
+    if !urls.is_empty() {
+        menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    }
     for b in [&edit, &mv, &col, &del] {
         b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
         menu.append(b);
@@ -1412,7 +1475,7 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
     }
     if mig.is_none() {
         let movable = e.is_open_task() || matches!(e.kind, Kind::Event | Kind::Note);
-        add_entry_menu(app, &row, r, index, movable && e.depth == 0);
+        add_entry_menu(app, &row, r, index, movable && e.depth == 0, lanruj_core::colors::urls(&e.text));
     }
     // În migrare: sarcina curentă încadrată, cele triate și restul stinse;
     // un clic pe o sarcină de triat o face curentă.
@@ -1502,6 +1565,7 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
         .wrap_mode(gtk::pango::WrapMode::WordChar)
         .css_classes(["text"])
         .build();
+    hook_links(&label);
     text_box.append(&label);
 
     // ↻N: de câte ori a fost mutată; de la 3, „mai merită?”.
