@@ -7,7 +7,7 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 15] = [
+const CAPITOLE: [(&str, &str, &str, &str); 17] = [
     (
         "Cum începi",
         "O zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
@@ -169,6 +169,28 @@ const CAPITOLE: [(&str, &str, &str, &str); 15] = [
          In dark mode, colors brighten by themselves so they show on dark paper.",
     ),
     (
+        "Indexul",
+        "<b>Adaugi</b> un rând cu <b>+ Adaugă în index</b> sau, din orice zi, cu <b>Ctrl+I</b>: scrii titlul (de exemplu „Concediu”), \
+         alegi ziua și, dacă bifezi „Mai multe zile”, ziua de sfârșit.\n\
+         <b>Clic</b> pe rând deschide <b>pagina lui</b>: în stânga scrii ce ține de el (ce vizitezi, unde te cazezi), în dreapta vezi zilele lui pe scurt.\n\
+         <b>Clic dreapta</b> pe rând: <b>Editează</b> (titlul și zilele) sau <b>Scoate din index</b>.\n\
+         Rândurile din pagina lui care încep cu o dată (<tt>26.11 Delfinariu</tt>, <tt>26.11.2026 …</tt> sau doar <tt>26 …</tt>) \
+         apar și în ziua aceea, sub banda „Concediu · ziua 4 din 8”.\n\
+         În dreapta Indexului, automat: lunile cu zilele scrise și etichetele cu zilele lor.\n\n\
+         <b>Calendarul lunii</b> (în Pagina lunii): dublu clic pe o zi și scrii ce e atunci; mai multe lucruri pe aceeași zi \
+         le desparți cu <tt>;</tt>; dacă golești textul, rândul zilei dispare. Clic pe număr deschide ziua.",
+        "The Index",
+        "<b>Add</b> a line with <b>+ Add to index</b> or, from any day, with <b>Ctrl+I</b>: type the title (for example \"Holiday\"), \
+         pick the day and, if you tick \"Several days\", the last day.\n\
+         <b>Click</b> the line to open <b>its page</b>: on the left write what belongs to it (what you visit, where you stay), on the right see its days.\n\
+         <b>Right-click</b> the line: <b>Edit</b> (title and days) or <b>Remove from index</b>.\n\
+         Lines on its page that start with a date (<tt>26.11 Dolphinarium</tt>, <tt>26.11.2026 …</tt> or just <tt>26 …</tt>) \
+         also show on that day, under the band \"Holiday · day 4 of 8\".\n\
+         On the right of the Index, automatically: months with written days and tags with their days.\n\n\
+         <b>Month calendar</b> (Month page): double-click a day and write what's on; separate several things on the same day \
+         with <tt>;</tt>; empty the text to remove the day's line. Click the number to open the day.",
+    ),
+    (
         "Poze și fișiere",
         "Agrafa din câmpul de jos adaugă poze și fișiere; le poți și trage în pagină. Trase peste o intrare (sau clic dreapta pe ea → \
          Adaugă poze…) se leagă de ea și o urmează când o muți.\n\n\
@@ -225,6 +247,28 @@ const CAPITOLE: [(&str, &str, &str, &str); 15] = [
          <b>Backups</b>: copy the <tt>~/.lanruj</tt> folder to another disk or a USB stick.",
     ),
     (
+        "Fișierele",
+        "Jurnalul se poate citi și scrie și cu alt program (Obsidian, Typora, un editor de text). Cum arată în fișier:\n\n\
+         <tt>- [ ] Sună la bancă</tt>  sarcină     <tt>- [x] …</tt> făcută     <tt>- [&gt;] …</tt> mutată     <tt>- [&lt;] …</tt> programată     <tt>- [-] …</tt> renunțată\n\
+         <tt>- o 10:00 Dentist</tt>  eveniment     <tt>- Prima zăpadă</tt>  notă     <tt>- [ ] * …</tt> important     <tt>- ! …</tt> idee\n\
+         <tt>  - frig, dar senin</tt>  notiță sub intrarea de deasupra (două spații)\n\
+         <tt>^k3f9</tt> la sfârșit: semnul unei sarcini mutate (nu-l șterge)\n\
+         <tt>==text==</tt> marker galben, <tt>&lt;span style=\"color:#c01c28\"&gt;text&lt;/span&gt;</tt> text colorat\n\
+         <tt>[text](https://…)</tt> legătură     <tt>![Nume|220](2026-11-21/poza.jpg)</tt> poză     <tt>[bilet.pdf](…)</tt> fișier\n\
+         <tt>Etichete: carte, film</tt> și <tt>Ziua: 4/5</tt> la sfârșitul zilei\n\n\
+         Modifică fișierele doar când Lanruj e închis, ca să nu scrie amândouă în același timp.",
+        "Files",
+        "The journal can also be read and written with another program (Obsidian, Typora, a text editor). How it looks in the file:\n\n\
+         <tt>- [ ] Call the bank</tt>  task     <tt>- [x] …</tt> done     <tt>- [&gt;] …</tt> moved     <tt>- [&lt;] …</tt> scheduled     <tt>- [-] …</tt> dropped\n\
+         <tt>- o 10:00 Dentist</tt>  event     <tt>- First snow</tt>  note     <tt>- [ ] * …</tt> important     <tt>- ! …</tt> idea\n\
+         <tt>  - cold but clear</tt>  note under the entry above (two spaces)\n\
+         <tt>^k3f9</tt> at the end: the mark of a moved task (don't delete it)\n\
+         <tt>==text==</tt> yellow marker, <tt>&lt;span style=\"color:#c01c28\"&gt;text&lt;/span&gt;</tt> colored text\n\
+         <tt>[text](https://…)</tt> link     <tt>![Name|220](2026-11-21/pic.jpg)</tt> picture     <tt>[ticket.pdf](…)</tt> file\n\
+         <tt>Tags: book, film</tt> and <tt>Day: 4/5</tt> at the end of a day\n\n\
+         Edit the files only while Lanruj is closed, so the two don't write at the same time.",
+    ),
+    (
         "Setările",
         "<b>☰ → Setări</b> (Ctrl+,): modelul și culoarea hârtiei, noaptea, migrarea (singură sau doar cu butonul, ora de seară), \
          limba (fereastra se redeschide) și systray-ul (la închidere, Lanruj rămâne în bara de sus; Ctrl+Q îl oprește).",
@@ -263,10 +307,14 @@ pub fn show(app: &Rc<App>) {
     body.set_margin_bottom(24);
     body.set_margin_start(18);
     body.set_margin_end(18);
+    // Căutarea în ghid: rămân doar capitolele care conțin toate cuvintele.
+    let search = gtk::SearchEntry::builder().placeholder_text(tr(lang, "Caută în ghid", "Search the guide")).build();
+    body.append(&search);
     // Cuprinsul: un buton pentru fiecare capitol.
     let toc = adw::WrapBox::builder().child_spacing(6).line_spacing(6).build();
     body.append(&toc);
     let mut heads: Vec<gtk::Label> = Vec::new();
+    let mut sections: Vec<(gtk::Box, String)> = Vec::new();
     for (tro, bro, ten, ben) in CAPITOLE {
         let (title, text) = if lang == Lang::Ro { (tro, bro) } else { (ten, ben) };
         let h = gtk::Label::builder().label(title).xalign(0.0).css_classes(["title-3"]).build();
@@ -276,6 +324,9 @@ pub fn show(app: &Rc<App>) {
         sec.append(&t);
         body.append(&sec);
         heads.push(h);
+        // Textul fără etichete de markup, pentru căutare.
+        let plain = gtk::pango::parse_markup(text, '\0').map(|(_, t, _)| t.to_string()).unwrap_or_else(|_| text.to_string());
+        sections.push((sec.clone(), lanruj_core::search::fold(&format!("{title} {plain}"))));
     }
     let clamp = adw::Clamp::builder().maximum_size(700).child(&body).build();
     let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&clamp).build();
@@ -290,9 +341,18 @@ pub fn show(app: &Rc<App>) {
         });
         toc.append(&b);
     }
+    let tc = toc.clone();
+    search.connect_search_changed(move |e| {
+        let words: Vec<String> = lanruj_core::search::fold(&e.text()).split_whitespace().map(str::to_string).collect();
+        for (sec, text) in &sections {
+            sec.set_visible(words.iter().all(|w| text.contains(w.as_str())));
+        }
+        tc.set_visible(words.is_empty());
+    });
     let view = adw::ToolbarView::new();
     view.add_top_bar(&header);
     view.set_content(Some(&scroll));
     dialog.set_child(Some(&view));
     dialog.present(Some(&app.window_widget()));
+    search.grab_focus();
 }
