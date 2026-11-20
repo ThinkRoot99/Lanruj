@@ -62,6 +62,8 @@ pub struct App {
     nav: gtk::ListBox,
     nav_rows: Vec<gtk::ListBoxRow>,
     pub settings: RefCell<setari::Settings>,
+    /// Intrarea aleasă din tastatură (↑ ↓): (pagina, poziția).
+    pub selected: Cell<Option<(PageRef, usize)>>,
     /// Iconița din systray, dacă e pornită.
     tray: RefCell<Option<ksni::blocking::Handle<tava::LanrujTray>>>,
 }
@@ -330,6 +332,7 @@ impl App {
         }
         self.editing.set(None);
         self.cal_editing.set(None);
+        self.selected.set(None);
         self.view.set(View::Week(y, w));
         self.refresh();
     }
@@ -382,6 +385,7 @@ impl App {
         // Nu mai devreme de luna viitoare.
         let start = self.future_start();
         let (y, m) = if (y, m) < start { start } else { (y, m) };
+        self.selected.set(None);
         self.view.set(View::Future(y, m));
         self.refresh();
     }
@@ -400,6 +404,7 @@ impl App {
         }
         self.editing.set(None);
         self.cal_editing.set(None);
+        self.selected.set(None);
         self.view.set(View::Month(y, m));
         self.refresh();
     }
@@ -457,6 +462,7 @@ impl App {
             self.end_migration(false);
         }
         self.editing.set(None);
+        self.selected.set(None);
         self.view.set(View::Day);
         self.shown.set(d);
         self.refresh();
@@ -615,6 +621,102 @@ impl App {
     }
 
     /// Fereastra cu scurtăturile de taste (Ctrl+?).
+    /// Pagina pe care lucrează tastatura: cea cu câmpul de scriere
+    /// (în dreapta; în Planuri și Pagina săptămânii, cea din stânga).
+    fn key_page(&self) -> Option<(PageRef, &page::Page)> {
+        if self.migrating() {
+            return None;
+        }
+        Some(match self.view.get() {
+            View::Day => (PageRef::Day(self.shown.get()), &self.right),
+            View::Month(year, month) => (PageRef::Month { year, month }, &self.right),
+            View::Week(year, week) => (PageRef::Week { year, week }, &self.left),
+            View::Future(year, month) => (PageRef::Future { year, month }, &self.left),
+        })
+    }
+
+    /// Tastele pentru intrări: ↑ ↓ alege, Enter editează, Delete șterge,
+    /// Ctrl+Enter bifează, Esc întoarce în câmpul de scriere.
+    fn entry_key(self: &Rc<Self>, key: gdk::Key, mods: gdk::ModifierType) -> glib::Propagation {
+        let Some((r, page)) = self.key_page() else { return glib::Propagation::Proceed };
+        if self.editing.get().is_some() || self.cal_editing.get().is_some() {
+            return glib::Propagation::Proceed;
+        }
+        let in_quick = page.quick.as_ref().is_some_and(|q| q.has_focus() || q.focus_child().is_some());
+        let focus = gtk::prelude::GtkWindowExt::focus(&self.window);
+        // În alte câmpuri de text (etichete, căutare) tastele sunt ale lor.
+        if !in_quick && focus.as_ref().is_some_and(|w| w.is::<gtk::Text>()) {
+            return glib::Propagation::Proceed;
+        }
+        let day = match self.journal.load_ref(r) {
+            Ok(d) => d,
+            Err(_) => return glib::Propagation::Proceed,
+        };
+        let entries: Vec<usize> = day.items.iter().enumerate().filter(|(_, it)| matches!(it, lanruj_core::Item::Entry(_))).map(|(i, _)| i).collect();
+        let sel = self.selected.get().filter(|(sr, _)| *sr == r).map(|(_, i)| i);
+        let pos = sel.and_then(|i| entries.iter().position(|&e| e == i));
+        let ctrl = mods.contains(gdk::ModifierType::CONTROL_MASK);
+        let focus_quick = |s: &Rc<Self>| {
+            s.selected.set(None);
+            s.refresh();
+            if let Some(q) = &page.quick {
+                q.grab_focus();
+            }
+        };
+        match key {
+            gdk::Key::Up if !ctrl => {
+                let next = match pos {
+                    Some(p) if p > 0 => Some(entries[p - 1]),
+                    Some(p) => Some(entries[p]),
+                    None => entries.last().copied(),
+                };
+                if let Some(i) = next {
+                    self.selected.set(Some((r, i)));
+                    gtk::prelude::GtkWindowExt::set_focus(&self.window, None::<&gtk::Widget>);
+                    self.refresh();
+                }
+                glib::Propagation::Stop
+            }
+            gdk::Key::Down if !ctrl && pos.is_some() => {
+                let p = pos.expect("verificat");
+                if p + 1 < entries.len() {
+                    self.selected.set(Some((r, entries[p + 1])));
+                    self.refresh();
+                } else {
+                    focus_quick(self);
+                }
+                glib::Propagation::Stop
+            }
+            gdk::Key::Return | gdk::Key::KP_Enter if pos.is_some() && !in_quick => {
+                let i = sel.expect("verificat");
+                if ctrl {
+                    self.toggle(r, i);
+                } else {
+                    self.start_edit(r, i);
+                }
+                glib::Propagation::Stop
+            }
+            gdk::Key::Delete | gdk::Key::KP_Delete if pos.is_some() && !in_quick => {
+                let i = sel.expect("verificat");
+                // După ștergere, selecția trece pe intrarea de dinainte (sau rămâne la loc).
+                let after = match pos {
+                    Some(p) if p > 0 => Some(entries[p - 1]),
+                    // Prima intrare: cea de după îi ia locul.
+                    Some(_) if entries.len() > 1 => Some(i),
+                    _ => None,
+                };
+                self.selected.set(after.map(|a| (r, a)));
+                self.delete_entry(r, i);
+                glib::Propagation::Stop
+            }
+            gdk::Key::Escape if pos.is_some() => {
+                focus_quick(self);
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
+        }
+    }
+
     fn show_shortcuts(&self) {
         let l = self.lang;
         let dialog = adw::ShortcutsDialog::new();
@@ -640,6 +742,11 @@ impl App {
                 tr(l, "Scriere", "Writing"),
                 vec![
                     (tr(l, "Adaugă ce ai scris în câmpul de jos", "Add what you typed in the field below"), "Return"),
+                    (tr(l, "Alege intrarea de deasupra sau de dedesubt", "Select the entry above or below"), "Up Down"),
+                    (tr(l, "Editează intrarea aleasă", "Edit the selected entry"), "Return"),
+                    (tr(l, "Bifează sau debifează sarcina aleasă", "Check or uncheck the selected task"), "<Control>Return"),
+                    (tr(l, "Șterge intrarea aleasă", "Delete the selected entry"), "Delete"),
+                    (tr(l, "Înapoi în câmpul de scriere", "Back to the writing field"), "Escape"),
                     (tr(l, "Salvează intrarea editată", "Save the edited entry"), "Return"),
                     (tr(l, "Renunță la editare", "Cancel editing"), "Escape"),
                 ],
@@ -1041,6 +1148,7 @@ fn build_ui(app: &adw::Application) {
         nav_rows: rows.to_vec(),
         settings: RefCell::new(settings),
         tray: RefCell::new(None),
+        selected: Cell::new(None),
     });
     if state.settings.borrow().tray {
         state.set_tray(true);
@@ -1117,6 +1225,14 @@ fn build_ui(app: &adw::Application) {
     let weak = Rc::downgrade(&state);
     keys.connect_key_pressed(move |_, key, _, mods| match weak.upgrade() {
         Some(s) => s.migration_key(key, mods),
+        None => glib::Propagation::Proceed,
+    });
+    window.add_controller(keys);
+    // Tastele pentru intrări, după ce câmpurile și-au luat tastele lor.
+    let keys = gtk::EventControllerKey::new();
+    let weak = Rc::downgrade(&state);
+    keys.connect_key_pressed(move |_, key, _, mods| match weak.upgrade() {
+        Some(s) => s.entry_key(key, mods),
         None => glib::Propagation::Proceed,
     });
     window.add_controller(keys);
@@ -1272,6 +1388,38 @@ fn build_ui(app: &adw::Application) {
         Ok("luna") => {
             let t = state.today.get();
             state.go_month(t.year(), t.month());
+        }
+        Ok("test-taste") => {
+            let s = state.clone();
+            glib::idle_add_local_once(move || {
+                let q = s.right.quick.clone().expect("câmp");
+                for t in [". Unu", ". Doi", "- Trei"] {
+                    q.set_text(t);
+                    q.emit_activate();
+                }
+                q.grab_focus();
+                let none = gdk::ModifierType::empty();
+                s.entry_key(gdk::Key::Up, none);
+                eprintln!("selftest-taste: ↑ din câmp → {:?}", s.selected.get().map(|(_, i)| i));
+                s.entry_key(gdk::Key::Up, none);
+                eprintln!("selftest-taste: ↑ → {:?}", s.selected.get().map(|(_, i)| i));
+                s.entry_key(gdk::Key::Return, gdk::ModifierType::CONTROL_MASK);
+                s.entry_key(gdk::Key::Up, none);
+                s.entry_key(gdk::Key::Delete, none);
+                eprintln!("selftest-taste: după Delete, ales {:?}", s.selected.get().map(|(_, i)| i));
+                s.entry_key(gdk::Key::Down, none);
+                s.entry_key(gdk::Key::Return, none);
+                eprintln!("selftest-taste: Enter → editare {:?}", s.editing.get().map(|(_, i)| i));
+                s.finish_edit(None);
+                s.entry_key(gdk::Key::Down, none);
+                s.entry_key(gdk::Key::Down, none);
+                eprintln!(
+                    "selftest-taste: ↓ de pe ultima → ales {:?}, focus în câmp={}",
+                    s.selected.get().map(|(_, i)| i),
+                    gtk::prelude::GtkWindowExt::focus(&s.window).is_some_and(|w| w.is_ancestor(&q))
+                );
+                s.window.close();
+            });
         }
         Ok("taste") => {
             let w = state.window.clone();

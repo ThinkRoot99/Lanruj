@@ -300,3 +300,11 @@ window.hartie-alba .pagina { background-image: none; }
 .pagina button.zi-sapt-titlu:hover { background-color: var(--bulina); }
 .pagina button.zi-sapt-titlu.azi { background-color: alpha(@accent_bg_color, 0.15); }
 .zi-pe-scurt { font-size: 13px; min-height: 19px; }
+
+/* Intrarea aleasă din tastatură */
+.intrare.selectat {
+  background-color: alpha(@accent_bg_color, 0.14);
+  outline: 2px solid alpha(@accent_bg_color, 0.6);
+  outline-offset: 1px;
+  border-radius: 4px;
+}

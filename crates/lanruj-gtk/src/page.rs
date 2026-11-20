@@ -646,6 +646,9 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
     }
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("intrare");
+    if mig.is_none() && app.selected.get() == Some((r, index)) {
+        row.add_css_class("selectat");
+    }
     if mig.is_none() {
         let movable = e.is_open_task() || matches!(e.kind, Kind::Event | Kind::Note);
         add_entry_menu(app, &row, r, index, movable && e.depth == 0);
