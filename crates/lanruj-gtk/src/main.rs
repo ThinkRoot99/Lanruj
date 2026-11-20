@@ -5,6 +5,7 @@ mod bara;
 mod cautare;
 mod migrare;
 mod page;
+mod poze;
 mod setari;
 mod tava;
 
@@ -785,8 +786,46 @@ impl App {
         });
     }
 
+    /// Alege poze și fișiere pentru o intrare anume (se pun sub ea).
+    pub fn pick_files_under(self: &Rc<Self>, r: PageRef, index: usize) {
+        let dialog = gtk::FileDialog::builder().title(tr(self.lang, "Poze și fișiere", "Pictures and files")).modal(true).build();
+        let weak = Rc::downgrade(self);
+        dialog.open_multiple(Some(&self.window), gtk::gio::Cancellable::NONE, move |res| {
+            let Some(s) = weak.upgrade() else { return };
+            let Ok(list) = res else { return };
+            let files: Vec<std::path::PathBuf> = (0..list.n_items())
+                .filter_map(|i| list.item(i).and_downcast::<gtk::gio::File>())
+                .filter_map(|f| f.path())
+                .collect();
+            s.attach_files_under(r, files, Some(index));
+        });
+    }
+
+    pub fn window_widget(&self) -> gtk::Widget {
+        self.window.clone().upcast()
+    }
+
+    pub fn set_attachment(self: &Rc<Self>, r: PageRef, index: usize, a: lanruj_core::attach::Attachment) {
+        if let Err(e) = self.journal.set_attachment(r, index, a, self.lang) {
+            self.error(&e);
+        }
+        self.refresh();
+    }
+
+    pub fn move_attachment(self: &Rc<Self>, r: PageRef, index: usize, under: Option<usize>) {
+        if let Err(e) = self.journal.move_attachment(r, index, under, self.lang) {
+            self.error(&e);
+        }
+        self.refresh();
+    }
+
     /// Copiază fișierele lângă pagină (pozele mari micșorate) și le adaugă la sfârșitul ei.
     pub fn attach_files(self: &Rc<Self>, r: PageRef, files: Vec<std::path::PathBuf>) {
+        self.attach_files_under(r, files, None);
+    }
+
+    /// Ca `attach_files`, dar sub intrarea `under`, dacă e dată.
+    pub fn attach_files_under(self: &Rc<Self>, r: PageRef, files: Vec<std::path::PathBuf>, under: Option<usize>) {
         use lanruj_core::attach::is_image;
         let mut added = 0;
         for src in files {
@@ -800,7 +839,7 @@ impl App {
                 } else {
                     std::fs::copy(&src, &abs)?;
                 }
-                self.journal.add_attachment_line(r, &rel, &name, self.lang)
+                self.journal.add_attachment_line(r, &rel, &name, self.lang, under)
             });
             match res {
                 Ok(()) => added += 1,
@@ -2232,8 +2271,25 @@ fn build_ui(app: &adw::Application) {
                 let files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
                 let mut files = files;
                 files.sort();
-                s.attach_files(PageRef::Day(s.shown.get()), files);
+                let r = PageRef::Day(s.shown.get());
+                // O intrare cu o poză sub ea, mare și cu nume; restul pozelor în galerie, la sfârșit.
+                let q = s.right.quick.clone().expect("câmp");
+                q.set_text("o 11:00 Delfinariu, spectacolul cu delfini");
+                q.emit_activate();
+                let (pics, others): (Vec<_>, Vec<_>) = files.into_iter().partition(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("delfin")));
+                s.attach_files_under(r, pics, Some(0));
+                s.attach_files(r, others);
+                s.set_attachment(r, 1, lanruj_core::attach::Attachment::Image { name: "Delfinariul din Constanța".into(), width: Some(380), path: format!("{}/delfinariu.jpg", s.shown.get().format("%Y-%m-%d")) });
                 eprintln!("selftest-poze: fișierul zilei:\n{}", std::fs::read_to_string(s.journal.day_path(s.shown.get())).unwrap_or_default());
+                if let Ok(p) = std::env::var("LANRUJ_PNG2") {
+                    let s2 = s.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
+                        let imgs: Vec<poze::Shown> = poze::page_images(&s2, r, &s2.journal.load_ref(r).unwrap().items).into_iter().map(|(_, x)| x).collect();
+                        poze::viewer(&s2, imgs, 1);
+                        let w = s2.window.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || save_png(&w, &p));
+                    });
+                }
                 if let Ok(p) = std::env::var("LANRUJ_PNG") {
                     let w = s.window.clone();
                     glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || save_png(&w, &p));

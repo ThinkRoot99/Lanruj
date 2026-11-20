@@ -115,7 +115,13 @@ impl Page {
             }
         }
         let mut any = false;
+        // Pozele paginii, pentru fereastra de mărire (← → trec de la una la alta).
+        let images = Rc::new(crate::poze::page_images(app, r, &day.items));
+        let mut skip_until = 0;
         for (index, item) in day.items.iter().enumerate() {
+            if index < skip_until {
+                continue;
+            }
             match item {
                 Item::Entry(e) => {
                     any = true;
@@ -130,9 +136,33 @@ impl Page {
                     }
                 }
                 Item::Other(s) if lanruj_core::attach::parse(s).is_some() => {
+                    use lanruj_core::attach::{Attachment, depth_of, parse};
                     any = true;
-                    let a = lanruj_core::attach::parse(s).expect("verificat");
-                    self.list.append(&attachment_widget(app, r, index, &a));
+                    let a = parse(s).expect("verificat");
+                    let depth = depth_of(s);
+                    let w: gtk::Widget = match &a {
+                        Attachment::Image { .. } => {
+                            // Pozele una după alta, la același nivel, se adună într-o galerie.
+                            let mut run = vec![(index, a.clone())];
+                            for (j, it) in day.items.iter().enumerate().skip(index + 1) {
+                                match it {
+                                    Item::Other(l) if depth_of(l) == depth && matches!(parse(l), Some(Attachment::Image { .. })) => {
+                                        run.push((j, parse(l).expect("verificat")));
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            if run.len() >= 2 {
+                                skip_until = run.last().map(|(j, _)| j + 1).unwrap_or(index + 1);
+                                crate::poze::gallery(app, r, &run, images.clone())
+                            } else {
+                                crate::poze::single(app, r, index, &a, images.clone())
+                            }
+                        }
+                        Attachment::File { .. } => crate::poze::file_row(app, r, index, &a),
+                    };
+                    w.set_margin_start(26 * depth as i32 + if depth > 0 { 28 } else { 0 });
+                    self.list.append(&w);
                 }
                 Item::Other(s) if !s.trim().is_empty() => {
                     any = true;
@@ -764,79 +794,6 @@ fn sign_of(kind: Kind) -> &'static str {
     }
 }
 
-/// O poză (mică, clic = mare în programul de poze) sau un fișier (iconiță și nume, clic = deschis).
-/// Clic dreapta: „Scoate din pagină” (fișierul rămâne în dosarul zilei).
-fn attachment_widget(app: &Rc<App>, r: PageRef, index: usize, a: &lanruj_core::attach::Attachment) -> gtk::Widget {
-    use lanruj_core::attach::Attachment;
-    let lang = app.lang;
-    let rel = match a {
-        Attachment::Image { path } | Attachment::File { path, .. } => path.clone(),
-    };
-    let abs = app.journal.attachment_abs(r, &rel);
-    let w: gtk::Widget = match a {
-        Attachment::Image { .. } => {
-            let pic = gtk::Picture::for_filename(&abs);
-            pic.set_can_shrink(true);
-            pic.set_content_fit(gtk::ContentFit::Contain);
-            pic.set_size_request(-1, 180);
-            pic.set_halign(gtk::Align::Start);
-            pic.add_css_class("poza");
-            if !abs.exists() {
-                let l = gtk::Label::builder().label(format!("{} {rel}", tr(lang, "Poza lipsește:", "Missing picture:"))).xalign(0.0).css_classes(["gol"]).build();
-                l.upcast()
-            } else {
-                pic.upcast()
-            }
-        }
-        Attachment::File { name, .. } => {
-            let b = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            b.add_css_class("fisier");
-            let (ctype, _) = gtk::gio::content_type_guess(Some(&abs), None);
-            let icon = gtk::gio::content_type_get_icon(&ctype);
-            let img = gtk::Image::from_gicon(&icon);
-            img.set_pixel_size(24);
-            b.append(&img);
-            b.append(&gtk::Label::builder().label(name.as_str()).xalign(0.0).wrap(true).css_classes(["text"]).build());
-            b.upcast()
-        }
-    };
-    w.set_tooltip_text(Some(tr(lang, "Clic: deschide; clic dreapta: scoate din pagină", "Click: open; right-click: remove from the page")));
-    w.set_cursor_from_name(Some("pointer"));
-    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    holder.set_margin_top(4);
-    holder.set_margin_bottom(4);
-    holder.append(&w);
-    let click = gtk::GestureClick::builder().button(1).build();
-    let path = abs.clone();
-    click.connect_released(move |g, _, _, _| {
-        if let Some(w) = g.widget() {
-            open_uri(&w, &format!("file://{}", path.display()));
-        }
-    });
-    w.add_controller(click);
-    let pop = gtk::Popover::new();
-    let rm = gtk::Button::builder().label(tr(lang, "Scoate din pagină", "Remove from the page")).css_classes(["flat", "error"]).build();
-    pop.set_child(Some(&rm));
-    pop.set_parent(&holder);
-    let p = pop.clone();
-    holder.connect_destroy(move |_| p.unparent());
-    let (weak, p) = (Rc::downgrade(app), pop.clone());
-    rm.connect_clicked(move |_| {
-        p.popdown();
-        if let Some(app) = weak.upgrade() {
-            glib::idle_add_local_once(move || app.remove_line(r, index));
-        }
-    });
-    let right = gtk::GestureClick::builder().button(3).build();
-    let p = pop.clone();
-    right.connect_pressed(move |g, _, _, _| {
-        p.popup();
-        g.set_state(gtk::EventSequenceState::Claimed);
-    });
-    holder.add_controller(right);
-    holder.upcast()
-}
-
 /// O temă din index pe o zi: banda „Concediu · ziua 1 din 8” și rândurile din pagina ei
 /// care încep cu data zilei. Clic = deschide pagina temei. `big` = în pagina zilei (mai mare).
 fn topic_box(app: &Rc<App>, t: &lanruj_core::index::TopicOnDay, big: bool) -> gtk::Box {
@@ -1450,6 +1407,14 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     let edit = gtk::Button::builder().label(tr(lang, "Editează", "Edit")).css_classes(["flat"]).build();
     let mv = gtk::Button::builder().label(tr(lang, "Mută…", "Move…")).css_classes(["flat", "muta"]).visible(movable).build();
     let col = gtk::Button::builder().label(tr(lang, "Culoare…", "Color…")).css_classes(["flat", "culoare"]).build();
+    let pics = gtk::Button::builder().label(tr(lang, "Adaugă poze sau fișiere…", "Add pictures or files…")).css_classes(["flat", "adauga-poze"]).build();
+    let (weak, p) = (Rc::downgrade(app), pop.clone());
+    pics.connect_clicked(move |_| {
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.pick_files_under(date, index));
+        }
+    });
     let del = gtk::Button::builder().label(tr(lang, "Șterge", "Delete")).css_classes(["flat", "error"]).build();
     // Legăturile din intrare: câte un rând „Deschide …”, cale sigură pe lângă clicul pe legătură.
     for u in &urls {
@@ -1469,7 +1434,7 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     if !urls.is_empty() {
         menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
-    for b in [&edit, &mv, &col, &del] {
+    for b in [&edit, &mv, &col, &pics, &del] {
         b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
         menu.append(b);
     }
@@ -1523,6 +1488,16 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
         }
     });
 
+    // Poze trase peste intrare: se leagă de ea.
+    let drop = gtk::DropTarget::new(gtk::gdk::FileList::static_type(), gtk::gdk::DragAction::COPY);
+    let weak = Rc::downgrade(app);
+    drop.connect_drop(move |_, value, _, _| {
+        let (Some(app), Ok(list)) = (weak.upgrade(), value.get::<gtk::gdk::FileList>()) else { return false };
+        let files: Vec<std::path::PathBuf> = list.files().iter().filter_map(|f| f.path()).collect();
+        glib::idle_add_local_once(move || app.attach_files_under(date, files, Some(index)));
+        true
+    });
+    row.add_controller(drop);
     let right = gtk::GestureClick::builder().button(3).build();
     let p = pop.clone();
     right.connect_pressed(move |g, _, x, y| {

@@ -441,3 +441,6 @@ picture.poza {
   border-radius: 6px;
   background-color: var(--bulina);
 }
+
+.poza-nume { font-size: 12px; opacity: 0.75; color: var(--cerneala); }
+.galerie picture.poza { border-radius: 8px; }

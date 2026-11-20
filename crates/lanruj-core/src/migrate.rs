@@ -10,7 +10,7 @@
 //! număra mutările (↻N) și ca o alegere să poată fi anulată.
 
 use crate::PageRef;
-use crate::day::{Day, Entry, Item, Kind, TaskState};
+use crate::day::{Day, Item, Kind, TaskState};
 use crate::journal::Journal;
 use crate::lang::Lang;
 use chrono::Datelike;
@@ -38,7 +38,9 @@ pub fn candidates(day: &Day) -> Vec<usize> {
 }
 
 /// Intrările de sub o intrare (notițele ei), până la următoarea de același nivel.
-fn children(day: &Day, index: usize) -> Vec<Entry> {
+/// Ce stă sub o intrare: notițele ei și pozele/fișierele legate de ea (cu nivelul refăcut față de ea).
+fn children(day: &Day, index: usize) -> Vec<Item> {
+    use crate::attach::{depth_of, parse};
     let Some(Item::Entry(parent)) = day.items.get(index) else { return Vec::new() };
     let mut out = Vec::new();
     for it in &day.items[index + 1..] {
@@ -46,12 +48,49 @@ fn children(day: &Day, index: usize) -> Vec<Entry> {
             Item::Entry(e) if e.depth > parent.depth => {
                 let mut c = e.clone();
                 c.depth -= parent.depth;
-                out.push(c);
+                out.push(Item::Entry(c));
+            }
+            Item::Other(l) if depth_of(l) > parent.depth && parse(l).is_some() => {
+                let a = parse(l).expect("verificat");
+                out.push(Item::Other(a.to_line(depth_of(l) - parent.depth)));
             }
             _ => break,
         }
     }
     out
+}
+
+/// Calea relativă `rel` (față de dosarul `from`) scrisă față de dosarul `to`.
+pub fn rebase(rel: &str, from: &std::path::Path, to: &std::path::Path) -> String {
+    use std::path::Component;
+    let abs = from.join(rel);
+    let a: Vec<Component> = abs.components().collect();
+    let b: Vec<Component> = to.components().collect();
+    let common = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let mut parts: Vec<String> = vec!["..".to_string(); b.len() - common];
+    parts.extend(a[common..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()));
+    parts.join("/")
+}
+
+/// Pozele și fișierele mutate pe altă pagină: căile lor se refac față de dosarul ei.
+fn rebase_items(items: Vec<Item>, from: &std::path::Path, to: &std::path::Path) -> Vec<Item> {
+    use crate::attach::{Attachment, depth_of, parse};
+    if from == to {
+        return items;
+    }
+    items
+        .into_iter()
+        .map(|it| match &it {
+            Item::Other(l) => match parse(l) {
+                Some(Attachment::Image { name, width, path }) => {
+                    Item::Other(Attachment::Image { name, width, path: rebase(&path, from, to) }.to_line(depth_of(l)))
+                }
+                Some(Attachment::File { name, path }) => Item::Other(Attachment::File { name, path: rebase(&path, from, to) }.to_line(depth_of(l))),
+                None => it,
+            },
+            Item::Entry(_) => it,
+        })
+        .collect()
 }
 
 /// Un semn nou, pentru alte module ale nucleului.
@@ -145,12 +184,12 @@ impl Journal {
         let mut copy = entry.clone();
         copy.depth = 0;
         copy.id = Some(id.clone());
-        let kids = children(&source, index);
+        let kids = rebase_items(children(&source, index), &self.page_dir(from), &self.page_dir(to));
         // Întâi pagina nouă: dacă se întrerupe ceva, sarcina apare de două ori, nu deloc.
         self.update_ref(to, lang, move |t| {
             t.push(copy);
             for k in kids {
-                t.push(k);
+                t.push_item(k);
             }
         })?;
         let state = if next_page(from) == to { TaskState::Migrated } else { TaskState::Scheduled };
@@ -197,7 +236,7 @@ impl Journal {
         if !matches!(entry.kind, Kind::Event | Kind::Note) {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "o sarcină încheiată nu se mută"));
         }
-        let kids = children(&source, index);
+        let kids = rebase_items(children(&source, index), &self.page_dir(from), &self.page_dir(to));
         let (fday, rest) = match from {
             PageRef::Future { .. } => split_day(&entry.text),
             _ => (None, entry.text.as_str()),
@@ -231,7 +270,7 @@ impl Journal {
                 self.update_ref(to, lang, move |d| {
                     d.push(copy);
                     for k in kids {
-                        d.push(k);
+                        d.push_item(k);
                     }
                 })?;
             }
@@ -535,6 +574,22 @@ mod tests {
         assert!(j.load_ref(s48).unwrap().entries().next().is_none());
         assert_eq!(month_of(s47), NOV);
         assert_eq!(next_page(PageRef::Week { year: 2026, week: 53 }), PageRef::Week { year: 2027, week: 1 });
+        fs::remove_dir_all(r).unwrap();
+    }
+
+    #[test]
+    fn pozele_merg_cu_intrarea() {
+        use std::path::Path;
+        assert_eq!(rebase("2026-11-21/x.jpg", Path::new("/j/2026/11"), Path::new("/j/pagini")), "../2026/11/2026-11-21/x.jpg");
+        assert_eq!(rebase("2026-11-21/x.jpg", Path::new("/j/2026/11"), Path::new("/j/2026/12")), "../11/2026-11-21/x.jpg");
+        let (j, r) = setup("poze");
+        // O poză sub „Becuri” (poziția 1), apoi Becuri mutată pe 1 decembrie: poza merge cu ea.
+        j.update_ref(z(20), Lang::Ro, |d| d.items.insert(3, crate::day::parse_item("  ![Bec|160](2026-11-20/bec.jpg)"))).unwrap();
+        assert_eq!(j.load(d(20)).unwrap().children_count(1), 2);
+        let dec1 = PageRef::Day(NaiveDate::from_ymd_opt(2026, 12, 1).unwrap());
+        j.migrate(z(20), 1, dec1, Lang::Ro).unwrap();
+        let t = fs::read_to_string(r.join("2026/12/2026-12-01.md")).unwrap();
+        assert!(t.contains("  - LED, lumină caldă\n  ![Bec|160](../11/2026-11-20/bec.jpg)\n"), "{t}");
         fs::remove_dir_all(r).unwrap();
     }
 

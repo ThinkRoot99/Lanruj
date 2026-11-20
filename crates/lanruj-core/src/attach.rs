@@ -18,8 +18,36 @@ use std::path::{Path, PathBuf};
 /// Un rând de atașament din pagină.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Attachment {
-    Image { path: String },
+    /// `![nume|lățime](cale)`: numele (poate lipsi) și lățimea arătată în pagină (ca în Obsidian).
+    Image { name: String, width: Option<u32>, path: String },
     File { name: String, path: String },
+}
+
+/// Mărimile pozelor în pagină: (nume român, nume englez, lățimea).
+pub const IMAGE_SIZES: [(&str, &str, u32); 3] = [("Mică", "Small", 120), ("Medie", "Medium", 220), ("Mare", "Large", 380)];
+
+impl Attachment {
+    pub fn path(&self) -> &str {
+        match self {
+            Attachment::Image { path, .. } | Attachment::File { path, .. } => path,
+        }
+    }
+
+    /// Rândul Markdown, cu indentarea pentru `depth` (0 = în pagină, 1 = sub o intrare…).
+    pub fn to_line(&self, depth: usize) -> String {
+        let pad = "  ".repeat(depth);
+        match self {
+            Attachment::Image { name, width: Some(w), path } => format!("{pad}![{name}|{w}]({path})"),
+            Attachment::Image { name, width: None, path } => format!("{pad}![{name}]({path})"),
+            Attachment::File { name, path } => format!("{pad}[{name}]({path})"),
+        }
+    }
+}
+
+/// Câte niveluri de indentare are un rând (2 spații = un nivel).
+pub fn depth_of(line: &str) -> usize {
+    let spaces: usize = line.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { 2 } else { 1 }).sum();
+    spaces / 2
 }
 
 pub const IMAGE_EXT: [&str; 7] = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "heic"];
@@ -43,7 +71,16 @@ pub fn parse(line: &str) -> Option<Attachment> {
     if path.is_empty() || path.contains("://") || path.starts_with("mailto:") || path.contains(char::is_whitespace) {
         return None;
     }
-    Some(if image { Attachment::Image { path: path.to_string() } } else { Attachment::File { name: name.to_string(), path: path.to_string() } })
+    Some(if image {
+        // „Nume|320”: numele și lățimea (doar dacă după ultima | e un număr).
+        let (n, w) = match name.rsplit_once('|') {
+            Some((n, w)) if w.trim().parse::<u32>().is_ok() => (n.to_string(), w.trim().parse().ok()),
+            _ => (name.to_string(), None),
+        };
+        Attachment::Image { name: n, width: w, path: path.to_string() }
+    } else {
+        Attachment::File { name: name.to_string(), path: path.to_string() }
+    })
 }
 
 impl Journal {
@@ -95,14 +132,38 @@ impl Journal {
         }
     }
 
-    /// Adaugă la sfârșitul paginii rândul unui atașament deja copiat.
-    pub fn add_attachment_line(&self, r: PageRef, rel: &str, name: &str, lang: Lang) -> io::Result<()> {
-        let line = if is_image(name) { format!("![]({rel})") } else { format!("[{name}]({rel})") };
+    /// Adaugă rândul unui atașament deja copiat: la sfârșitul paginii sau, cu `under`,
+    /// sub intrarea de pe poziția aceea (după notițele și pozele ei), cu un nivel mai la dreapta.
+    pub fn add_attachment_line(&self, r: PageRef, rel: &str, name: &str, lang: Lang, under: Option<usize>) -> io::Result<()> {
+        let a = if is_image(name) {
+            Attachment::Image { name: String::new(), width: None, path: rel.to_string() }
+        } else {
+            Attachment::File { name: name.to_string(), path: rel.to_string() }
+        };
+        self.update_ref(r, lang, |d| insert_attachment(d, a, under)).map(|_| ())
+    }
+
+    /// Schimbă un rând de atașament (nume, mărime), păstrându-i locul și indentarea.
+    pub fn set_attachment(&self, r: PageRef, index: usize, a: Attachment, lang: Lang) -> io::Result<()> {
         self.update_ref(r, lang, |d| {
-            while matches!(d.items.last(), Some(Item::Other(s)) if s.trim().is_empty()) {
-                d.items.pop();
+            if let Some(Item::Other(line)) = d.items.get(index)
+                && parse(line).is_some()
+            {
+                let depth = depth_of(line);
+                d.items[index] = Item::Other(a.to_line(depth));
             }
-            d.items.push(Item::Other(line));
+        })
+        .map(|_| ())
+    }
+
+    /// Mută rândul unui atașament sub altă intrare (`None` = la sfârșitul paginii, fără intrare).
+    pub fn move_attachment(&self, r: PageRef, index: usize, under: Option<usize>, lang: Lang) -> io::Result<()> {
+        self.update_ref(r, lang, |d| {
+            let Some(Item::Other(line)) = d.items.get(index) else { return };
+            let Some(a) = parse(line) else { return };
+            d.items.remove(index);
+            let under = under.map(|u| if u > index { u - 1 } else { u });
+            insert_attachment(d, a, under);
         })
         .map(|_| ())
     }
@@ -110,6 +171,35 @@ impl Journal {
     /// Calea completă a unui atașament din pagină.
     pub fn attachment_abs(&self, r: PageRef, rel: &str) -> PathBuf {
         self.page_dir(r).join(rel)
+    }
+}
+
+/// Pune atașamentul la sfârșitul paginii sau sub intrarea `under` (după tot ce are dedesubt).
+fn insert_attachment(d: &mut crate::day::Day, a: Attachment, under: Option<usize>) {
+    match under.and_then(|u| match d.items.get(u) {
+        Some(Item::Entry(e)) => Some((u, e.depth)),
+        _ => None,
+    }) {
+        Some((u, depth)) => {
+            let mut at = u + 1;
+            while at < d.items.len() {
+                let deeper = match &d.items[at] {
+                    Item::Entry(e) => e.depth > depth,
+                    Item::Other(l) => parse(l).is_some() && depth_of(l) > depth,
+                };
+                if !deeper {
+                    break;
+                }
+                at += 1;
+            }
+            d.items.insert(at, Item::Other(a.to_line(depth + 1)));
+        }
+        None => {
+            while matches!(d.items.last(), Some(Item::Other(s)) if s.trim().is_empty()) {
+                d.items.pop();
+            }
+            d.items.push(Item::Other(a.to_line(0)));
+        }
     }
 }
 
@@ -121,7 +211,12 @@ mod tests {
 
     #[test]
     fn randuri() {
-        assert_eq!(parse("![](2026-11-21/poza.jpg)"), Some(Attachment::Image { path: "2026-11-21/poza.jpg".into() }));
+        assert_eq!(parse("![](2026-11-21/poza.jpg)"), Some(Attachment::Image { name: String::new(), width: None, path: "2026-11-21/poza.jpg".into() }));
+        let a = parse("    ![Delfinariu|320](2026-11-21/d.jpg)").unwrap();
+        assert_eq!(a, Attachment::Image { name: "Delfinariu".into(), width: Some(320), path: "2026-11-21/d.jpg".into() });
+        assert_eq!(a.to_line(1), "  ![Delfinariu|320](2026-11-21/d.jpg)");
+        assert_eq!(depth_of("    ![x](y)"), 2);
+        assert_eq!(parse("![a|b](p.jpg)"), Some(Attachment::Image { name: "a|b".into(), width: None, path: "p.jpg".into() }));
         assert_eq!(
             parse("[bilet tren.pdf](2026-11-21/bilet-tren.pdf)"),
             Some(Attachment::File { name: "bilet tren.pdf".into(), path: "2026-11-21/bilet-tren.pdf".into() })
@@ -143,10 +238,27 @@ mod tests {
         fs::write(&abs, b"x").unwrap();
         let (_, rel2) = j.attach_target(r, "poza mare.jpg").unwrap();
         assert_eq!(rel2, "2026-11-21/poza-mare-2.jpg", "numele luat primește -2");
-        j.add_attachment_line(r, &rel, "poza mare.jpg", Lang::Ro).unwrap();
-        j.add_attachment_line(r, "2026-11-21/bilet.pdf", "bilet.pdf", Lang::Ro).unwrap();
+        j.add_attachment_line(r, &rel, "poza mare.jpg", Lang::Ro, None).unwrap();
+        j.add_attachment_line(r, "2026-11-21/bilet.pdf", "bilet.pdf", Lang::Ro, None).unwrap();
         let text = fs::read_to_string(j.day_path(d)).unwrap();
         assert_eq!(text, "# Sâmbătă, 21 noiembrie 2026\n\n![](2026-11-21/poza-mare.jpg)\n[bilet.pdf](2026-11-21/bilet.pdf)\n");
+        // Sub o intrare: după notițele ei, cu un nivel mai la dreapta; numele și mărimea; mutarea.
+        j.update_ref(r, Lang::Ro, |p| {
+            p.items.insert(0, crate::day::parse_item("- o 10:00 Delfinariu"));
+            p.items.insert(1, crate::day::parse_item("  - spectacolul de la 11"));
+        })
+        .unwrap();
+        j.add_attachment_line(r, "2026-11-21/d1.jpg", "d1.jpg", Lang::Ro, Some(0)).unwrap();
+        j.add_attachment_line(r, "2026-11-21/d2.jpg", "d2.jpg", Lang::Ro, Some(0)).unwrap();
+        let day = j.load(d).unwrap();
+        assert_eq!(day.items[2], Item::Other("  ![](2026-11-21/d1.jpg)".into()));
+        assert_eq!(day.items[3], Item::Other("  ![](2026-11-21/d2.jpg)".into()));
+        j.set_attachment(r, 2, Attachment::Image { name: "Bazinul".into(), width: Some(160), path: "2026-11-21/d1.jpg".into() }, Lang::Ro).unwrap();
+        assert_eq!(j.load(d).unwrap().items[2], Item::Other("  ![Bazinul|160](2026-11-21/d1.jpg)".into()));
+        // Poza de la sfârșit (poza-mare, poziția 4) mutată sub Delfinariu.
+        j.move_attachment(r, 4, Some(0), Lang::Ro).unwrap();
+        let day = j.load(d).unwrap();
+        assert_eq!(day.items[4], Item::Other("  ![](2026-11-21/poza-mare.jpg)".into()));
         assert_eq!(j.attachment_abs(r, &rel), abs);
         let t = PageRef::Topic { date: d, n: 1 };
         assert_eq!(j.attach_target(t, "a.png").unwrap().1, "2026-11-21/a.png");

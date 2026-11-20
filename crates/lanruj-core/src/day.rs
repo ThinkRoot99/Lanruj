@@ -371,11 +371,15 @@ impl Day {
     }
 
     /// Câte intrări de sub intrarea `index` (notițele ei) îi aparțin.
+    /// Câte rânduri de sub intrarea `index` îi aparțin: notițele ei și pozele/fișierele legate de ea.
     pub fn children_count(&self, index: usize) -> usize {
         let Some(Item::Entry(parent)) = self.items.get(index) else { return 0 };
         self.items[index + 1..]
             .iter()
-            .take_while(|it| matches!(it, Item::Entry(e) if e.depth > parent.depth))
+            .take_while(|it| match it {
+                Item::Entry(e) => e.depth > parent.depth,
+                Item::Other(l) => crate::attach::parse(l).is_some() && crate::attach::depth_of(l) > parent.depth,
+            })
             .count()
     }
 
@@ -401,6 +405,11 @@ impl Day {
         };
         *old = Entry { kind, depth: old.depth, id: old.id.clone(), ..new };
         true
+    }
+
+    pub fn push_item(&mut self, item: Item) {
+        self.trim_trailing_blank();
+        self.items.push(item);
     }
 
     pub fn push(&mut self, entry: Entry) {
