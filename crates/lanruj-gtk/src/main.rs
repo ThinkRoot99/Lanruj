@@ -1376,7 +1376,7 @@ impl App {
             row
         }
 
-        let paper = adw::PreferencesGroup::builder().title(tr(lang, "Hârtia", "Paper")).build();
+        let paper = adw::PreferencesGroup::builder().title(tr(lang, "Hârtia și scrisul", "Paper and writing")).build();
         paper.add(&combo(self, tr(lang, "Model", "Pattern"), &setari::PAPERS, s.paper, |st, v| st.paper = v, |_| {}));
         paper.add(&combo(self, tr(lang, "Culoare", "Color"), &setari::COLORS, s.color, |st, v| st.color = v, |_| {}));
         paper.add(&combo(
@@ -1451,7 +1451,7 @@ impl App {
 
         // Pagina și textul.
         let pages = adw::PreferencesGroup::builder().title(tr(lang, "Caietul", "Notebook")).build();
-        pages.add(&combo(self, tr(lang, "Mărimea textului", "Text size"), &setari::TEXT_SIZES, s.text, |st, v| st.text = v, |_| {}));
+        paper.add(&combo(self, tr(lang, "Mărimea textului", "Text size"), &setari::TEXT_SIZES, s.text, |st, v| st.text = v, |_| {}));
         // Fontul paginilor: al sistemului sau unul dintre cele care vin cu aplicația.
         let mut names: Vec<&str> = vec![tr(lang, "Al sistemului", "System font")];
         names.extend(fonturi::FONTS.iter().map(|f| if lang == Lang::Ro { f.ro } else { f.en }));
@@ -1471,7 +1471,7 @@ impl App {
             app.settings.borrow_mut().font = key;
             app.apply_settings();
         });
-        pages.add(&font_row);
+        paper.add(&font_row);
         pages.add(&combo(self, tr(lang, "La pornire arată", "Show at startup"), &setari::STARTS, s.start, |st, v| st.start = v, |_| {}));
         let one = adw::SwitchRow::builder()
             .title(tr(lang, "O singură pagină", "A single page"))
