@@ -8,6 +8,7 @@ mod incuiere;
 mod vechi;
 mod copii;
 mod export;
+mod fonturi;
 mod ghid;
 mod migrare;
 mod monitorizare;
@@ -1303,7 +1304,7 @@ impl App {
         for c in s.css_classes() {
             self.window.add_css_class(&c);
         }
-        set_text_size(s.text);
+        set_text_size(s.text, &s.font);
         self.layout();
         adw::StyleManager::default().set_color_scheme(match s.scheme {
             setari::Scheme::System => adw::ColorScheme::Default,
@@ -1451,6 +1452,26 @@ impl App {
         // Pagina și textul.
         let pages = adw::PreferencesGroup::builder().title(tr(lang, "Caietul", "Notebook")).build();
         pages.add(&combo(self, tr(lang, "Mărimea textului", "Text size"), &setari::TEXT_SIZES, s.text, |st, v| st.text = v, |_| {}));
+        // Fontul paginilor: al sistemului sau unul dintre cele care vin cu aplicația.
+        let mut names: Vec<&str> = vec![tr(lang, "Al sistemului", "System font")];
+        names.extend(fonturi::FONTS.iter().map(|f| if lang == Lang::Ro { f.ro } else { f.en }));
+        let font_row = adw::ComboRow::builder()
+            .title(tr(lang, "Fontul scrisului", "Writing font"))
+            .subtitle(tr(lang, "Doar în paginile caietului; meniurile rămân cu fontul sistemului", "Only in the notebook pages; menus keep the system font"))
+            .model(&gtk::StringList::new(&names))
+            .build();
+        font_row.set_selected(fonturi::FONTS.iter().position(|f| f.key == s.font).map(|i| i as u32 + 1).unwrap_or(0));
+        let weak = Rc::downgrade(self);
+        font_row.connect_selected_notify(move |r| {
+            let Some(app) = weak.upgrade() else { return };
+            let key = match r.selected() {
+                0 => String::new(),
+                i => fonturi::FONTS.get(i as usize - 1).map(|f| f.key.to_string()).unwrap_or_default(),
+            };
+            app.settings.borrow_mut().font = key;
+            app.apply_settings();
+        });
+        pages.add(&font_row);
         pages.add(&combo(self, tr(lang, "La pornire arată", "Show at startup"), &setari::STARTS, s.start, |st, v| st.start = v, |_| {}));
         let one = adw::SwitchRow::builder()
             .title(tr(lang, "O singură pagină", "A single page"))
@@ -1807,17 +1828,30 @@ thread_local! {
 
 /// Regulile din style.css cu mărimea textului înmulțită cu `pct`/100,
 /// plus textul obișnuit al ferestrei.
-fn text_css(pct: u32) -> String {
-    if pct == 100 {
-        return String::new();
+/// Regulile din style.css cu mărimea textului înmulțită cu `pct`/100 și, în pagini, cu `page`
+/// (fonturile de mână se măresc puțin); plus fontul ales pentru paginile caietului.
+fn text_css(pct: u32, font: Option<&fonturi::Font>) -> String {
+    let page = font.map(|f| f.scale).unwrap_or(1.0);
+    let mut out = String::new();
+    if let Some(f) = font {
+        out.push_str(&format!(
+            ".pagina, .pagina label, .pagina entry, .pagina text, .pagina textview, .pagina button, .pagina calendar {{ font-family: \"{}\"; }}\n",
+            f.family
+        ));
     }
-    let f = pct as f64 / 100.0;
+    if pct == 100 && page == 1.0 {
+        return out;
+    }
+    let f = pct as f64 / 100.0 * page;
     let mut css = include_str!("style.css").to_string();
     while let Some(a) = css.find("/*") {
         let Some(b) = css[a..].find("*/") else { break };
         css.replace_range(a..a + b + 2, "");
     }
-    let mut out = format!("window {{ font-size: {pct}%; }}\n");
+    out.push_str(&format!("window {{ font-size: {pct}%; }}\n"));
+    if page != 1.0 {
+        out.push_str(&format!(".pagina {{ font-size: {:.0}%; }}\n", page * 100.0));
+    }
     for block in css.split('}') {
         let Some((sel, body)) = block.split_once('{') else { continue };
         for decl in body.split(';') {
@@ -1832,9 +1866,10 @@ fn text_css(pct: u32) -> String {
     out
 }
 
-pub fn set_text_size(pct: u32) {
-    TEXT_CSS.with(|p| p.load_from_string(&text_css(pct)));
+pub fn set_text_size(pct: u32, font: &str) {
+    TEXT_CSS.with(|p| p.load_from_string(&text_css(pct, fonturi::by_key(font))));
 }
+
 
 /// Pentru probe: după o clipă (LANRUJ_JOS=1: derulat până jos), captura ferestrei în LANRUJ_PNG, apoi ieșire.
 #[cfg(debug_assertions)]
@@ -1982,7 +2017,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     for c in settings.css_classes() {
         window.add_css_class(&c);
     }
-    set_text_size(settings.text);
+    set_text_size(settings.text, &settings.font);
     let set_night = {
         let w = window.clone();
         move |s: &adw::StyleManager| {
@@ -3703,7 +3738,10 @@ fn main() -> glib::ExitCode {
     };
     vechi::migrate();
     let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
-    app.connect_startup(|_| load_css());
+    app.connect_startup(|_| {
+        fonturi::register();
+        load_css();
+    });
     app.connect_activate(build_ui);
     app.run()
 }

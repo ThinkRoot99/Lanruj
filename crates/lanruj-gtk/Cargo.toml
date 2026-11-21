@@ -14,3 +14,4 @@ ksni = { version = "0.3.7", default-features = false, features = ["blocking", "a
 oo7 = { version = "0.7.2", default-features = false, features = ["async-std", "native_crypto"] }
 pangocairo = "0.22"
 zip = { version = "9.8.1", default-features = false, features = ["aes-crypto", "deflate"] }
+pango = { version = "0.22", features = ["v1_56"] }

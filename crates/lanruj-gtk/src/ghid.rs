@@ -330,7 +330,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          • <b>Hârtia</b>: modelul, culoarea și noaptea.\n\
          • <b>Migrarea</b>: singură sau doar cu butonul, ora de seară și după câte mutări apare „mai merită?” (3 la început).\n\
          • <b>Fereastra</b>: systray-ul (la închidere, Lanruj rămâne în bara de sus; Ctrl+Q îl oprește).\n\
-         • <b>Caietul</b>: mărimea textului (mic, normal, mare, foarte mare), pagina arătată la pornire \
+         • <b>Caietul</b>: mărimea textului (mic, normal, mare, foarte mare), <b>fontul scrisului</b> (al sistemului sau unul dintre cele șapte care vin cu aplicația: Inter, Noto Sans, Caveat și Patrick Hand de mână, Lora de carte, Courier Prime de mașină de scris, Nunito rotunjit), pagina arătată la pornire \
          și <b>o singură pagină</b> (doar ziua arătată, fără ziua dinainte alături).\n\
          • <b>Copii de siguranță</b>: o dată pe zi sau pe săptămână (la început: pe săptămână), Lanruj pune tot jurnalul într-o arhivă zip \
          în dosarul <tt>Documente/Lanruj - copii</tt> sau în altul ales de tine, și păstrează ultimele 10. <b>Fă o copie acum</b> o face pe loc.\n\
@@ -340,7 +340,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          • <b>Paper</b>: pattern, color and dark mode.\n\
          • <b>Migration</b>: automatic or only with the button, the evening hour, and after how many moves \"still worth it?\" appears (3 at first).\n\
          • <b>Window</b>: the system tray (when closed, Lanruj stays in the top bar; Ctrl+Q quits).\n\
-         • <b>Notebook</b>: text size (small, normal, large, larger), the page shown at startup \
+         • <b>Notebook</b>: text size (small, normal, large, larger), the <b>writing font</b> (the system one or one of the seven that come with the app: Inter, Noto Sans, Caveat and Patrick Hand for handwriting, Lora for books, Courier Prime for a typewriter look, Nunito rounded), the page shown at startup \
          and <b>a single page</b> (only the shown day, without the day before next to it).\n\
          • <b>Backups</b>: once a day or once a week (weekly at first), Lanruj puts the whole journal in a zip archive \
          in the folder <tt>Documents/Lanruj - copii</tt> or another one you choose, and keeps the last 10. <b>Back up now</b> makes one right away.\n\

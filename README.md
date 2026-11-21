@@ -42,7 +42,12 @@ LANRUJ_DIR=/path/to/a/test/folder cargo run
 - `crates/lanruj-core`: the journal itself (Markdown format, migration, index, search, encryption), with tests.
 - `crates/lanruj-gtk`: the GTK application.
 - `data/icons`: the app icon.
+- `data/fonts`: the bundled fonts and their licences.
 - `site`: the website (English and Romanian).
+
+## Fonts
+
+Lanruj comes with seven fonts for the notebook pages, chosen in Preferences: Inter, Noto Sans, Caveat and Patrick Hand (handwriting), Lora (book), Courier Prime (typewriter) and Nunito (rounded). They are built into the app, so they work without being installed on the system. All of them are released under the SIL Open Font License 1.1; their licences are in `data/fonts`.
 
 ## Licence
 

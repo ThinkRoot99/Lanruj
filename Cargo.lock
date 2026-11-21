@@ -1437,6 +1437,7 @@ dependencies = [
  "lanruj-core",
  "libadwaita",
  "oo7",
+ "pango",
  "pangocairo",
  "zip",
 ]

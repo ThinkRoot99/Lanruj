@@ -46,6 +46,8 @@ pub struct Settings {
     pub sidebar_compact: bool,
     /// Mărimea textului, în procente (90, 100, 115, 130).
     pub text: u32,
+    /// Fontul paginilor: „” = al sistemului, altfel cheia unui font din `fonturi`.
+    pub font: String,
     /// Pagina arătată la pornire.
     pub start: Start,
     /// O singură pagină (ca pe o fereastră îngustă) în loc de două alăturate.
@@ -118,7 +120,7 @@ pub const BACKUPS: [(Backup, &str, &str, &str); 3] = [
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false, lock: Lock::None, lock_on_screen: false, remember: false }
+        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, font: String::new(), start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false, lock: Lock::None, lock_on_screen: false, remember: false }
     }
 }
 
@@ -215,6 +217,9 @@ impl Settings {
         if let Some(v) = get("text") {
             s.text = find(&TEXT_SIZES, &v, s.text);
         }
+        if let Some(v) = get("font") {
+            s.font = v;
+        }
         if let Some(v) = get("pornire") {
             s.start = find(&STARTS, &v, s.start);
         }
@@ -267,6 +272,7 @@ impl Settings {
         kf.set_boolean("lanruj", "systray", self.tray);
         kf.set_boolean("lanruj", "bara-stransa", self.sidebar_compact);
         kf.set_string("lanruj", "text", key_of(&TEXT_SIZES, self.text));
+        kf.set_string("lanruj", "font", &self.font);
         kf.set_string("lanruj", "pornire", key_of(&STARTS, self.start));
         kf.set_boolean("lanruj", "o-pagina", self.one_page);
         kf.set_integer("lanruj", "mai-merita", self.worth as i32);
