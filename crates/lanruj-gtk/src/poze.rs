@@ -33,8 +33,40 @@ pub fn page_images(app: &App, r: PageRef, items: &[Item]) -> Vec<(usize, Shown)>
         .collect()
 }
 
+/// Poza de pe disc, decriptată dacă jurnalul e criptat, întoarsă după EXIF.
+pub fn pixbuf(app: &App, abs: &Path) -> Option<gtk::gdk_pixbuf::Pixbuf> {
+    let bytes = app.journal.read_bytes(abs).ok()?;
+    let stream = gtk::gio::MemoryInputStream::from_bytes(&gtk::glib::Bytes::from_owned(bytes));
+    let pb = gtk::gdk_pixbuf::Pixbuf::from_stream(&stream, gtk::gio::Cancellable::NONE).ok()?;
+    Some(pb.apply_embedded_orientation().unwrap_or(pb))
+}
+
+/// Un fișier atașat, gata de deschis cu alt program: dacă e criptat, o copie
+/// decriptată în dosarul temporar al sesiunii (șters la repornirea calculatorului).
+pub fn openable(app: &App, abs: &Path) -> PathBuf {
+    let Ok(raw) = std::fs::read(abs) else { return abs.to_path_buf() };
+    if !lanruj_core::crypt::is_encrypted(&raw) {
+        return abs.to_path_buf();
+    }
+    let Ok(plain) = app.journal.read_bytes(abs) else { return abs.to_path_buf() };
+    let dir = gtk::glib::user_runtime_dir().join("lanruj");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return abs.to_path_buf();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
+    let out = dir.join(abs.file_name().unwrap_or_default());
+    match std::fs::write(&out, plain) {
+        Ok(()) => out,
+        Err(_) => abs.to_path_buf(),
+    }
+}
+
 /// Poza micșorată exact la lățimea `w` (înălțimea după proporții), făcută o singură dată.
-fn sized(abs: &Path, w: i32) -> Option<gdk::Texture> {
+fn sized(app: &App, abs: &Path, w: i32) -> Option<gdk::Texture> {
     thread_local! {
         static CACHE: std::cell::RefCell<std::collections::HashMap<(PathBuf, i32), gdk::Texture>> = Default::default();
     }
@@ -42,8 +74,7 @@ fn sized(abs: &Path, w: i32) -> Option<gdk::Texture> {
     if let Some(t) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
         return Some(t);
     }
-    let pb = gtk::gdk_pixbuf::Pixbuf::from_file(abs).ok()?;
-    let pb = pb.apply_embedded_orientation().unwrap_or(pb);
+    let pb = pixbuf(app, abs)?;
     let h = (w as f64 * pb.height() as f64 / pb.width().max(1) as f64).round().max(1.0) as i32;
     let small = pb.scale_simple(w, h, gtk::gdk_pixbuf::InterpType::Bilinear)?;
     #[allow(deprecated)]
@@ -53,9 +84,8 @@ fn sized(abs: &Path, w: i32) -> Option<gdk::Texture> {
 }
 
 /// Miniatura pătrată (mijlocul pozei), de `size` pixeli.
-fn square(abs: &Path, size: i32) -> Option<gdk::Texture> {
-    let pb = gtk::gdk_pixbuf::Pixbuf::from_file(abs).ok()?;
-    let pb = pb.apply_embedded_orientation().unwrap_or(pb);
+fn square(app: &App, abs: &Path, size: i32) -> Option<gdk::Texture> {
+    let pb = pixbuf(app, abs)?;
     let (w, h) = (pb.width(), pb.height());
     let side = w.min(h);
     let sub = pb.new_subpixbuf((w - side) / 2, (h - side) / 2, side, side);
@@ -100,7 +130,7 @@ pub fn single(app: &Rc<App>, r: PageRef, index: usize, a: &Attachment, images: R
     holder.set_margin_bottom(4);
     // Cel mult „Mare”, ca o lățime scrisă în alt program să nu iasă din pagină.
     let w = width.unwrap_or(IMAGE_SIZES[1].2).min(IMAGE_SIZES[2].2) as i32;
-    match sized(&abs, w) {
+    match sized(app, &abs, w) {
         Some(tex) => {
             // Poza are exact lățimea aleasă (și înălțimea după proporții): nu ocupă mai mult loc decât se vede.
             let pic = gtk::Picture::for_paintable(&tex);
@@ -149,7 +179,7 @@ pub fn gallery(app: &Rc<App>, r: PageRef, run: &[(usize, Attachment)], images: R
         holder.set_halign(gtk::Align::Start);
         holder.set_valign(gtk::Align::Start);
         holder.set_size_request(TILE, -1);
-        match square(&abs, TILE * 2) {
+        match square(app, &abs, TILE * 2) {
             Some(tex) => {
                 // Pătrățele egale: mijlocul pozei, tăiat pătrat.
                 let pic = gtk::Image::from_paintable(Some(&tex));
@@ -196,9 +226,10 @@ pub fn file_row(app: &Rc<App>, r: PageRef, index: usize, a: &Attachment) -> gtk:
     b.set_tooltip_text(Some(tr(lang, "Clic: deschide; clic dreapta: leagă sau scoate", "Click: open; right-click: link or remove")));
     b.set_cursor_from_name(Some("pointer"));
     let click = gtk::GestureClick::builder().button(1).build();
+    let weak = Rc::downgrade(app);
     click.connect_released(move |g, _, _, _| {
-        if let Some(w) = g.widget() {
-            open_uri(&w, &format!("file://{}", abs.display()));
+        if let (Some(w), Some(app)) = (g.widget(), weak.upgrade()) {
+            open_uri(&w, &format!("file://{}", openable(&app, &abs).display()));
         }
     });
     b.add_controller(click);
@@ -356,9 +387,10 @@ pub fn viewer(app: &Rc<App>, images: Vec<Shown>, start: usize) {
     let state = Rc::new(St { pos: std::cell::Cell::new(start.min(images.len() - 1)), zoom: std::cell::Cell::new(0.0), full: Default::default(), imgs: images });
     let load = {
         let state = state.clone();
+        let app_v = app.clone();
         move || {
             let s = &state.imgs[state.pos.get()];
-            let pb = gtk::gdk_pixbuf::Pixbuf::from_file(&s.abs).ok().map(|p| p.apply_embedded_orientation().unwrap_or(p));
+            let pb = pixbuf(&app_v, &s.abs);
             *state.full.borrow_mut() = pb;
         }
     };

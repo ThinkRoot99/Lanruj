@@ -7,7 +7,7 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 18] = [
+const CAPITOLE: [(&str, &str, &str, &str); 19] = [
     (
         "Cum începi",
         "O zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
@@ -315,6 +315,22 @@ const CAPITOLE: [(&str, &str, &str, &str); 18] = [
          • <b>Backups</b>: once a day or once a week (weekly at first), Lanruj puts the whole journal in a zip archive \
          in the folder <tt>Documents/Lanruj - copii</tt> or another one you choose, and keeps the last 10. <b>Back up now</b> makes one right away.\n\
          • <b>Language</b>: the window reopens in the chosen language.",
+    ),
+    (
+        "Criptarea",
+        "În <b>☰ → Setări → Criptarea → Criptează…</b> alegi o parolă (cel puțin 8 caractere). Lanruj îți arată apoi \
+         <b>cheia de recuperare</b> (6 grupuri de câte 5 caractere): tipărește-o sau scrie-o pe hârtie, apoi scrie ultimele ei 4 caractere ca să mergi mai departe. \
+         Întâi se face o copie a jurnalului, apoi fiecare pagină și fiecare poză se criptează separat (numele fișierelor rămân aceleași).\n\n\
+         De atunci, la fiecare pornire Lanruj cere parola. Dacă ai uitat-o: <b>Am uitat parola</b>, scrii cheia de recuperare și alegi o parolă nouă.\n\n\
+         De știut: fișierele nu se mai pot citi cu alte programe (Obsidian, Markor); copiile de siguranță și arhiva zip rămân criptate; \
+         <b>fără parolă și fără cheia de recuperare jurnalul e pierdut</b>. Tot din Setări schimbi parola sau oprești criptarea (fișierele redevin text).",
+        "Encryption",
+        "In <b>☰ → Preferences → Encryption → Encrypt…</b> you choose a password (at least 8 characters). Lanruj then shows the \
+         <b>recovery key</b> (6 groups of 5 characters): print it or write it on paper, then type its last 4 characters to continue. \
+         A backup is made first, then every page and every picture is encrypted separately (file names stay the same).\n\n\
+         From then on Lanruj asks for the password at every start. If you forgot it: <b>I forgot the password</b>, type the recovery key and choose a new password.\n\n\
+         Good to know: other programs (Obsidian, Markor) can't read the files any more; backups and the zip archive stay encrypted; \
+         <b>without the password and the recovery key the journal is lost</b>. Also in Preferences you change the password or turn encryption off (the files become text again).",
     ),
     (
         "Sfaturi utile",

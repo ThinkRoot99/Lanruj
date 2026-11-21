@@ -17,6 +17,7 @@ use crate::journal::Journal;
 use crate::lang::Lang;
 use chrono::{Datelike, NaiveDate};
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::fs;
 use std::io;
 
@@ -262,18 +263,17 @@ impl Journal {
     pub fn create_topic(&self, title: &str, date: NaiveDate) -> io::Result<u8> {
         let n = (1..=99u8).find(|n| !self.topic_path(date, *n).exists()).unwrap_or(99);
         let path = self.topic_path(date, n);
-        fs::create_dir_all(path.parent().expect("are dosar"))?;
-        fs::write(&path, format!("# {}\n", title.trim()))?;
+        self.write_text(&path, &format!("# {}\n", title.trim()))?;
         Ok(n)
     }
 
     /// Schimbă titlul din antetul paginii unui rând.
     pub fn retitle_topic(&self, date: NaiveDate, n: u8, title: &str) -> io::Result<()> {
         let path = self.topic_path(date, n);
-        let text = fs::read_to_string(&path).unwrap_or_default();
+        let text = self.read_text(&path).unwrap_or_default();
         let mut day = crate::day::Day::parse(date, &text);
         day.heading = Some(title.trim().to_string());
-        fs::write(&path, day.to_markdown(Lang::Ro))
+        self.write_text(&path, &day.to_markdown(Lang::Ro))
     }
 
     pub fn index_path(&self) -> std::path::PathBuf {
@@ -281,7 +281,7 @@ impl Journal {
     }
 
     pub fn load_index(&self) -> io::Result<Index> {
-        match fs::read_to_string(self.index_path()) {
+        match self.read_text(&self.index_path()) {
             Ok(t) => Ok(Index::parse(&t)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Index::default()),
             Err(e) => Err(e),
@@ -289,11 +289,7 @@ impl Journal {
     }
 
     pub fn save_index(&self, idx: &Index, lang: Lang) -> io::Result<()> {
-        fs::create_dir_all(self.root())?;
-        let path = self.index_path();
-        let tmp = path.with_extension("md.tmp");
-        fs::write(&tmp, idx.to_markdown(lang))?;
-        fs::rename(&tmp, &path)
+        self.write_text(&self.index_path(), &idx.to_markdown(lang))
     }
 
     /// Etichetele zilelor, fiecare cu zilele ei (cele mai noi primele).

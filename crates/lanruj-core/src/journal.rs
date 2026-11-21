@@ -13,11 +13,108 @@ use std::path::{Path, PathBuf};
 
 pub struct Journal {
     root: PathBuf,
+    /// Cheia jurnalului, când criptarea e pornită și jurnalul deschis.
+    key: std::sync::RwLock<Option<std::sync::Arc<crate::crypt::Key>>>,
 }
 
 impl Journal {
     pub fn new(root: impl Into<PathBuf>) -> Journal {
-        Journal { root: root.into() }
+        Journal { root: root.into(), key: std::sync::RwLock::new(None) }
+    }
+
+    /// Pune (sau scoate) cheia: de acum fișierele se scriu criptate (sau nu).
+    pub fn set_key(&self, key: Option<std::sync::Arc<crate::crypt::Key>>) {
+        *self.key.write().expect("cheie") = key;
+    }
+
+    pub fn key(&self) -> Option<std::sync::Arc<crate::crypt::Key>> {
+        self.key.read().expect("cheie").clone()
+    }
+
+    /// Conținutul unui fișier al jurnalului, decriptat dacă e cazul.
+    pub fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+        let data = fs::read(path)?;
+        if !crate::crypt::is_encrypted(&data) {
+            return Ok(data);
+        }
+        match self.key() {
+            Some(k) => k.decrypt(&data),
+            None => Err(io::Error::new(io::ErrorKind::PermissionDenied, "jurnalul e încuiat")),
+        }
+    }
+
+    pub fn read_text(&self, path: &Path) -> io::Result<String> {
+        String::from_utf8(self.read_bytes(path)?).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    /// Scrie dintr-o dată (fișier temporar, apoi redenumit), criptat când criptarea e pornită.
+    pub fn write_bytes(&self, path: &Path, data: &[u8]) -> io::Result<()> {
+        self.write_as(path, data, true)
+    }
+
+    /// Ca `write_bytes`; cu `encrypt = false` scrie necriptat chiar dacă există cheie.
+    fn write_as(&self, path: &Path, data: &[u8], encrypt: bool) -> io::Result<()> {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        let out = match self.key().filter(|_| encrypt) {
+            Some(k) => k.encrypt(data)?,
+            None => data.to_vec(),
+        };
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
+        fs::write(&tmp, out)?;
+        fs::rename(&tmp, path)
+    }
+
+    pub fn write_text(&self, path: &Path, text: &str) -> io::Result<()> {
+        self.write_bytes(path, text.as_bytes())
+    }
+
+    /// Toate fișierele jurnalului (pagini, poze, fișiere atașate), fără cele ascunse și fără chei.
+    pub fn all_files(&self) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut stack = vec![self.root.clone()];
+        while let Some(dir) = stack.pop() {
+            let Ok(rd) = fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || name.ends_with(".tmp") || crate::crypt::is_key_file(&name) {
+                    continue;
+                }
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.is_file() {
+                    out.push(p);
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// Rescrie fiecare fișier criptat (`encrypt`) sau necriptat; cheia trebuie să fie pusă
+    /// în ambele cazuri (ca să poată citi). Fișierele deja în forma dorită rămân neatinse.
+    /// O întrerupere lasă un jurnal amestecat, care se citește în continuare.
+    pub fn convert(&self, encrypt: bool, mut progress: impl FnMut(usize, usize)) -> io::Result<usize> {
+        if self.key().is_none() {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied, "fără cheia jurnalului"));
+        }
+        let files = self.all_files();
+        let want = encrypt;
+        let mut changed = 0;
+        for (i, p) in files.iter().enumerate() {
+            let raw = fs::read(p)?;
+            if crate::crypt::is_encrypted(&raw) != want {
+                let plain = self.read_bytes(p)?;
+                self.write_as(p, &plain, encrypt)?;
+                changed += 1;
+            }
+            progress(i + 1, files.len());
+        }
+        Ok(changed)
     }
 
     /// Dosarul fix `~/.lanruj`. `LANRUJ_DIR` îl schimbă doar pentru teste.
@@ -43,7 +140,7 @@ impl Journal {
 
     /// Ziua de pe disc; o zi fără fișier e o zi goală.
     pub fn load(&self, date: NaiveDate) -> io::Result<Day> {
-        match fs::read_to_string(self.day_path(date)) {
+        match self.read_text(&self.day_path(date)) {
             Ok(text) => Ok(Day::parse(date, &text)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Day::new(date)),
             Err(e) => Err(e),
@@ -58,10 +155,7 @@ impl Journal {
         if day.is_empty() && !path.exists() {
             return Ok(());
         }
-        fs::create_dir_all(path.parent().expect("are dosar"))?;
-        let tmp = path.with_extension("md.tmp");
-        fs::write(&tmp, day.to_markdown(lang))?;
-        fs::rename(&tmp, &path)
+        self.write_text(&path, &day.to_markdown(lang))
     }
 
     /// Zilele lunii care au ceva scris, pentru calendarul mic.
@@ -88,7 +182,7 @@ impl Journal {
         let needle = format!(" ^{id}");
         let mut n = 0;
         for path in self.page_files() {
-            let Ok(text) = fs::read_to_string(&path) else { continue };
+            let Ok(text) = self.read_text(&path) else { continue };
             for line in text.lines() {
                 let t = line.trim_start();
                 if (t.starts_with("- [>] ") || t.starts_with("- [<] ")) && t.ends_with(&needle) {
@@ -194,7 +288,7 @@ impl Journal {
     }
 
     pub fn load_month(&self, year: i32, month: u32) -> io::Result<Month> {
-        match fs::read_to_string(self.month_path(year, month)) {
+        match self.read_text(&self.month_path(year, month)) {
             Ok(text) => Ok(Month::parse(year, month, &text)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Month::new(year, month)),
             Err(e) => Err(e),
@@ -206,10 +300,7 @@ impl Journal {
         if m.is_empty() && !path.exists() {
             return Ok(());
         }
-        fs::create_dir_all(path.parent().expect("are dosar"))?;
-        let tmp = path.with_extension("md.tmp");
-        fs::write(&tmp, m.to_markdown(lang))?;
-        fs::rename(&tmp, &path)
+        self.write_text(&path, &m.to_markdown(lang))
     }
 
     pub fn update_month(&self, year: i32, month: u32, lang: Lang, f: impl FnOnce(&mut Month)) -> io::Result<Month> {
@@ -224,7 +315,7 @@ impl Journal {
     }
 
     pub fn load_future(&self) -> io::Result<Future> {
-        match fs::read_to_string(self.future_path()) {
+        match self.read_text(&self.future_path()) {
             Ok(text) => Ok(Future::parse(&text)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Future::default()),
             Err(e) => Err(e),
@@ -236,10 +327,7 @@ impl Journal {
         if f.is_empty() && !path.exists() {
             return Ok(());
         }
-        fs::create_dir_all(&self.root)?;
-        let tmp = path.with_extension("md.tmp");
-        fs::write(&tmp, f.to_markdown(lang))?;
-        fs::rename(&tmp, &path)
+        self.write_text(&path, &f.to_markdown(lang))
     }
 
     /// Pe 1 ale lunii: intrările lunii din jurnalul viitor trec în pagina lunii.
@@ -340,14 +428,14 @@ impl Journal {
                 day.items = f.items(year, month);
                 Ok(day)
             }
-            PageRef::Topic { date, n } => match fs::read_to_string(self.topic_path(date, n)) {
+            PageRef::Topic { date, n } => match self.read_text(&self.topic_path(date, n)) {
                 Ok(text) => Ok(Day::parse(date, &text)),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Day::new(date)),
                 Err(e) => Err(e),
             },
             PageRef::Week { year, week } => {
                 let monday = crate::week_monday(year, week);
-                match fs::read_to_string(self.week_path(year, week)) {
+                match self.read_text(&self.week_path(year, week)) {
                     Ok(text) => Ok(Day::parse(monday, &text)),
                     Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Day::new(monday)),
                     Err(e) => Err(e),
@@ -378,10 +466,7 @@ impl Journal {
                 let mut day = self.load_ref(r)?;
                 f(&mut day);
                 let path = self.topic_path(date, n);
-                fs::create_dir_all(path.parent().expect("are dosar"))?;
-                let tmp = path.with_extension("md.tmp");
-                fs::write(&tmp, day.to_markdown(lang))?;
-                fs::rename(&tmp, &path)?;
+                self.write_text(&path, &day.to_markdown(lang))?;
                 Ok(day)
             }
             PageRef::Week { year, week } => {
@@ -396,10 +481,7 @@ impl Journal {
                 if day.is_empty() && !path.exists() {
                     return Ok(day);
                 }
-                fs::create_dir_all(path.parent().expect("are dosar"))?;
-                let tmp = path.with_extension("md.tmp");
-                fs::write(&tmp, day.to_markdown(lang))?;
-                fs::rename(&tmp, &path)?;
+                self.write_text(&path, &day.to_markdown(lang))?;
                 Ok(day)
             }
         }
@@ -432,6 +514,49 @@ impl Journal {
 mod tests {
     use super::*;
     use crate::day::parse_quick;
+
+    #[test]
+    fn jurnal_criptat() {
+        let root = temp_root("criptat");
+        let j = Journal::new(&root);
+        let d = NaiveDate::from_ymd_opt(2026, 11, 21).unwrap();
+        j.add(d, parse_quick("Sună la bancă").unwrap(), Lang::Ro).unwrap();
+        fs::create_dir_all(root.join("2026/11/2026-11-21")).unwrap();
+        fs::write(root.join("2026/11/2026-11-21/poza.jpg"), b"\xff\xd8poza").unwrap();
+        let idx = crate::index::Index::parse("# Index\n\n- Concediu: 21 noiembrie 2026\n");
+        j.save_index(&idx, Lang::Ro).unwrap();
+
+        // Pornește criptarea: totul se rescrie criptat, dar se citește la fel.
+        let (key, _code) = crate::crypt::create(&root, "parola").unwrap();
+        j.set_key(Some(std::sync::Arc::new(key)));
+        assert_eq!(j.convert(true, |_, _| {}).unwrap(), 3);
+        for f in ["2026/11/2026-11-21.md", "2026/11/2026-11-21/poza.jpg", "index.md"] {
+            assert!(crate::crypt::is_encrypted(&fs::read(root.join(f)).unwrap()), "{f} criptat");
+        }
+        assert_eq!(j.convert(true, |_, _| {}).unwrap(), 0, "a doua oară nu mai e nimic de făcut");
+        assert_eq!(j.load(d).unwrap().items.len(), 1);
+        assert_eq!(j.read_bytes(&root.join("2026/11/2026-11-21/poza.jpg")).unwrap(), b"\xff\xd8poza");
+        assert_eq!(j.load_index().unwrap().items.len(), 1);
+        j.add(d, parse_quick("o 10:00 Dentist").unwrap(), Lang::Ro).unwrap();
+        assert!(crate::crypt::is_encrypted(&fs::read(j.day_path(d)).unwrap()), "scrierile noi sunt criptate");
+        assert_eq!(j.written_days(2026, 11), vec![21]);
+
+        // Încuiat (fără cheie): nu se poate citi, dar nici nu se strică nimic.
+        let locked = Journal::new(&root);
+        assert_eq!(locked.load(d).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+
+        // Deschis cu parola, apoi criptarea oprită: fișierele redevin text.
+        let k = crate::crypt::unlock(&root, "parola").unwrap();
+        let j2 = Journal::new(&root);
+        j2.set_key(Some(std::sync::Arc::new(k)));
+        assert_eq!(j2.load(d).unwrap().items.len(), 2);
+        assert_eq!(j2.convert(false, |_, _| {}).unwrap(), 3);
+        j2.set_key(None);
+        crate::crypt::remove(&root).unwrap();
+        assert!(locked.convert(false, |_, _| {}).is_err(), "fără cheie nu se convertește");
+        assert!(fs::read_to_string(j.day_path(d)).unwrap().contains("- o 10:00 Dentist"));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     fn temp_root(name: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("lanruj-test-{}-{}", name, std::process::id()));

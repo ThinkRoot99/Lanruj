@@ -4,6 +4,7 @@
 
 pub mod attach;
 pub mod colors;
+pub mod crypt;
 pub mod day;
 pub mod future;
 pub mod index;

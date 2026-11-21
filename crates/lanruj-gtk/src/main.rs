@@ -3,6 +3,7 @@
 
 mod bara;
 mod cautare;
+mod cheie;
 mod copii;
 mod export;
 mod ghid;
@@ -842,11 +843,12 @@ impl App {
             }
             let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("fisier").to_string();
             let res = self.journal.attach_target(r, &name).and_then(|(abs, rel)| {
-                if is_image(&name) && copy_image_resized(&src, &abs).is_some() {
-                    // copiată (și micșorată, dacă era mare)
-                } else {
-                    std::fs::copy(&src, &abs)?;
-                }
+                // Pozele mari se micșorează; totul se scrie prin jurnal (criptat, dacă e cazul).
+                let data = match is_image(&name).then(|| resized_image(&src, &abs)).flatten() {
+                    Some(d) => d,
+                    None => std::fs::read(&src)?,
+                };
+                self.journal.write_bytes(&abs, &data)?;
                 self.journal.add_attachment_line(r, &rel, &name, self.lang, under)
             });
             match res {
@@ -1540,6 +1542,64 @@ impl App {
         bk.add(&now);
         page.add(&bk);
 
+        // Criptarea.
+        let cr = adw::PreferencesGroup::builder()
+            .title(tr(lang, "Criptarea", "Encryption"))
+            .description(tr(
+                lang,
+                "Fișierele jurnalului criptate cu o parolă; la pornire Lanruj cere parola. Copiile de siguranță ale unui jurnal criptat sunt și ele criptate.",
+                "The journal files encrypted with a password; Lanruj asks for it at startup. Backups of an encrypted journal are encrypted too.",
+            ))
+            .build();
+        let on = lanruj_core::crypt::enabled(self.journal.root());
+        let state_row = adw::ActionRow::builder()
+            .title(if on { tr(lang, "Jurnalul e criptat", "The journal is encrypted") } else { tr(lang, "Jurnalul nu e criptat", "The journal is not encrypted") })
+            .subtitle(if on {
+                tr(lang, "Fișierele se pot citi doar cu Lanruj și cu parola", "The files can be read only with Lanruj and the password")
+            } else {
+                tr(lang, "Fișierele se pot citi și cu alte programe", "The files can be read with other programs too")
+            })
+            .build();
+        let close_prefs = {
+            let d = dialog.clone();
+            move || {
+                d.close();
+            }
+        };
+        if on {
+            let change = gtk::Button::builder().label(tr(lang, "Schimbă parola…", "Change password…")).valign(gtk::Align::Center).build();
+            let off = gtk::Button::builder().label(tr(lang, "Oprește…", "Turn off…")).valign(gtk::Align::Center).css_classes(["destructive-action"]).build();
+            state_row.add_suffix(&change);
+            state_row.add_suffix(&off);
+            let weak = Rc::downgrade(self);
+            change.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.change_password_dialog();
+                }
+            });
+            let weak = Rc::downgrade(self);
+            let cp = close_prefs.clone();
+            off.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    cp();
+                    app.decrypt_dialog(|| {});
+                }
+            });
+        } else {
+            let start = gtk::Button::builder().label(tr(lang, "Criptează…", "Encrypt…")).valign(gtk::Align::Center).build();
+            state_row.add_suffix(&start);
+            let weak = Rc::downgrade(self);
+            let cp = close_prefs.clone();
+            start.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    cp();
+                    app.encrypt_dialog(|| {});
+                }
+            });
+        }
+        cr.add(&state_row);
+        page.add(&cr);
+
         let lg = adw::PreferencesGroup::builder()
             .title(tr(lang, "Limba", "Language"))
             .description(tr(lang, "Aplicația se redeschide în limba aleasă.", "The app reopens in the chosen language."))
@@ -1554,9 +1614,10 @@ impl App {
                 let _hold = gapp.hold();
                 app.set_tray(false);
                 let old = app.window.clone();
+                let key = app.journal.key();
                 drop(app);
                 old.destroy();
-                build_ui(&gapp);
+                build_main(&gapp, key);
             });
         }));
         page.add(&lg);
@@ -1566,9 +1627,9 @@ impl App {
     }
 }
 
-/// Copiază o poză JPEG sau PNG; dacă latura mare are peste 2000 de pixeli, o micșorează.
-/// Poza se întoarce după cum a fost făcută (orientarea din EXIF). `None` = nu s-a putut (se copiază simplu).
-fn copy_image_resized(src: &std::path::Path, dst: &std::path::Path) -> Option<()> {
+/// O poză JPEG sau PNG cu latura mare peste 2000 de pixeli, micșorată și întoarsă după EXIF.
+/// `None` = nu e nevoie sau nu s-a putut (se copiază așa cum e).
+fn resized_image(src: &std::path::Path, dst: &std::path::Path) -> Option<Vec<u8>> {
     const MAX: i32 = 2000;
     let ext = dst.extension()?.to_str()?.to_lowercase();
     let format = match ext.as_str() {
@@ -1585,7 +1646,7 @@ fn copy_image_resized(src: &std::path::Path, dst: &std::path::Path) -> Option<()
     let scale = MAX as f64 / w.max(h) as f64;
     let small = pb.scale_simple((w as f64 * scale) as i32, (h as f64 * scale) as i32, gtk::gdk_pixbuf::InterpType::Bilinear)?;
     let opts: &[(&str, &str)] = if format == "jpeg" { &[("quality", "90")] } else { &[] };
-    small.savev(dst, format, opts).ok()
+    small.save_to_bufferv(format, opts).ok()
 }
 
 thread_local! {
@@ -1697,9 +1758,22 @@ fn build_ui(app: &adw::Application) {
         w.present();
         return;
     }
+    // Jurnal criptat: întâi parola.
+    let root = Journal::default_root();
+    if lanruj_core::crypt::enabled(&root) {
+        let lang = setari::Settings::load().lang();
+        cheie::unlock_window(app, root, lang, |app, key| build_main(app, Some(key)));
+        return;
+    }
+    build_main(app, None);
+}
+
+/// Fereastra jurnalului, cu cheia (dacă jurnalul e criptat și a fost deschis).
+fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::crypt::Key>>) {
     let settings = setari::Settings::load();
     let lang = settings.lang();
     let journal = Journal::new(Journal::default_root());
+    journal.set_key(key);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -2756,6 +2830,125 @@ fn build_ui(app: &adw::Application) {
                 if let Some(app) = s.window.application() {
                     app.quit();
                 }
+            });
+        }
+        Ok("test-decripteaza") => {
+            // Oprește criptarea: parola de acum, apoi butonul.
+            fn all<T: IsA<gtk::Widget>>(w: &gtk::Widget, out: &mut Vec<T>) {
+                if let Some(x) = w.downcast_ref::<T>() {
+                    out.push(x.clone());
+                }
+                let mut c = w.first_child();
+                while let Some(ch) = c {
+                    all(&ch, out);
+                    c = ch.next_sibling();
+                }
+            }
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                s.decrypt_dialog(|| eprintln!("selftest-decripteaza: gata"));
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    let mut ps: Vec<gtk::PasswordEntry> = Vec::new();
+                    all(s2.window.upcast_ref(), &mut ps);
+                    for p in &ps {
+                        p.set_text(&std::env::var("LANRUJ_PAROLA").unwrap_or_default());
+                    }
+                    let mut bs: Vec<gtk::Button> = Vec::new();
+                    all(s2.window.upcast_ref(), &mut bs);
+                    if let Some(b) = bs.iter().find(|b| b.label().as_deref() == Some("Oprește criptarea")) {
+                        b.emit_clicked();
+                    }
+                    let s3 = s2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(7000), move || {
+                        let files = s3.journal.all_files();
+                        let enc = files.iter().filter(|p| std::fs::read(p).map(|b| lanruj_core::crypt::is_encrypted(&b)).unwrap_or(false)).count();
+                        eprintln!("selftest-decripteaza: {enc} din {} fișiere încă criptate; cheie pornită: {}", files.len(), lanruj_core::crypt::enabled(s3.journal.root()));
+                        if let Some(app) = s3.window.application() {
+                            app.quit();
+                        }
+                    });
+                });
+            });
+        }
+        Ok("test-cripteaza") => {
+            // Pornește criptarea ca un om: parola de două ori, Continuă, ultimele 4 caractere, Criptează.
+            fn all<T: IsA<gtk::Widget>>(w: &gtk::Widget, out: &mut Vec<T>) {
+                if let Some(x) = w.downcast_ref::<T>() {
+                    out.push(x.clone());
+                }
+                let mut c = w.first_child();
+                while let Some(ch) = c {
+                    all(&ch, out);
+                    c = ch.next_sibling();
+                }
+            }
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                s.encrypt_dialog(|| eprintln!("selftest-cripteaza: gata"));
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                    let mut ps: Vec<gtk::PasswordEntry> = Vec::new();
+                    all(s2.window.upcast_ref(), &mut ps);
+                    for p in &ps {
+                        p.set_text("parola-de-proba");
+                    }
+                    s2.window.queue_draw();
+                    let w = s2.window.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                        if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                            save_png(&w, &p);
+                        }
+                    });
+                    let mut bs: Vec<gtk::Button> = Vec::new();
+                    all(s2.window.upcast_ref(), &mut bs);
+                    let w = s2.window.clone();
+                    let bs2 = bs.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                        if let Some(b) = bs2.iter().find(|b| b.label().as_deref() == Some("Continuă")) {
+                            b.emit_clicked();
+                        }
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                            if let Ok(p) = std::env::var("LANRUJ_PNG2") {
+                                save_png(&w, &p);
+                            }
+                        });
+                    });
+                    let s3 = s2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(1400), move || {
+                        let mut ls: Vec<gtk::Label> = Vec::new();
+                        all(s3.window.upcast_ref(), &mut ls);
+                        let code = ls.iter().find(|l| l.has_css_class("monospace")).map(|l| l.label().to_string()).unwrap_or_default();
+                        eprintln!("selftest-cripteaza: cheia de recuperare: {code}");
+                        let _ = std::fs::write(s3.journal.root().join(".cheie-de-proba"), &code);
+                        let mut es: Vec<gtk::Entry> = Vec::new();
+                        all(s3.window.upcast_ref(), &mut es);
+                        if let Some(e) = es.iter().find(|e| e.max_length() == 4) {
+                            e.set_text(&code[code.len() - 4..]);
+                        }
+                        let mut bs: Vec<gtk::Button> = Vec::new();
+                        all(s3.window.upcast_ref(), &mut bs);
+                        if let Some(b) = bs.iter().find(|b| b.label().as_deref() == Some("Criptează jurnalul")) {
+                            eprintln!("selftest-cripteaza: butonul e activ: {}", b.is_sensitive());
+                            b.emit_clicked();
+                        }
+                        let w = s3.window.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                            if let Ok(p) = std::env::var("LANRUJ_PNG3") {
+                                save_png(&w, &p);
+                            }
+                        });
+                        let s4 = s3.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(6000), move || {
+                            let files = s4.journal.all_files();
+                            let enc = files.iter().filter(|p| std::fs::read(p).map(|b| lanruj_core::crypt::is_encrypted(&b)).unwrap_or(false)).count();
+                            eprintln!("selftest-cripteaza: {enc} din {} fișiere criptate; cheie pornită: {}", files.len(), lanruj_core::crypt::enabled(s4.journal.root()));
+                            if let Some(app) = s4.window.application() {
+                                app.quit();
+                            }
+                        });
+                    });
+                });
             });
         }
         Ok("test-poze") => {
