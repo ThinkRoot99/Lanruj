@@ -14,6 +14,7 @@ Lanruj has not had a release yet; everything below belongs to the first version.
   - **Sleep**: how long you slept at night and during the day, with an automatic chart of the month and the averages.
   - **Work**: duty (24 hours), standby, leave and overtime (from-to, for example 08:00-12:00), each with an optional note, the month's totals and a list of all the month's notes. Duty, standby, leave and overtime also appear on the day page, the week's days and the month calendar.
   Each month is saved as `monitorizare/YYYY-MM.md`, encrypted when the journal is.
+- **Tracking on paper**: Ctrl+P (or "Page as PDF") in Tracking prints the month on two A4 sheets: activities and sleep, with the sleep chart; work, with the calendar, totals and the month's notes. Days still to come stay empty, to be filled in by hand.
 - A guide chapter about tracking.
 
 #### Changed

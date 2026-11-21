@@ -15,6 +15,7 @@ mod page;
 mod poze;
 mod setari;
 mod tava;
+mod tiparire;
 
 use adw::prelude::*;
 use chrono::{Datelike, Duration, Local, NaiveDate};
@@ -3043,6 +3044,18 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     eprintln!("selftest-vim: {k} -> {r:?}, aleasă {:?}", s.selected.get().map(|(_, i)| i));
                 }
                 eprintln!("selftest-vim: după:\n{}", std::fs::read_to_string(&path).unwrap_or_default());
+                if let Some(app) = s.window.application() {
+                    app.quit();
+                }
+            });
+        }
+        Ok("test-tipar") => {
+            // Foile de tipar ale Monitorizării, direct în LANRUJ_IESIRE/monitorizare.pdf.
+            let s = state.clone();
+            glib::idle_add_local_once(move || {
+                let t = s.today.get();
+                let out = std::path::PathBuf::from(std::env::var("LANRUJ_IESIRE").unwrap_or_else(|_| "/tmp".into())).join("monitorizare.pdf");
+                eprintln!("selftest-tipar: {:?}", tiparire::Sheet::new(&s, t.year(), t.month()).write_pdf(&out));
                 if let Some(app) = s.window.application() {
                     app.quit();
                 }

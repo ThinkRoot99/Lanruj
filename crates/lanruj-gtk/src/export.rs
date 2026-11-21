@@ -313,6 +313,16 @@ impl App {
             return;
         }
         let name = format!("{}.pdf", self.export_name());
+        // Monitorizarea are foile ei de tipar (A4), nu o captură a ecranului.
+        if let View::Tracking(y, m) = self.view.get() {
+            self.save_dialog(tr(self.lang, "Luna ca PDF", "The month as PDF"), &name, move |app, path| {
+                match crate::tiparire::Sheet::new(app, y, m).write_pdf(&path) {
+                    Ok(()) => app.done_toast(&path),
+                    Err(e) => app.error(&std::io::Error::other(e)),
+                }
+            });
+            return;
+        }
         self.save_dialog(tr(self.lang, "Pagina ca PDF", "Page as PDF"), &name, |app, path| {
             let res = app.current_shot().ok_or_else(|| "nimic de exportat".to_string()).and_then(|s| write_pdf(&[s], &path));
             match res {
@@ -393,6 +403,10 @@ impl App {
     /// ☰ → Tipărește (Ctrl+P): pagina arătată, prin fereastra de tipărire a sistemului.
     pub fn print_current(self: &Rc<Self>) {
         if !self.can_export() {
+            return;
+        }
+        if let View::Tracking(y, m) = self.view.get() {
+            self.print_tracking(y, m);
             return;
         }
         let Some(s) = self.current_shot() else { return };

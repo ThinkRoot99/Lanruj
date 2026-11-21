@@ -216,6 +216,8 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          și adaugi <b>ore suplimentare</b> (de exemplu 08:00-12:00), cu notă dacă vrei. Cu tastatura, pe ziua aleasă: S, R, C, O, Delete. \
          În dreapta: serviciile, rezervele, orele suplimentare, zilele de concediu și totalul orelor lucrate. \
          Notele lunii apar toate sub totaluri. Ce ai trecut aici, cu notele, apare și în pagina zilei, în zilele săptămânii și în calendarul lunii; un clic pe casetă te aduce înapoi aici.\n\n\
+         <b>Pe hârtie</b>: în Monitorizare, Ctrl+P tipărește luna pe două foi A4 (activitățile și somnul cu graficul; serviciul cu calendarul, totalurile și notele), \
+         iar „Pagina ca PDF” (Ctrl+Shift+E) le salvează ca PDF. Zilele care n-au venit rămân goale, ca să le completezi de mână.\n\n\
          Luna stă în <tt>monitorizare/2026-11.md</tt>, ca text simplu.",
         "Tracking",
         "<b>Tracking</b>, in the sidebar, has three tabs, month by month. The arrows in the header (or Alt+← →) change the month.\n\n\
@@ -228,6 +230,8 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          and add <b>overtime</b> (for example 08:00-12:00), with a note if you like. With the keyboard, on the chosen day: D, S, L, O, Delete. \
          On the right: duties, standbys, overtime, days of leave and total hours worked. \
          All of the month's notes are listed under the totals. What you enter here, notes included, also appears on the day page, on the week's days and in the month calendar; clicking it brings you back here.\n\n\
+         <b>On paper</b>: in Tracking, Ctrl+P prints the month on two A4 sheets (activities and sleep with the chart; work with the calendar, totals and notes), \
+         and \"Page as PDF\" (Ctrl+Shift+E) saves them as a PDF. Days still to come stay empty, so you can fill them in by hand.\n\n\
          The month is stored in <tt>monitorizare/2026-11.md</tt> as plain text.",
     ),
     (
