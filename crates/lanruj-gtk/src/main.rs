@@ -2,6 +2,7 @@
 //! Lanruj: jurnal în stilul Bullet Journal, pe fișiere Markdown.
 
 mod bara;
+mod bilete;
 mod cautare;
 mod cheie;
 mod incuiere;
@@ -70,6 +71,9 @@ pub struct App {
     pub editing: Cell<Option<(PageRef, usize)>>,
     /// În timpul exportului: fără selecție, câmpuri de scris și butoane de adăugat.
     pub exporting: Cell<bool>,
+    /// Biletele din colțul caietului.
+    pub notes_box: gtk::Box,
+    pub notes_scroll: gtk::ScrolledWindow,
     /// Monitorizare: ziua aleasă cu tastatura, ca să rămână aleasă după schimbare.
     pub tracking_focus: Cell<Option<NaiveDate>>,
     /// Monitorizare: fila aleasă (Activități, Somn, Serviciu).
@@ -1195,55 +1199,6 @@ impl App {
         stop
     }
 
-    /// Ideea rapidă: o fereastră mică, cu un singur câmp; Enter o pune în ziua de azi, ca idee (!).
-    fn quick_idea(self: &Rc<Self>) {
-        let lang = self.lang;
-        let d = adw::Dialog::builder().title(tr(lang, "Idee rapidă", "Quick idea")).content_width(460).build();
-        let b = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        b.set_margin_top(6);
-        b.set_margin_bottom(16);
-        b.set_margin_start(16);
-        b.set_margin_end(16);
-        let e = gtk::Entry::builder().placeholder_text(tr(lang, "Scrie ideea, apoi Enter", "Write the idea, then Enter")).build();
-        b.append(&e);
-        b.append(
-            &gtk::Label::builder()
-                .label(tr(
-                    lang,
-                    "Intră în ziua de azi, cu semnul de idee (!). O muți apoi unde îi e locul: clic dreapta → Mută…",
-                    "It goes into today's page, with the idea sign (!). Move it where it belongs later: right-click → Move…",
-                ))
-                .wrap(true)
-                .xalign(0.0)
-                .css_classes(["dim-label", "caption"])
-                .build(),
-        );
-        let view = adw::ToolbarView::new();
-        view.add_top_bar(&adw::HeaderBar::new());
-        view.set_content(Some(&b));
-        d.set_child(Some(&view));
-        let (weak, dl) = (Rc::downgrade(self), d.clone());
-        e.connect_activate(move |e| {
-            let text = e.text().trim().to_string();
-            let Some(app) = weak.upgrade() else { return };
-            if text.is_empty() {
-                dl.close();
-                return;
-            }
-            let Some(entry) = lanruj_core::day::parse_quick(&format!("- ! {text}")) else { return };
-            match app.journal.add(app.today.get(), entry, app.lang) {
-                Ok(_) => {
-                    dl.close();
-                    app.refresh();
-                    app.toast(tr(app.lang, "Ideea e în ziua de azi.", "The idea is in today's page."));
-                }
-                Err(err) => app.error(&err),
-            }
-        });
-        d.present(Some(&self.window));
-        e.grab_focus();
-    }
-
     fn show_shortcuts(&self) {
         let l = self.lang;
         let dialog = adw::ShortcutsDialog::new();
@@ -1260,7 +1215,7 @@ impl App {
                     (tr(l, "Adaugă ziua în index", "Add the day to the index"), "<Control>i"),
                     (tr(l, "Mărește sau micșorează fereastra", "Maximize or restore the window"), "F11"),
                     (tr(l, "Ecran complet", "Full screen"), "<Shift>F11"),
-                    (tr(l, "Idee rapidă", "Quick idea"), "<Control>n"),
+                    (tr(l, "Bilet nou", "New note"), "<Control>n"),
                     (tr(l, "Închide fereastra", "Close window"), "<Control>w"),
                 ],
             ),
@@ -2154,7 +2109,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         ]),
     );
     menu.append_section(None, &section(&[
-        (tr(lang, "Idee rapidă", "Quick idea"), "win.idea"),
+        (tr(lang, "Bilet nou", "New note"), "win.idea"),
         (tr(lang, "Ecran complet", "Full screen"), "win.fullscreen"),
         (tr(lang, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "win.sidebar"),
     ]));
@@ -2220,8 +2175,41 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     content_stack.add_named(&caiet, Some("caiet"));
     let cautare = Rc::new(cautare::Cautare::new(lang));
     content_stack.add_named(&cautare.root, Some("cautare"));
+    // Deasupra caietului: biletele (în colțul din dreapta jos) și butonul de ieșire din ecranul complet.
+    let over = gtk::Overlay::new();
+    over.set_child(Some(&content_stack));
+    let notes_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    notes_box.set_margin_top(8);
+    notes_box.set_margin_bottom(8);
+    notes_box.set_margin_start(8);
+    notes_box.set_margin_end(8);
+    let notes_scroll = gtk::ScrolledWindow::builder()
+        .child(&notes_box)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(420)
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::End)
+        .margin_end(34)
+        .margin_bottom(96)
+        .visible(false)
+        .css_classes(["bilete"])
+        .build();
+    over.add_overlay(&notes_scroll);
+    let exit_full = gtk::Button::builder()
+        .icon_name("view-restore-symbolic")
+        .action_name("win.fullscreen")
+        .tooltip_text(tr(lang, "Ieși din ecranul complet (Esc)", "Leave full screen (Esc)"))
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Start)
+        .margin_top(10)
+        .margin_end(10)
+        .visible(false)
+        .css_classes(["circular", "osd", "iesire-ecran"])
+        .build();
+    over.add_overlay(&exit_full);
     let toasts = adw::ToastOverlay::new();
-    toasts.set_child(Some(&content_stack));
+    toasts.set_child(Some(&over));
 
     let title = adw::WindowTitle::new("", "");
     let header = adw::HeaderBar::new();
@@ -2256,7 +2244,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     // Ecranul complet (fără marginile ferestrei) și ideea rapidă.
     let full = gtk::Button::builder().icon_name("view-fullscreen-symbolic").action_name("win.fullscreen").tooltip_text(tr(lang, "Ecran complet (Shift+F11)", "Full screen (Shift+F11)")).build();
     header.pack_end(&full);
-    let idea = gtk::Button::builder().icon_name("lanruj-idee-symbolic").action_name("win.idea").tooltip_text(tr(lang, "Idee rapidă (Ctrl+N)", "Quick idea (Ctrl+N)")).build();
+    let idea = gtk::Button::builder().icon_name("lanruj-idee-symbolic").action_name("win.idea").tooltip_text(tr(lang, "Bilet nou (Ctrl+N)", "New note (Ctrl+N)")).build();
     header.pack_end(&idea);
     {
         let full = full.clone();
@@ -2294,7 +2282,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     side_view.set_hexpand(false);
     let main_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     main_box.append(&side_view);
-    main_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+    let main_sep = gtk::Separator::new(gtk::Orientation::Vertical);
+    main_box.append(&main_sep);
     content_view.set_hexpand(true);
     main_box.append(&content_view);
     window.set_content(Some(&main_box));
@@ -2364,6 +2353,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         index_add_open: Cell::new(false),
         selected: Cell::new(None),
         exporting: Cell::new(false),
+        notes_box: notes_box.clone(),
+        notes_scroll: notes_scroll.clone(),
         tracking_focus: Cell::new(None),
         tracking_tab: Cell::new(monitorizare::Tab::default()),
         vim_pending: Cell::new(None),
@@ -2465,13 +2456,34 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     window.add_action(&a);
     app.set_accels_for_action("win.goto", &["<Control>g"]);
     // F11: fereastra mărită pe tot ecranul (cu bara de sus a sistemului) și înapoi.
-    // Ecranul complet: fără marginile și bara ferestrei; același buton îl oprește.
+    // Ecranul complet: doar paginile caietului, fără bara laterală, antet și marginile ferestrei.
     let a = gio::SimpleAction::new("fullscreen", None);
     let w = window.clone();
     a.connect_activate(move |_, _| {
         if w.is_fullscreen() { w.unfullscreen() } else { w.fullscreen() }
     });
     window.add_action(&a);
+    {
+        let (side, sep, cv, exit) = (side_view.clone(), main_sep.clone(), content_view.clone(), exit_full.clone());
+        window.connect_fullscreened_notify(move |w| {
+            let full = w.is_fullscreen();
+            side.set_visible(!full);
+            sep.set_visible(!full);
+            cv.set_reveal_top_bars(!full);
+            exit.set_visible(full);
+        });
+    }
+    // Esc iese din ecranul complet (dacă nu are altceva de făcut, de exemplu o fereastră deschisă).
+    let keys = gtk::EventControllerKey::new();
+    let w = window.clone();
+    keys.connect_key_pressed(move |_, key, _, _| {
+        if key == gdk::Key::Escape && w.is_fullscreen() && gtk::prelude::GtkWindowExt::focus(&w).is_none_or(|f| !f.is::<gtk::Text>()) {
+            w.unfullscreen();
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
+    window.add_controller(keys);
     app.set_accels_for_action("win.fullscreen", &["<Shift>F11"]);
     // Ideea rapidă: o fereastră mică; ideea intră în ziua de azi, de unde se mută apoi unde îi e locul.
     let a = gio::SimpleAction::new("idea", None);
@@ -2787,6 +2799,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         }
     }
     state.refresh();
+    state.refresh_notes();
     window.present();
     state.watch_screen_lock();
     // Cu tastele Vim, fereastra pornește în modul normal (nu în câmpul de scris).
@@ -2974,6 +2987,9 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
             }
             if std::env::var_os("LANRUJ_MARIT").is_some() {
                 state.window.maximize();
+            }
+            if std::env::var_os("LANRUJ_ECRAN").is_some() {
+                state.window.fullscreen();
             }
             // LANRUJ_VEDERE: alt ecran înainte de captură (pentru site).
             let t = state.today.get();
@@ -3186,40 +3202,6 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 if let Some(app) = s.window.application() {
                     app.quit();
                 }
-            });
-        }
-        Ok("test-idee") => {
-            // Ideea rapidă: se deschide, se scrie, Enter; apoi fișierul zilei.
-            let s = state.clone();
-            glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-                gtk::prelude::WidgetExt::activate_action(&s.window, "win.idea", None).ok();
-                let s2 = s.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-                    if let Ok(p) = std::env::var("LANRUJ_PNG") {
-                        save_png(&s2.window, &p);
-                    }
-                    let mut es: Vec<gtk::Entry> = Vec::new();
-                    fn all(w: &gtk::Widget, out: &mut Vec<gtk::Entry>) {
-                        if let Some(x) = w.downcast_ref::<gtk::Entry>() {
-                            out.push(x.clone());
-                        }
-                        let mut c = w.first_child();
-                        while let Some(ch) = c {
-                            all(&ch, out);
-                            c = ch.next_sibling();
-                        }
-                    }
-                    all(s2.window.upcast_ref(), &mut es);
-                    if let Some(e) = es.iter().find(|e| e.placeholder_text().is_some_and(|p| p.starts_with("Scrie ideea"))) {
-                        e.set_text("Un caiet pentru rețete");
-                        e.emit_activate();
-                    }
-                    let text = std::fs::read_to_string(s2.journal.day_path(s2.today.get())).unwrap_or_default();
-                    eprintln!("selftest-idee: {}", text.lines().filter(|l| l.contains("rețete")).collect::<Vec<_>>().join(" | "));
-                    if let Some(app) = s2.window.application() {
-                        app.quit();
-                    }
-                });
             });
         }
         Ok("test-tipar") => {

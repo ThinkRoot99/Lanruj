@@ -533,3 +533,25 @@ togglebutton.alegere-mare, button.alegere-mare { min-height: 54px; font-size: 17
 .patrat-culoare.c-maro { background: #efe4d6; }
 .alegere-cripta { font-weight: 700; margin-top: 6px; }
 .sub-alegere { margin-left: 28px; font-size: 14px; }
+
+/* ---- Biletele: foi mici, galbene, lipite pe caiet ---- */
+scrolledwindow.bilete, scrolledwindow.bilete > viewport { background: none; }
+.bilet {
+  background-color: #fff3a8;
+  background-image: linear-gradient(to bottom, alpha(black, 0.05), transparent 18px);
+  border-radius: 2px;
+  padding: 2px 10px 12px 12px;
+  min-width: 190px;
+  box-shadow: 0 1px 2px alpha(black, 0.18), 0 6px 14px alpha(black, 0.16);
+}
+.bilet.inclinat-a { transform: rotate(-2deg); }
+.bilet.inclinat-b { transform: rotate(1.5deg); }
+.bilet.inclinat-c { transform: rotate(-0.8deg); }
+.text-bilet { font-family: "Patrick Hand", "Caveat", sans-serif; font-size: 17px; color: #3a3320; }
+button.sterge-bilet { min-width: 22px; min-height: 22px; padding: 0; color: #6b5f2e; }
+window.noapte .bilet { background-color: #6b6233; }
+window.noapte .text-bilet { color: #f7f0cc; }
+window.noapte button.sterge-bilet { color: #f7f0cc; }
+textview.bilet-nou, textview.bilet-nou text { background-color: #fff3a8; color: #3a3320; font-family: "Patrick Hand", "Caveat", sans-serif; font-size: 17px; }
+textview.bilet-nou { padding: 10px; border-radius: 4px; }
+button.iesire-ecran { min-width: 36px; min-height: 36px; }

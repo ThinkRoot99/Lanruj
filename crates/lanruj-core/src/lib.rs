@@ -3,6 +3,7 @@
 //! Nu știe nimic despre ferestre; interfața doar îl folosește.
 
 pub mod attach;
+pub mod bilete;
 pub mod colors;
 pub mod crypt;
 pub mod day;
