@@ -9,7 +9,7 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 ### 2026-11-21 (afternoon)
 
 #### Added
-- **Notes** (light bulb in the header, Ctrl+N): ideas jotted down quickly, shown like small yellow slips of paper in a corner of the notebook on every page, kept apart from the pages until you delete them. Saved in `bilete.md`, encrypted when the journal is.
+- **Notes** (light bulb in the header, Ctrl+N): ideas jotted down quickly, shown like small yellow slips of paper on the notebook on every page, kept apart from the pages until you delete them. Notes can be dragged anywhere, edited, turned into an idea in today's page, or deleted with Undo; text being written is never lost when the window is closed. Saved in `bilete.md`, encrypted when the journal is.
 - **Full screen** (button in the header, Shift+F11): only the notebook pages, without the sidebar, header and window borders; Esc leaves it.
 - **Writing font** in Preferences: the system font or one of seven fonts that come with the app (Inter, Noto Sans, Caveat, Patrick Hand, Lora, Courier Prime, Nunito), applied to the notebook pages only. Handwriting fonts are shown slightly larger so they stay easy to read.
 - **First start**: a short welcome in three steps (language; paper, font and text size; optional encryption with a recovery key), after which today's page opens with a small example of the signs.

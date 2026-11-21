@@ -274,7 +274,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
         "Tastele",
         "Toate tastele sunt în <b>☰ → Scurtături de taste</b> (Ctrl+?). Cele mai folosite: Ctrl+F căutare, Ctrl+M migrare, Ctrl+I în index, Ctrl+G mergi la data, Ctrl+P tipărește, \
          Tab sub intrarea de deasupra, Ctrl+K legătură (la editare), Alt+← → zile, Alt+Home azi, F9 bara laterală, F11 fereastra mare, Shift+F11 ecran complet, Ctrl+N bilet nou, F10 meniul, Ctrl+Q ieșire, F1 ghidul acesta.\n\n\
-         <b>Bilet nou</b> (becul din antet sau Ctrl+N): scrii în grabă o idee, ca pe o foaie mică; biletul stă lipit într-un colț al caietului, pe fiecare pagină, separat de pagini, până îl ștergi cu ×. \
+         <b>Bilet nou</b> (becul din antet sau Ctrl+N): scrii în grabă o idee, ca pe o foaie mică; biletul stă lipit pe caiet, pe fiecare pagină, separat de pagini, până îl ștergi. Îl tragi cu mouse-ul oriunde; un clic îl editează; clic dreapta: Editează, Pune în ziua de azi (devine idee în pagină), Șterge. × îl șterge, cu Anulează jos. Ce scrii nu se pierde dacă închizi fereastra; doar „Renunță” aruncă textul. \
          <b>Ecran complet</b> (butonul de lângă bec sau Shift+F11): doar paginile caietului, pe tot ecranul, fără bara laterală, antet și marginile ferestrei; ieși cu butonul din colț, cu Esc sau cu Shift+F11.\n\n\
          <b>Taste ca în Vim</b> (se pornesc din Setări → Caietul): în afara câmpului de scris, <b>j</b> / <b>k</b> aleg intrarea de dedesubt / de deasupra, \
          <b>gg</b> / <b>G</b> prima / ultima, <b>h</b> / <b>l</b> pagina de dinainte / de după, <b>t</b> azi, <b>x</b> bifează, <b>i</b> editează, \
@@ -283,7 +283,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
         "Keys",
         "All keys are in <b>☰ → Keyboard Shortcuts</b> (Ctrl+?). The most used: Ctrl+F search, Ctrl+M migrate, Ctrl+I index, Ctrl+G go to date, Ctrl+P print, \
          Tab under the entry above, Ctrl+K link (while editing), Alt+← → days, Alt+Home today, F9 sidebar, F11 maximize, Shift+F11 full screen, Ctrl+N new note, F10 menu, Ctrl+Q quit, F1 this guide.\n\n\
-         <b>New note</b> (the light bulb in the header or Ctrl+N): jot an idea down quickly, like on a small slip of paper; the note stays stuck in a corner of the notebook, on every page, apart from the pages, until you delete it with ×. \
+         <b>New note</b> (the light bulb in the header or Ctrl+N): jot an idea down quickly, like on a small slip of paper; the note stays stuck on the notebook, on every page, apart from the pages, until you delete it. Drag it anywhere with the mouse; click to edit; right-click: Edit, Put into today's page (it becomes an idea in the page), Delete. × deletes it, with Undo at the bottom. What you type is kept if you close the window; only \"Discard\" throws it away. \
          <b>Full screen</b> (the button next to the bulb or Shift+F11): only the notebook pages, on the whole screen, without the sidebar, header and window borders; leave with the button in the corner, Esc or Shift+F11.\n\n\
          <b>Vim keys</b> (turned on in Preferences → Notebook): outside the writing field, <b>j</b> / <b>k</b> select the entry below / above, \
          <b>gg</b> / <b>G</b> the first / last, <b>h</b> / <b>l</b> the previous / next page, <b>t</b> today, <b>x</b> check, <b>i</b> edit, \

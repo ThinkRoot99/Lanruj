@@ -71,9 +71,9 @@ pub struct App {
     pub editing: Cell<Option<(PageRef, usize)>>,
     /// În timpul exportului: fără selecție, câmpuri de scris și butoane de adăugat.
     pub exporting: Cell<bool>,
-    /// Biletele din colțul caietului.
-    pub notes_box: gtk::Box,
-    pub notes_scroll: gtk::ScrolledWindow,
+    /// Biletele, lipite peste caiet (fiecare e un strat al acestui Overlay).
+    pub notes_over: gtk::Overlay,
+    pub notes_widgets: RefCell<Vec<gtk::Widget>>,
     /// Monitorizare: ziua aleasă cu tastatura, ca să rămână aleasă după schimbare.
     pub tracking_focus: Cell<Option<NaiveDate>>,
     /// Monitorizare: fila aleasă (Activități, Somn, Serviciu).
@@ -2178,24 +2178,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     // Deasupra caietului: biletele (în colțul din dreapta jos) și butonul de ieșire din ecranul complet.
     let over = gtk::Overlay::new();
     over.set_child(Some(&content_stack));
-    let notes_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    notes_box.set_margin_top(8);
-    notes_box.set_margin_bottom(8);
-    notes_box.set_margin_start(8);
-    notes_box.set_margin_end(8);
-    let notes_scroll = gtk::ScrolledWindow::builder()
-        .child(&notes_box)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .propagate_natural_height(true)
-        .max_content_height(420)
-        .halign(gtk::Align::End)
-        .valign(gtk::Align::End)
-        .margin_end(34)
-        .margin_bottom(96)
-        .visible(false)
-        .css_classes(["bilete"])
-        .build();
-    over.add_overlay(&notes_scroll);
+
     let exit_full = gtk::Button::builder()
         .icon_name("view-restore-symbolic")
         .action_name("win.fullscreen")
@@ -2353,8 +2336,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         index_add_open: Cell::new(false),
         selected: Cell::new(None),
         exporting: Cell::new(false),
-        notes_box: notes_box.clone(),
-        notes_scroll: notes_scroll.clone(),
+        notes_over: over.clone(),
+        notes_widgets: RefCell::new(Vec::new()),
         tracking_focus: Cell::new(None),
         tracking_tab: Cell::new(monitorizare::Tab::default()),
         vim_pending: Cell::new(None),
@@ -3202,6 +3185,44 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 if let Some(app) = s.window.application() {
                     app.quit();
                 }
+            });
+        }
+        Ok("test-bilet") => {
+            // Bilet nou, scris și apoi fereastra închisă (ca la × sau Esc): biletul trebuie să rămână.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                s.quick_idea();
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                    fn find<T: IsA<gtk::Widget>>(w: &gtk::Widget, out: &mut Vec<T>) {
+                        if let Some(x) = w.downcast_ref::<T>() {
+                            out.push(x.clone());
+                        }
+                        let mut c = w.first_child();
+                        while let Some(ch) = c {
+                            find(&ch, out);
+                            c = ch.next_sibling();
+                        }
+                    }
+                    let mut tvs: Vec<gtk::TextView> = Vec::new();
+                    find(s2.window.upcast_ref(), &mut tvs);
+                    if let Some(tv) = tvs.iter().find(|t| t.has_css_class("bilet-nou")) {
+                        tv.buffer().set_text("Bilet de probă, închis cu ×");
+                    }
+                    let mut ds: Vec<adw::Dialog> = Vec::new();
+                    find(s2.window.upcast_ref(), &mut ds);
+                    if let Some(d) = ds.first() {
+                        d.close();
+                    }
+                    let s3 = s2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                        let n = s3.journal.load_notes().unwrap_or_default();
+                        eprintln!("selftest-bilet: {:?}", n.iter().map(|x| x.text.clone()).collect::<Vec<_>>());
+                        if let Some(app) = s3.window.application() {
+                            app.quit();
+                        }
+                    });
+                });
             });
         }
         Ok("test-tipar") => {
