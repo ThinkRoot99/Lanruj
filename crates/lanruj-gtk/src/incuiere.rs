@@ -83,6 +83,10 @@ pub async fn keyring_clear(root: PathBuf) {
 // ---- Pornirea odată cu calculatorul ----
 
 fn autostart_file() -> PathBuf {
+    // La probe (LANRUJ_DIR), pornirea automată rămâne în dosarul de probă, nu în sistem.
+    if let Some(d) = std::env::var_os("LANRUJ_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(d).join(".pornire-automata.desktop");
+    }
     glib::user_config_dir().join("autostart").join(format!("{}.desktop", crate::APP_ID))
 }
 
