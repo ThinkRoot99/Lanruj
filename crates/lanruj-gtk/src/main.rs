@@ -5,6 +5,7 @@ mod bara;
 mod cautare;
 mod cheie;
 mod incuiere;
+mod vechi;
 mod copii;
 mod export;
 mod ghid;
@@ -3572,6 +3573,7 @@ fn main() -> glib::ExitCode {
     } else {
         gio::ApplicationFlags::empty()
     };
+    vechi::migrate();
     let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
     app.connect_startup(|_| load_css());
     app.connect_activate(build_ui);

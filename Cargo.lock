@@ -1352,29 +1352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lanruj"
-version = "0.1.0"
-dependencies = [
- "cairo-rs",
- "chrono",
- "gtk4",
- "lanruj-core",
- "ksni",
- "libadwaita",
- "oo7",
- "pangocairo",
- "zip",
-]
-
-[[package]]
-name = "lanruj-core"
-version = "0.1.0"
-dependencies = [
- "age",
- "chrono",
-]
-
-[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1447,6 +1424,29 @@ dependencies = [
  "serde",
  "task-local",
  "zbus 5.19.0",
+]
+
+[[package]]
+name = "lanruj"
+version = "0.1.0"
+dependencies = [
+ "cairo-rs",
+ "chrono",
+ "gtk4",
+ "ksni",
+ "lanruj-core",
+ "libadwaita",
+ "oo7",
+ "pangocairo",
+ "zip",
+]
+
+[[package]]
+name = "lanruj-core"
+version = "0.1.0"
+dependencies = [
+ "age",
+ "chrono",
 ]
 
 [[package]]
