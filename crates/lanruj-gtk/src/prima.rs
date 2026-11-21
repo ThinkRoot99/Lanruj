@@ -25,6 +25,9 @@ pub fn needed(root: &Path) -> bool {
     }
 }
 
+/// Ce se face după prima pornire (deschiderea caietului, cu cheia, dacă e cazul).
+type Then = dyn Fn(&adw::Application, Option<Arc<Key>>);
+
 struct Choice {
     lang: Lang,
     paper: Paper,
@@ -42,7 +45,7 @@ struct Wizard {
     step: Cell<u32>,
     /// Ultimele 4 caractere ale cheii de recuperare au fost scrise corect.
     key_ok: Cell<bool>,
-    then: Box<dyn Fn(&adw::Application, Option<Arc<Key>>)>,
+    then: Box<Then>,
 }
 
 fn label(s: &str, classes: &[&str]) -> gtk::Label {

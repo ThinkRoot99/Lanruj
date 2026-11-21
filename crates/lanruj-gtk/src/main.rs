@@ -1920,7 +1920,7 @@ fn build_ui(app: &adw::Application) {
     let root = Journal::default_root();
     // Prima pornire: limba, hârtia și criptarea, apoi caietul.
     if prima::needed(&root) {
-        prima::show(app, root, |app, key| build_main(app, key));
+        prima::show(app, root, build_main);
         return;
     }
     let settings = setari::Settings::load();
