@@ -28,11 +28,11 @@ pub const FONTS: [Font; 7] = [
         en: "Noto Sans",
         scale: 1.0,
     },
-    Font { key: "caveat", family: "Caveat", files: &[("Caveat-wght.ttf", include_bytes!("../../../data/fonts/Caveat-wght.ttf"))], ro: "Caveat (scris de mână)", en: "Caveat (handwriting)", scale: 1.3 },
-    Font { key: "patrick", family: "Patrick Hand", files: &[("PatrickHand-Regular.ttf", include_bytes!("../../../data/fonts/PatrickHand-Regular.ttf"))], ro: "Patrick Hand (scris de mână)", en: "Patrick Hand (handwriting)", scale: 1.12 },
-    Font { key: "lora", family: "Lora", files: &[("Lora-wght.ttf", include_bytes!("../../../data/fonts/Lora-wght.ttf"))], ro: "Lora (de carte)", en: "Lora (book)", scale: 1.0 },
-    Font { key: "courier", family: "Courier Prime", files: &[("CourierPrime-Regular.ttf", include_bytes!("../../../data/fonts/CourierPrime-Regular.ttf"))], ro: "Courier Prime (mașină de scris)", en: "Courier Prime (typewriter)", scale: 1.0 },
-    Font { key: "nunito", family: "Nunito", files: &[("Nunito-wght.ttf", include_bytes!("../../../data/fonts/Nunito-wght.ttf"))], ro: "Nunito (rotunjit)", en: "Nunito (rounded)", scale: 1.0 },
+    Font { key: "caveat", family: "Caveat", files: &[("Caveat-wght.ttf", include_bytes!("../../../data/fonts/Caveat-wght.ttf"))], ro: "Caveat", en: "Caveat", scale: 1.3 },
+    Font { key: "patrick", family: "Patrick Hand", files: &[("PatrickHand-Regular.ttf", include_bytes!("../../../data/fonts/PatrickHand-Regular.ttf"))], ro: "Patrick Hand", en: "Patrick Hand", scale: 1.12 },
+    Font { key: "lora", family: "Lora", files: &[("Lora-wght.ttf", include_bytes!("../../../data/fonts/Lora-wght.ttf"))], ro: "Lora", en: "Lora", scale: 1.0 },
+    Font { key: "courier", family: "Courier Prime", files: &[("CourierPrime-Regular.ttf", include_bytes!("../../../data/fonts/CourierPrime-Regular.ttf"))], ro: "Courier Prime", en: "Courier Prime", scale: 1.0 },
+    Font { key: "nunito", family: "Nunito", files: &[("Nunito-wght.ttf", include_bytes!("../../../data/fonts/Nunito-wght.ttf"))], ro: "Nunito", en: "Nunito", scale: 1.0 },
 ];
 
 pub fn by_key(key: &str) -> Option<&'static Font> {

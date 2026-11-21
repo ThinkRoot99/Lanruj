@@ -1798,10 +1798,10 @@ impl App {
         }
         // Doar la probe: LANRUJ_FILA_SETARI=0..3 deschide direct o filă.
         #[cfg(debug_assertions)]
-        if let Some(n) = std::env::var("LANRUJ_FILA_SETARI").ok().and_then(|n| n.parse::<usize>().ok()) {
-            if let Some(p) = [&look, &journal_page, &safety, &general].get(n) {
-                dialog.set_visible_page(*p);
-            }
+        if let Some(n) = std::env::var("LANRUJ_FILA_SETARI").ok().and_then(|n| n.parse::<usize>().ok())
+            && let Some(p) = [&look, &journal_page, &safety, &general].get(n)
+        {
+            dialog.set_visible_page(*p);
         }
         dialog.present(Some(&self.window));
     }
