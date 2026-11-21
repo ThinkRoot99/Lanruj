@@ -2813,6 +2813,25 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
             if std::env::var_os("LANRUJ_MARIT").is_some() {
                 state.window.maximize();
             }
+            // LANRUJ_VEDERE: alt ecran înainte de captură (pentru site).
+            let t = state.today.get();
+            match std::env::var("LANRUJ_VEDERE").as_deref() {
+                Ok("luna") => state.go_month(t.year(), t.month()),
+                Ok("saptamana") => state.go_week(t.iso_week().year(), t.iso_week().week()),
+                Ok("planuri") => {
+                    let (y, m) = state.future_start();
+                    state.go_future(y, m);
+                }
+                Ok("index") => state.go_index(),
+                Ok("ghid") => {
+                    gtk::prelude::WidgetExt::activate_action(&state.window, "win.guide", None).ok();
+                }
+                Ok(v) if v.starts_with("cauta:") => {
+                    state.open_search();
+                    state.cautare.entry.set_text(&v["cauta:".len()..]);
+                }
+                _ => {}
+            }
             if let Ok(p) = std::env::var("LANRUJ_PNG") {
                 let w = state.window.clone();
                 let st = state.clone();
