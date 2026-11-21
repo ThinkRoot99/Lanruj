@@ -23,7 +23,8 @@ pub struct Page {
     banner: gtk::Box,
     /// Pagina arătată acum (pentru pozele trase în ea); `None` pe paginile făcute automat.
     pub current: std::cell::Cell<Option<PageRef>>,
-    list: gtk::Box,
+    pub list: gtk::Box,
+    pub scroll: gtk::ScrolledWindow,
     footer: gtk::Box,
     pub quick: Option<gtk::Entry>,
 }
@@ -85,7 +86,7 @@ impl Page {
             e
         });
 
-        Page { root, label, title, banner, list, footer, quick, current: std::cell::Cell::new(None) }
+        Page { root, label, title, banner, list, scroll, footer, quick, current: std::cell::Cell::new(None) }
     }
 
     fn clear(&self) {
@@ -1575,12 +1576,12 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
 
 fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&MigView>) -> gtk::Box {
     let lang = app.lang;
-    if mig.is_none() && app.editing.get() == Some((r, index)) {
+    if mig.is_none() && !app.exporting.get() && app.editing.get() == Some((r, index)) {
         return edit_row(app, e);
     }
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.add_css_class("intrare");
-    if mig.is_none() && app.selected.get() == Some((r, index)) {
+    if mig.is_none() && !app.exporting.get() && app.selected.get() == Some((r, index)) {
         row.add_css_class("selectat");
     }
     if mig.is_none() {

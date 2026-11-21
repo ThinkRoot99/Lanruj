@@ -3,6 +3,7 @@
 
 mod bara;
 mod cautare;
+mod export;
 mod ghid;
 mod migrare;
 mod page;
@@ -36,11 +37,11 @@ pub struct App {
     pub journal: Journal,
     pub lang: Lang,
     /// Ziua din pagina din dreapta; în stânga e ziua dinainte.
-    shown: Cell<NaiveDate>,
+    pub shown: Cell<NaiveDate>,
     pub today: Cell<NaiveDate>,
     window: adw::ApplicationWindow,
-    left: Page,
-    right: Page,
+    pub left: Page,
+    pub right: Page,
     title: adw::WindowTitle,
     calendar: gtk::Calendar,
     today_count: gtk::Label,
@@ -59,10 +60,12 @@ pub struct App {
     sched_button: RefCell<Option<gtk::MenuButton>>,
     /// Intrarea care se editează acum: (pagina, poziția).
     pub editing: Cell<Option<(PageRef, usize)>>,
+    /// În timpul exportului: fără selecție, câmpuri de scris și butoane de adăugat.
+    pub exporting: Cell<bool>,
     /// Ziua din calendarul lunii care se editează acum.
     pub cal_editing: Cell<Option<u32>>,
     pub view: Cell<View>,
-    caiet: gtk::Box,
+    pub caiet: gtk::Box,
     today_button: gtk::Button,
     migrate_button: gtk::Button,
     nav: gtk::ListBox,
@@ -1120,6 +1123,8 @@ impl App {
                     (tr(l, "Ziua, săptămâna sau luna de după", "Next day, week or month"), "<Alt>Right <Control>Page_Down"),
                     (tr(l, "Înapoi la ziua de azi", "Back to today"), "<Alt>Home"),
                     (tr(l, "Mergi la o dată", "Go to a date"), "<Control>g"),
+                    (tr(l, "Tipărește pagina", "Print the page"), "<Control>p"),
+                    (tr(l, "Pagina ca PDF", "Page as PDF"), "<Control><Shift>e"),
                 ],
             ),
             (
@@ -1476,6 +1481,15 @@ fn build_ui(app: &adw::Application) {
         ]),
     );
     menu.append_section(None, &section(&[(tr(lang, "Strânge sau întinde bara laterală", "Collapse or expand the sidebar"), "win.sidebar")]));
+    // Exportul, într-un submeniu.
+    let exp = section(&[
+        (tr(lang, "Pagina ca PDF…", "Page as PDF…"), "win.export-pdf"),
+        (tr(lang, "Mai multe zile ca PDF…", "Several days as PDF…"), "win.export-pdf-days"),
+        (tr(lang, "Tipărește pagina…", "Print the page…"), "win.print"),
+        (tr(lang, "Tipărește mai multe zile…", "Print several days…"), "win.print-days"),
+        (tr(lang, "Tot jurnalul ca arhivă zip…", "The whole journal as zip…"), "win.export-zip"),
+    ]);
+    menu.append_submenu(Some(tr(lang, "Exportă și tipărește", "Export and print")), &exp);
     menu.append_section(
         None,
         &section(&[
@@ -1661,6 +1675,7 @@ fn build_ui(app: &adw::Application) {
         index_add_date: Cell::new(None),
         index_add_open: Cell::new(false),
         selected: Cell::new(None),
+        exporting: Cell::new(false),
     });
     if state.settings.borrow().tray {
         state.set_tray(true);
@@ -1689,6 +1704,25 @@ fn build_ui(app: &adw::Application) {
     });
     window.add_action(&a);
     app.set_accels_for_action("win.search", &["<Control>f"]);
+    // Exportul și tipărirea.
+    for (name, f) in [
+        ("export-pdf", App::export_pdf_current as fn(&Rc<App>)),
+        ("export-pdf-days", App::export_pdf_days),
+        ("print", App::print_current),
+        ("print-days", App::print_days),
+        ("export-zip", App::export_zip),
+    ] {
+        let a = gio::SimpleAction::new(name, None);
+        let weak = Rc::downgrade(&state);
+        a.connect_activate(move |_, _| {
+            if let Some(s) = weak.upgrade() {
+                f(&s);
+            }
+        });
+        window.add_action(&a);
+    }
+    app.set_accels_for_action("win.print", &["<Control>p"]);
+    app.set_accels_for_action("win.export-pdf", &["<Control><Shift>e"]);
     // Ctrl+G: Mergi la data… (un calendar; clic pe o zi o deschide).
     let a = gio::SimpleAction::new("goto", None);
     let weak = Rc::downgrade(&state);
@@ -2350,6 +2384,23 @@ fn build_ui(app: &adw::Application) {
                 }
                 if let Ok(p) = std::env::var("LANRUJ_PNG") {
                     save_png(&s.window, &p);
+                }
+            });
+        }
+        Ok("test-export") => {
+            // Exportul fără ferestre de salvare: pagina, o săptămână de zile ca PDF, arhiva.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
+                let out = std::path::PathBuf::from(std::env::var("LANRUJ_IESIRE").unwrap_or_else(|_| "/tmp".into()));
+                for (name, r) in [
+                    ("pagina.pdf", s.test_export_current(&out.join("pagina.pdf"))),
+                    ("zile.pdf", s.test_export_days(&out.join("zile.pdf"))),
+                ] {
+                    eprintln!("selftest-export: {name}: {r:?}");
+                }
+                eprintln!("selftest-export: arhiva: {:?}", export::write_zip(s.journal.root(), &out.join("jurnal.zip")));
+                if let Some(app) = s.window.application() {
+                    app.quit();
                 }
             });
         }

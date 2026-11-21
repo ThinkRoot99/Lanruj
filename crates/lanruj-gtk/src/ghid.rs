@@ -7,7 +7,7 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 17] = [
+const CAPITOLE: [(&str, &str, &str, &str); 18] = [
     (
         "Cum începi",
         "O zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
@@ -223,11 +223,29 @@ const CAPITOLE: [(&str, &str, &str, &str); 17] = [
          Click a result to open its page; Esc closes the search.",
     ),
     (
+        "Exportul și tipărirea",
+        "În <b>☰ → Exportă și tipărește</b>:\n\n\
+         <b>Pagina ca PDF</b> (Ctrl+Shift+E): ce vezi acum (ieri și azi alăturate, săptămâna, luna, planurile, indexul), \
+         cu hârtia și culorile tale, întreagă chiar dacă pe ecran trebuie derulată.\n\
+         <b>Mai multe zile ca PDF</b>: alegi de la ce zi până la ce zi (cel mult un an); fiecare zi devine o pagină.\n\
+         <b>Tipărește</b> (Ctrl+P): aceleași pagini, prin fereastra de tipărire a calculatorului (de acolo se poate salva și ca PDF).\n\
+         <b>Tot jurnalul ca arhivă zip</b>: toate fișierele Markdown și pozele, bune ca copie de siguranță sau ca să le muți pe alt calculator.\n\n\
+         În PDF nu apar câmpul de scris, „+ etichetă” și intrarea aleasă. În timpul migrării sau al căutării exportul așteaptă să le termini.",
+        "Export and print",
+        "In <b>☰ → Export and print</b>:\n\n\
+         <b>Page as PDF</b> (Ctrl+Shift+E): what you see now (yesterday and today side by side, the week, month, plans, index), \
+         with your paper and colors, whole even if it needs scrolling on screen.\n\
+         <b>Several days as PDF</b>: pick the first and last day (at most a year); each day becomes a page.\n\
+         <b>Print</b> (Ctrl+P): the same pages, through the computer's print window (which can also save as PDF).\n\
+         <b>The whole journal as zip</b>: every Markdown file and picture, good as a backup or to move to another computer.\n\n\
+         The writing field, \"+ tag\" and the selected entry don't appear in the PDF. During a migration or a search, export waits until you finish.",
+    ),
+    (
         "Tastele",
-        "Toate tastele sunt în <b>☰ → Scurtături de taste</b> (Ctrl+?). Cele mai folosite: Ctrl+F căutare, Ctrl+M migrare, Ctrl+I în index, Ctrl+G mergi la data, \
+        "Toate tastele sunt în <b>☰ → Scurtături de taste</b> (Ctrl+?). Cele mai folosite: Ctrl+F căutare, Ctrl+M migrare, Ctrl+I în index, Ctrl+G mergi la data, Ctrl+P tipărește, \
          Tab sub intrarea de deasupra, Ctrl+K legătură (la editare), Alt+← → zile, Alt+Home azi, F9 bara laterală, F11 fereastra mare, F10 meniul, Ctrl+Q ieșire, F1 ghidul acesta.",
         "Keys",
-        "All keys are in <b>☰ → Keyboard Shortcuts</b> (Ctrl+?). The most used: Ctrl+F search, Ctrl+M migrate, Ctrl+I index, Ctrl+G go to date, \
+        "All keys are in <b>☰ → Keyboard Shortcuts</b> (Ctrl+?). The most used: Ctrl+F search, Ctrl+M migrate, Ctrl+I index, Ctrl+G go to date, Ctrl+P print, \
          Tab under the entry above, Ctrl+K link (while editing), Alt+← → days, Alt+Home today, F9 sidebar, F11 maximize, F10 menu, Ctrl+Q quit, F1 this guide.",
     ),
     (
