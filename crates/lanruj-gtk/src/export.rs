@@ -293,6 +293,7 @@ impl App {
             View::Index => "lanruj-index".into(),
             View::Topic(d, _) => format!("lanruj-pagina-{}", d.format("%Y-%m-%d")),
             View::Tracking(y, m) => format!("lanruj-serviciu-{y}-{m:02}"),
+            View::Diary(d) => format!("lanruj-jurnal-{}", d.format("%Y-%m-%d")),
         }
     }
 

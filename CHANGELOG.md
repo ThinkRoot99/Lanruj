@@ -9,6 +9,8 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 ### 2026-11-21 (afternoon)
 
 #### Added
+- **Journal**: a page for writing at length, as in a notebook, one file per day (`jurnal/YYYY/YYYY-MM-DD.md`, plain Markdown, encrypted when the journal is), saved automatically. Bold, italic, underline, strikethrough, text colors and markers, headings, quotes, bulleted, numbered and check lists, the time for each entry of the day, web links.
+- **Journal links**: any selected text can link to a day, a specific task, event or note, the week plan, the month page, the future log, the Index or Tracking (Ctrl+L, opened with Ctrl+click); linked entries show a sign that leads back to the journal, Tracking lists the journal days that mention it, and every entry's menu has "Write about it in the journal".
 - **Notes** (light bulb in the header, Ctrl+N): ideas jotted down quickly, shown like small yellow slips of paper on the notebook on every page, kept apart from the pages until you delete them. Notes can be dragged anywhere, edited, turned into an idea in today's page, or deleted with Undo; text being written is never lost when the window is closed. Saved in `bilete.md`, encrypted when the journal is.
 - **Full screen** (button in the header, Shift+F11): only the notebook pages, without the sidebar, header and window borders; Esc leaves it.
 - **Writing font** in Preferences: the system font or one of seven fonts that come with the app (Inter, Noto Sans, Caveat, Patrick Hand, Lora, Courier Prime, Nunito), applied to the notebook pages only. Handwriting fonts are shown slightly larger so they stay easy to read.

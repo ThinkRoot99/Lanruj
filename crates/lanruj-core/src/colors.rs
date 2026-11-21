@@ -107,7 +107,7 @@ fn is_hex(s: &str) -> bool {
 }
 
 /// `<span style="color:#c01c28">` → („span”, „color”, „#c01c28”, lungimea etichetei).
-fn open_tag(s: &str) -> Option<(&'static str, String, usize)> {
+pub(crate) fn open_tag(s: &str) -> Option<(&'static str, String, usize)> {
     for (tag, prop) in [("span", "color"), ("mark", "background")] {
         let start = format!("<{tag} style=\"{prop}:");
         if let Some(rest) = s.strip_prefix(&start) {

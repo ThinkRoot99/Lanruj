@@ -7,7 +7,7 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 21] = [
+const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     (
         "Cum începi",
         "<b>Prima pornire</b>: Lanruj te întreabă limba, hârtia, fontul și mărimea scrisului și dacă vrei jurnalul criptat (cu parolă și cheie de recuperare), apoi deschide ziua de azi cu un mic exemplu al semnelor, pe care îl poți șterge. Toate se pot schimba apoi din Setări.\n\nO zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
@@ -18,6 +18,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
         "Pe scurt",
         "Lanruj e un jurnal în stilul metodei Bullet Journal: scrii scurt, cu semne, și muți ce n-ai terminat.\n\n\
          • <b>Pagina zilei</b> - ce faci azi; alături, ziua de ieri.\n\
+         • <b>Jurnal</b> - ce ai trăit și ce gândești, scris pe larg, ca într-un caiet.\n\
          • <b>Pagina săptămânii</b> - planul săptămânii și cele 7 zile pe scurt.\n\
          • <b>Pagina lunii</b> - calendarul lunii și sarcinile ei.\n\
          • <b>Planuri</b> - lunile care vin.\n\
@@ -26,11 +27,28 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
         "Short version",
         "Lanruj is a journal in the Bullet Journal style: write short, with signs, and move what you didn't finish.\n\n\
          • <b>Day</b> - what you do today; next to it, yesterday.\n\
+         • <b>Journal</b> - what you lived and what you think, written at length, as in a notebook.\n\
          • <b>Week</b> - the week's plan and the 7 days at a glance.\n\
          • <b>Month</b> - the month's calendar and tasks.\n\
          • <b>Future log</b> - the coming months.\n\
          • <b>Index</b> - the days and things you want to remember.\n\n\
          Everything is saved at once, in plain Markdown files.",
+    ),
+    (
+        "Jurnalul",
+        "<b>Jurnalul</b> (în bara laterală, sub Pagina zilei) e locul în care scrii pe larg, ca într-un caiet: ce s-a întâmplat, ce ai simțit, ce gândești. Fiecare zi are fișierul ei, <tt>jurnal/2026/2026-11-21.md</tt>, și se salvează singur, la o clipă după ce scrii. Cu săgețile din antet sau cu calendarul treci la altă zi.\n\n\
+         <b>Scrisul</b>: selectezi textul și alegi din bară îngroșat (Ctrl+B), cursiv (Ctrl+I), subliniat (Ctrl+U) sau tăiat (Ctrl+D), o culoare a textului sau un marker. Fără selecție, butonul se aplică pe ce scrii mai departe; culorile, pe cuvântul de la cursor. Butonul cu radieră scoate formatarea.\n\n\
+         <b>Rândurile</b>: T face din rând un titlu, „“ un citat; trei feluri de liste - cu buline, numerotate și cu căsuțe (un clic pe căsuță o bifează). Enter continuă lista, Enter pe un rând gol o termină, Tab o mută mai la dreapta.\n\n\
+         <b>Ora</b> (ceasul din bară sau Ctrl+Shift+O): când scrii de mai multe ori în aceeași zi, fiecare scriere începe cu ora ei.\n\n\
+         <b>Legăturile</b>: butonul cu lanțul pune o adresă web pe textul selectat. Butonul cu calendarul (Ctrl+L) leagă textul selectat - un cuvânt, o propoziție sau un paragraf întreg - de o zi, de un rând anume (sarcină, eveniment, notă), de planul săptămânii, de pagina lunii, de Planuri, de Index sau de Monitorizare. Legăturile se deschid cu Ctrl+clic.\n\n\
+         <b>Și invers</b>: un rând legat din jurnal are pe pagina lui un semn mic; un clic pe el deschide ziua de jurnal care vorbește despre el. Monitorizarea arată jos ce zile din jurnal o pomenesc. Din meniul oricărui rând (clic dreapta), „Scrie în jurnal despre asta” deschide jurnalul de azi cu o legătură spre rând, gata de scris.",
+        "The journal",
+        "<b>The journal</b> (in the sidebar, under Day) is where you write at length, as in a notebook: what happened, what you felt, what you think. Every day has its own file, <tt>jurnal/2026/2026-11-21.md</tt>, and it saves itself a moment after you write. Use the arrows in the header or the calendar to go to another day.\n\n\
+         <b>Writing</b>: select the text and choose bold (Ctrl+B), italic (Ctrl+I), underline (Ctrl+U) or strikethrough (Ctrl+D), a text color or a marker. With no selection, the button applies to what you type next; colors apply to the word at the cursor. The eraser button clears the formatting.\n\n\
+         <b>Lines</b>: T turns the line into a heading, „“ into a quote; three kinds of lists - bulleted, numbered and checklists (click a box to tick it). Enter continues the list, Enter on an empty line ends it, Tab moves it to the right.\n\n\
+         <b>The time</b> (the clock in the bar or Ctrl+Shift+O): when you write several times on the same day, each entry starts with its time.\n\n\
+         <b>Links</b>: the chain button puts a web address on the selected text. The calendar button (Ctrl+L) links the selected text - a word, a sentence or a whole paragraph - to a day, to a specific entry (task, event, note), to the week plan, the month page, the future log, the Index or Tracking. Open links with Ctrl+click.\n\n\
+         <b>And the other way round</b>: an entry linked from the journal shows a small sign on its page; click it to open the journal day that talks about it. Tracking shows at the bottom which journal days mention it. From any entry's menu (right-click), \"Write about it in the journal\" opens today's journal with a link to the entry, ready to write.",
     ),
     (
         "Scrierea rapidă",

@@ -993,7 +993,7 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
 /// Eticheta de culoare din câmpul de editare. Numele ține culoarea din fișier
 /// („f#c01c28” = text, „b#8ff0a4” = marker); afișarea folosește varianta de noapte când e cazul.
 /// Eticheta unei legături în câmpul de editare: „l” + adresa; albastră și subliniată.
-fn link_tag(buf: &gtk::TextBuffer, url: &str, night: bool) -> gtk::TextTag {
+pub(crate) fn link_tag(buf: &gtk::TextBuffer, url: &str, night: bool) -> gtk::TextTag {
     let name = format!("l{url}");
     if let Some(t) = buf.tag_table().lookup(&name) {
         return t;
@@ -1005,7 +1005,7 @@ fn link_tag(buf: &gtk::TextBuffer, url: &str, night: bool) -> gtk::TextTag {
     tag
 }
 
-fn color_tag(buf: &gtk::TextBuffer, marker: bool, hex: &str, night: bool) -> gtk::TextTag {
+pub(crate) fn color_tag(buf: &gtk::TextBuffer, marker: bool, hex: &str, night: bool) -> gtk::TextTag {
     let name = format!("{}{}", if marker { 'b' } else { 'f' }, hex.to_lowercase());
     if let Some(t) = buf.tag_table().lookup(&name) {
         return t;
@@ -1090,6 +1090,22 @@ fn paint_view(view: &gtk::TextView, paint: Option<lanruj_core::colors::Paint>, n
     let buf = view.buffer();
     let (a, b) = match buf.selection_bounds() {
         Some((a, b)) => (a, b),
+        // În jurnal, fără selecție: cuvântul de la cursor (nu tot textul).
+        None if view.has_css_class("jurnal-text") => {
+            let at = buf.iter_at_mark(&buf.get_insert());
+            let (mut a, mut b) = (at, at);
+            if !a.starts_word() {
+                a.backward_word_start();
+            }
+            if !b.ends_word() {
+                b.forward_word_end();
+            }
+            if !at.inside_word() && !at.ends_word() {
+                view.grab_focus();
+                return;
+            }
+            (a, b)
+        }
         None => {
             let full = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
             let start = match lanruj_core::parse_quick(&full) {
@@ -1479,6 +1495,14 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
         }
     });
     let del = gtk::Button::builder().label(tr(lang, "Șterge", "Delete")).css_classes(["flat", "error"]).build();
+    let about = gtk::Button::builder().label(tr(lang, "Scrie în jurnal despre asta", "Write about it in the journal")).css_classes(["flat", "scrie-jurnal"]).build();
+    let (weak, p) = (Rc::downgrade(app), pop.clone());
+    about.connect_clicked(move |_| {
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            glib::idle_add_local_once(move || app.write_about_entry(date, index));
+        }
+    });
     // Legăturile din intrare: câte un rând „Deschide …”, cale sigură pe lângă clicul pe legătură.
     for u in &urls {
         let shown = u.strip_prefix("mailto:").map(|m| format!("{} {m}", tr(lang, "Scrie la", "Write to"))).unwrap_or_else(|| {
@@ -1497,7 +1521,7 @@ fn add_entry_menu(app: &Rc<App>, row: &gtk::Box, date: PageRef, index: usize, mo
     if !urls.is_empty() {
         menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
-    for b in [&edit, &mv, &col, &pics, &ind, &outd, &del] {
+    for b in [&edit, &mv, &col, &about, &pics, &ind, &outd, &del] {
         b.child().and_then(|c| c.downcast::<gtk::Label>().ok()).inspect(|l| l.set_xalign(0.0));
         menu.append(b);
     }
@@ -1708,6 +1732,26 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
                 text_box.append(&m);
             }
         }
+    // Pomenit în jurnal: un semn mic care duce la ziua de jurnal care vorbește despre rând.
+    if mig.is_none()
+        && !app.exporting.get()
+        && let Some(id) = &e.id
+    {
+        let m = app.entry_mentions(r, id);
+        if let Some((d, _)) = m.first() {
+            let d = *d;
+            let b = gtk::Button::builder().icon_name("accessories-text-editor-symbolic").css_classes(["flat", "pomenit"]).valign(gtk::Align::Start).build();
+            let days: Vec<String> = m.iter().map(|(d, t)| format!("{} · „{}”", lang.day_title_short(*d), t.chars().take(40).collect::<String>())).collect();
+            b.set_tooltip_text(Some(&format!("{}\n{}", tr(lang, "Pomenit în jurnal:", "Mentioned in the journal:"), days.join("\n"))));
+            let weak = Rc::downgrade(app);
+            b.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.go_diary(d);
+                }
+            });
+            text_box.append(&b);
+        }
+    }
     // Pe pagina din dreapta: ce a ajuns acum, din migrare.
     if let Some(m) = mig
         && !m.is_source

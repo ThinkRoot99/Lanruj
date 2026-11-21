@@ -557,3 +557,16 @@ textview.bilet-nou { padding: 10px; border-radius: 4px; }
 button.iesire-ecran { min-width: 36px; min-height: 36px; }
 .bilet.trage { box-shadow: 0 3px 8px alpha(black, 0.25); }
 .text-bilet { margin-top: 2px; }
+
+/* ---- Jurnalul: o pagină mare de caiet, pentru scris liber ---- */
+.foaie-jurnal { min-height: 300px; }
+textview.jurnal-text, textview.jurnal-text text { background: none; color: var(--cerneala); font-size: 16px; }
+.bara-jurnal { border-bottom: 1px solid alpha(var(--cerneala), 0.12); padding-bottom: 4px; }
+.bara-jurnal separator { margin: 6px 4px; }
+button.unealta-jurnal { min-width: 30px; min-height: 30px; padding: 2px 6px; }
+button.unealta-jurnal.aprins { background-color: alpha(var(--cerneala), 0.14); }
+.bara-jurnal-culori { margin: 0; }
+.pomeniri { margin-top: 6px; }
+button.pomenire { padding: 2px 6px; font-size: 13px; }
+button.pomenit { min-width: 22px; min-height: 22px; padding: 0 2px; opacity: 0.7; }
+button.rand-legatura { padding: 4px 8px; }

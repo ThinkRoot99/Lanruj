@@ -106,6 +106,10 @@ impl App {
         };
         self.title.set_title(&format!("{name} · {title}"));
         self.title.set_subtitle(&sub);
+        if let Some(b) = self.tracking_mentions_box(y, m) {
+            b.set_margin_top(14);
+            self.right.list.append(&b);
+        }
     }
 
     /// Schimbă luna și reface ecranul; `focus` = ziua de ales după (pentru tastatură).

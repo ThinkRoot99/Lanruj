@@ -7,6 +7,7 @@ pub mod bilete;
 pub mod colors;
 pub mod crypt;
 pub mod day;
+pub mod diary;
 pub mod future;
 pub mod index;
 pub mod journal;

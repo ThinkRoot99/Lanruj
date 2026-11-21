@@ -4,6 +4,7 @@
 mod bara;
 mod bilete;
 mod cautare;
+mod jurnal;
 mod cheie;
 mod incuiere;
 mod vechi;
@@ -71,6 +72,10 @@ pub struct App {
     pub editing: Cell<Option<(PageRef, usize)>>,
     /// În timpul exportului: fără selecție, câmpuri de scris și butoane de adăugat.
     pub exporting: Cell<bool>,
+    /// Pagina jurnalului (textul liber al zilelor).
+    pub diary: Rc<jurnal::Diary>,
+    /// Legăturile din jurnal, ținute minte până la următoarea salvare.
+    pub diary_links: RefCell<Option<Vec<lanruj_core::diary::DiaryLink>>>,
     /// Biletele, lipite peste caiet (fiecare e un strat al acestui Overlay).
     pub notes_over: gtk::Overlay,
     pub notes_widgets: RefCell<Vec<gtk::Widget>>,
@@ -119,6 +124,8 @@ pub enum View {
     Topic(NaiveDate, u8),
     /// Monitorizarea unei luni (Serviciu).
     Tracking(i32, u32),
+    /// Jurnalul propriu-zis al unei zile: text liber, scris pe larg.
+    Diary(NaiveDate),
 }
 
 fn today() -> NaiveDate {
@@ -395,6 +402,26 @@ impl App {
             self.title.set_subtitle(tr(self.lang, "Esc închide căutarea", "Esc closes the search"));
             return;
         }
+        if let View::Diary(d) = self.view.get()
+            && !self.migrating()
+        {
+            self.content_stack.set_visible_child_name("jurnal");
+            for w in &self.normal_header {
+                w.set_visible(true);
+            }
+            self.refresh_diary(d);
+            self.today_button.set_visible(d != self.today.get());
+            self.migrate_button.set_visible(false);
+            if self.nav.selected_row().map(|r| r.index()) != Some(1) {
+                self.nav.select_row(Some(&self.nav_rows[1]));
+            }
+            self.sync_calendar();
+            return;
+        }
+        if self.content_stack.visible_child_name().as_deref() == Some("jurnal") {
+            self.flush_diary();
+            self.content_stack.set_visible_child_name("caiet");
+        }
         let month_view = matches!(self.view.get(), View::Month(..)) && !self.migrating();
         let future_view = matches!(self.view.get(), View::Future(..)) && !self.migrating();
         let week_view = matches!(self.view.get(), View::Week(..)) && !self.migrating();
@@ -443,15 +470,15 @@ impl App {
             }
         }
         let row = if index_view || topic_view {
-            5
+            6
         } else if tracking_view {
-            4
+            5
         } else if month_view {
-            2
-        } else if week_view {
-            1
-        } else if future_view {
             3
+        } else if week_view {
+            2
+        } else if future_view {
+            4
         } else {
             0
         };
@@ -713,10 +740,11 @@ impl App {
         self.calendar_busy.set(false);
     }
 
-    fn mark_calendar(&self) {
+    pub fn mark_calendar(&self) {
         self.calendar.clear_marks();
         let (y, m) = (self.calendar.year(), self.calendar.month() as u32 + 1);
-        for day in self.journal.written_days(y, m) {
+        let days = if matches!(self.view.get(), View::Diary(_)) { self.journal.diary_days(y, m) } else { self.journal.written_days(y, m) };
+        for day in days {
             self.calendar.mark_day(day);
         }
     }
@@ -978,7 +1006,7 @@ impl App {
                 PageRef::Future { year, month }
             }
             (None, View::Week(year, week)) => PageRef::Week { year, week },
-            (None, View::Index | View::Tracking(..)) => return None,
+            (None, View::Index | View::Tracking(..) | View::Diary(_)) => return None,
             (None, View::Topic(date, n)) => PageRef::Topic { date, n },
             (None, View::Day) => PageRef::Day(self.shown.get()),
         })
@@ -1037,7 +1065,7 @@ impl App {
             View::Month(year, month) => (PageRef::Month { year, month }, &self.right),
             View::Week(year, week) => (PageRef::Week { year, week }, &self.left),
             View::Future(year, month) => (PageRef::Future { year, month }, &self.left),
-            View::Index | View::Tracking(..) => return None,
+            View::Index | View::Tracking(..) | View::Diary(_) => return None,
             View::Topic(date, n) => (PageRef::Topic { date, n }, &self.left),
         })
     }
@@ -2053,6 +2081,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     let soon = tr(lang, "Vine într-un pas următor", "Coming in a later step");
     let built = [
         nav_row("document-edit-symbolic", tr(lang, "Pagina zilei", "Day"), Some(&today_count)),
+        nav_row("accessories-text-editor-symbolic", tr(lang, "Jurnal", "Journal"), None),
         nav_row("view-dual-symbolic", tr(lang, "Pagina săptămânii", "Week"), None),
         nav_row("view-grid-symbolic", tr(lang, "Pagina lunii", "Month"), None),
         nav_row("task-due-symbolic", tr(lang, "Planuri", "Future log"), None),
@@ -2063,7 +2092,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     let row_boxes: Vec<gtk::Box> = built.iter().map(|(_, b, _)| b.clone()).collect();
     let mut hide_when_compact: Vec<gtk::Widget> = built.iter().flat_map(|(_, _, h)| h.clone()).collect();
     for (i, r) in rows.iter().enumerate() {
-        if !matches!(i, 0..=5) {
+        if !matches!(i, 0..=6) {
             r.set_sensitive(false);
             r.set_tooltip_text(Some(if i == 4 { tr(lang, "În versiunea a doua", "In version two") } else { soon }));
         }
@@ -2175,6 +2204,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     content_stack.add_named(&caiet, Some("caiet"));
     let cautare = Rc::new(cautare::Cautare::new(lang));
     content_stack.add_named(&cautare.root, Some("cautare"));
+    let diary = jurnal::Diary::new(lang);
+    content_stack.add_named(&diary.root, Some("jurnal"));
     // Deasupra caietului: biletele (în colțul din dreapta jos) și butonul de ieșire din ecranul complet.
     let over = gtk::Overlay::new();
     over.set_child(Some(&content_stack));
@@ -2336,6 +2367,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         index_add_open: Cell::new(false),
         selected: Cell::new(None),
         exporting: Cell::new(false),
+        diary: diary.clone(),
+        diary_links: RefCell::new(None),
         notes_over: over.clone(),
         notes_widgets: RefCell::new(Vec::new()),
         tracking_focus: Cell::new(None),
@@ -2566,6 +2599,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 View::Month(year, month) => PageRef::Month { year, month },
                 View::Week(year, week) => PageRef::Week { year, week },
                 View::Day | View::Future(..) | View::Index | View::Topic(..) | View::Tracking(..) => PageRef::Day(s.shown.get()),
+                View::Diary(_) => return,
             };
             s.start_migration(source, false);
         }
@@ -2635,24 +2669,25 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         let Some(s) = weak.upgrade() else { return };
         match row.index() {
             0 => s.go(s.today.get()),
-            2 => {
+            1 => s.go_diary(s.today.get()),
+            3 => {
                 let t = s.today.get();
                 s.go_month(t.year(), t.month());
             }
-            1 => {
+            2 => {
                 let w = s.today.get().iso_week();
                 s.go_week(w.year(), w.week());
             }
-            3 => {
+            4 => {
                 let (y, m) = s.future_start();
                 s.go_future(y, m);
             }
-            4 => {
+            5 => {
                 let t = s.today.get();
                 s.tracking_focus.set(None);
                 s.go_tracking(t.year(), t.month());
             }
-            5 => s.go_index(),
+            6 => s.go_index(),
             _ => {}
         }
     });
@@ -2664,7 +2699,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         }
         let dt = c.date();
         if let Some(d) = NaiveDate::from_ymd_opt(dt.year(), dt.month() as u32, dt.day_of_month() as u32) {
-            s.go(d);
+            if matches!(s.view.get(), View::Diary(_)) { s.go_diary(d) } else { s.go(d) }
         }
     });
     for prop in ["month", "year"] {
@@ -2694,6 +2729,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     s.shift_future(delta as i32);
                 } else if matches!(s.view.get(), View::Week(..)) {
                     s.shift_week(delta as i32);
+                } else if let View::Diary(d) = s.view.get() {
+                    s.go_diary(d + Duration::days(delta));
                 } else {
                     s.go(s.shown.get() + Duration::days(delta));
                 }
@@ -2706,6 +2743,11 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     let weak = Rc::downgrade(&state);
     a.connect_activate(move |_, _| {
         if let Some(s) = weak.upgrade() {
+            if matches!(s.view.get(), View::Diary(_)) {
+                s.go_diary(s.today.get());
+                s.diary.view.grab_focus();
+                return;
+            }
             s.go(s.today.get());
             if let Some(q) = &s.right.quick {
                 q.grab_focus();
@@ -2757,6 +2799,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     // Cu iconița din systray pornită, închiderea doar ascunde fereastra.
     let keep = state.clone();
     window.connect_close_request(move |w| {
+        keep.flush_diary();
         // Starea barei (strânsă sau nu) se ține minte.
         keep.settings.borrow_mut().sidebar_compact = keep.bara.user_compact.get();
         let _ = keep.settings.borrow().save();
@@ -2781,6 +2824,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
             setari::Start::Index => state.view.set(View::Index),
         }
     }
+    state.wire_diary();
     state.refresh();
     state.refresh_notes();
     window.present();
@@ -3218,6 +3262,57 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
                         let n = s3.journal.load_notes().unwrap_or_default();
                         eprintln!("selftest-bilet: {:?}", n.iter().map(|x| x.text.clone()).collect::<Vec<_>>());
+                        if let Some(app) = s3.window.application() {
+                            app.quit();
+                        }
+                    });
+                });
+            });
+        }
+        Ok("test-jurnal") => {
+            // Jurnalul: scris, formatat, ora, listă, legătură spre un rând; apoi fișierul de pe disc.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                let t = s.today.get();
+                let _ = s.journal.add(t, lanruj_core::parse_quick("o 11:00 Piața cu mama").expect("rând"), s.lang);
+                s.go_diary(t);
+                let buf = s.diary.view.buffer();
+                let type_text = |txt: &str| {
+                    let mut at = buf.iter_at_mark(&buf.get_insert());
+                    buf.insert(&mut at, txt);
+                };
+                gtk::prelude::WidgetExt::activate_action(&s.window, "win.today", None).ok();
+                s.diary.view.grab_focus();
+                type_text("Azi a fost o zi ");
+                gtk::prelude::WidgetExt::activate_action(&s.diary.view, "nimic", None).ok();
+                s.diary_test_toggle("bold");
+                type_text("foarte bună");
+                s.diary_test_toggle("bold");
+                type_text(", iar dimineața am fost la piață.");
+                s.diary_test_time();
+                type_text("Seara am citit ");
+                s.diary_test_toggle("italic");
+                type_text("o carte veche");
+                s.diary_test_toggle("italic");
+                type_text(".\n");
+                s.diary_test_list("• ");
+                type_text("pâine");
+                s.diary_test_enter();
+                type_text("lapte");
+                s.diary_test_link_entry(t);
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
+                    if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                        save_png(&s2.window, &p);
+                    }
+                    let text = std::fs::read_to_string(s2.journal.diary_path(s2.today.get())).unwrap_or_default();
+                    eprintln!("selftest-jurnal-fisier:\n{text}");
+                    s2.go(s2.today.get());
+                    let s3 = s2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                        if let Ok(p) = std::env::var("LANRUJ_PNG2") {
+                            save_png(&s3.window, &p);
+                        }
                         if let Some(app) = s3.window.application() {
                             app.quit();
                         }
@@ -3806,7 +3901,7 @@ fn selftest(s: &Rc<App>) {
             gtk::prelude::WidgetExt::activate_action(&s3.window, "win.next", None).ok();
             eprintln!("selftest: după „înainte” titlu={}", s3.title.title());
             // Pagina săptămânii: o sarcină în plan, apoi migrarea săptămânii spre cea următoare.
-            s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[1]]);
+            s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[2]]);
             eprintln!("selftest: săptămâna {} / {}", s3.title.title(), s3.title.subtitle());
             let q = s3.left.quick.clone().expect("câmp");
             q.set_text(". Curățenie în debara");
@@ -3817,7 +3912,7 @@ fn selftest(s: &Rc<App>) {
             s3.done_button.emit_clicked();
             eprintln!("selftest: după migrarea săptămânii titlu={}", s3.title.title());
             // Jurnalul viitor: câte o intrare pe fiecare pagină, apoi următoarele două luni.
-            s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[3]]);
+            s3.nav.emit_by_name::<()>("row-activated", &[&s3.nav_rows[4]]);
             eprintln!("selftest: viitor {} / {}", s3.title.title(), s3.title.subtitle());
             for (q, t) in [(&s3.left.quick, ". 15 Revizia mașinii"), (&s3.right.quick, "o 7 Ziua lui Ion")] {
                 let q = q.clone().expect("câmp");
