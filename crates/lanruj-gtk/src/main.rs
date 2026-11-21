@@ -157,10 +157,14 @@ impl App {
         let narrow = self.narrow.get() || self.settings.borrow().one_page;
         let month_stacked = narrow && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index | View::Topic(..)) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
+        // Cele două pagini alăturate au mereu aceeași lățime, oricât text ar avea;
+        // linia dintre ele e marginea din dreapta a paginii din stânga.
+        self.caiet.set_homogeneous(!month_stacked);
+        self.cotor.set_visible(false);
         if month_stacked {
             self.left.root.set_visible(true);
             self.right.root.set_visible(true);
-            self.cotor.set_visible(false);
+            self.left.root.remove_css_class("cu-cotor");
             for p in [&self.left.root, &self.right.root] {
                 p.add_css_class("singura");
             }
@@ -173,8 +177,8 @@ impl App {
         };
         self.left.root.set_visible(show_left);
         self.right.root.set_visible(show_right);
-        self.cotor.set_visible(show_left && show_right);
         let single = !(show_left && show_right);
+        if single { self.left.root.remove_css_class("cu-cotor") } else { self.left.root.add_css_class("cu-cotor") }
         for p in [&self.left.root, &self.right.root] {
             if single { p.add_css_class("singura") } else { p.remove_css_class("singura") }
         }

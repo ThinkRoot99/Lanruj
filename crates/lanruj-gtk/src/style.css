@@ -71,6 +71,9 @@ window.hartie-alba .pagina { background-image: none; }
   background-color: var(--hartie-margine);
 }
 
+/* Linia dintre paginile alăturate (în locul cotorului, ca paginile să fie egale). */
+.pagina.stanga.cu-cotor { border-right: 2px solid var(--hartie-margine); }
+
 .eticheta-pagina {
   font-size: 11px;
   letter-spacing: 1px;
