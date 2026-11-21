@@ -10,6 +10,7 @@ mod copii;
 mod export;
 mod ghid;
 mod migrare;
+mod monitorizare;
 mod page;
 mod poze;
 mod setari;
@@ -66,6 +67,8 @@ pub struct App {
     pub editing: Cell<Option<(PageRef, usize)>>,
     /// În timpul exportului: fără selecție, câmpuri de scris și butoane de adăugat.
     pub exporting: Cell<bool>,
+    /// Monitorizare: ziua aleasă cu tastatura, ca să rămână aleasă după schimbare.
+    pub tracking_focus: Cell<Option<NaiveDate>>,
     /// Schema Vim: prima tastă dintr-o pereche (dd, gg, >>, <<).
     vim_pending: Cell<Option<char>>,
     /// Ziua din calendarul lunii care se editează acum.
@@ -105,6 +108,8 @@ pub enum View {
     Index,
     /// Pagina unui rând din index (ziua și numărul din numele fișierului).
     Topic(NaiveDate, u8),
+    /// Monitorizarea unei luni (Serviciu).
+    Tracking(i32, u32),
 }
 
 fn today() -> NaiveDate {
@@ -155,7 +160,7 @@ impl App {
     fn layout(&self) {
         // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
         let narrow = self.narrow.get() || self.settings.borrow().one_page;
-        let month_stacked = narrow && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index | View::Topic(..)) && !self.migrating();
+        let month_stacked = narrow && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index | View::Topic(..) | View::Tracking(..)) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
         // Cele două pagini alăturate au mereu aceeași lățime, oricât text ar avea;
         // linia dintre ele e marginea din dreapta a paginii din stânga.
@@ -386,6 +391,7 @@ impl App {
         let week_view = matches!(self.view.get(), View::Week(..)) && !self.migrating();
         let topic_view = matches!(self.view.get(), View::Topic(..)) && !self.migrating();
         let index_view = matches!(self.view.get(), View::Index) && !self.migrating();
+        let tracking_view = matches!(self.view.get(), View::Tracking(..)) && !self.migrating();
         if self.migrating() {
             self.refresh_migration();
         } else if let View::Month(y, m) = self.view.get() {
@@ -398,6 +404,8 @@ impl App {
             self.refresh_index();
         } else if let View::Topic(d, n) = self.view.get() {
             self.refresh_topic(d, n);
+        } else if let View::Tracking(y, m) = self.view.get() {
+            self.refresh_tracking(y, m);
         } else {
             self.refresh_normal();
         }
@@ -406,7 +414,7 @@ impl App {
             q.set_visible(future_view || week_view || topic_view);
         }
         if let Some(q) = &self.right.quick {
-            q.set_visible(!week_view && !index_view && !topic_view);
+            q.set_visible(!week_view && !index_view && !topic_view && !tracking_view);
         }
         let ph = if future_view {
             tr(self.lang, "Scrie aici; ziua la început: . 15 Revizia, o 24 Crăciun", "Write here; day first: . 15 Service, o 24 Christmas")
@@ -417,9 +425,9 @@ impl App {
             q.set_placeholder_text(Some(ph));
         }
         self.refresh_migration_header();
-        let on_today = !month_view && !future_view && !week_view && !index_view && !topic_view && self.shown.get() == self.today.get();
+        let on_today = !month_view && !future_view && !week_view && !index_view && !topic_view && !tracking_view && self.shown.get() == self.today.get();
         self.today_button.set_visible(!self.migrating() && !on_today);
-        self.migrate_button.set_visible(!self.migrating() && !future_view && !index_view && !topic_view);
+        self.migrate_button.set_visible(!self.migrating() && !future_view && !index_view && !topic_view && !tracking_view);
         if index_view || topic_view {
             for w in &self.normal_header {
                 w.set_visible(false);
@@ -427,6 +435,8 @@ impl App {
         }
         let row = if index_view || topic_view {
             5
+        } else if tracking_view {
+            4
         } else if month_view {
             2
         } else if week_view {
@@ -959,7 +969,7 @@ impl App {
                 PageRef::Future { year, month }
             }
             (None, View::Week(year, week)) => PageRef::Week { year, week },
-            (None, View::Index) => return None,
+            (None, View::Index | View::Tracking(..)) => return None,
             (None, View::Topic(date, n)) => PageRef::Topic { date, n },
             (None, View::Day) => PageRef::Day(self.shown.get()),
         })
@@ -1018,7 +1028,7 @@ impl App {
             View::Month(year, month) => (PageRef::Month { year, month }, &self.right),
             View::Week(year, week) => (PageRef::Week { year, week }, &self.left),
             View::Future(year, month) => (PageRef::Future { year, month }, &self.left),
-            View::Index => return None,
+            View::Index | View::Tracking(..) => return None,
             View::Topic(date, n) => (PageRef::Topic { date, n }, &self.left),
         })
     }
@@ -1982,18 +1992,14 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         nav_row("view-dual-symbolic", tr(lang, "Pagina săptămânii", "Week"), None),
         nav_row("view-grid-symbolic", tr(lang, "Pagina lunii", "Month"), None),
         nav_row("task-due-symbolic", tr(lang, "Planuri", "Future log"), None),
-        nav_row(
-            "view-sort-ascending-symbolic",
-            tr(lang, "Monitorizare", "Tracking"),
-            Some(&gtk::Label::builder().label("v2").css_classes(["dim-label", "caption"]).build()),
-        ),
+        nav_row("view-sort-ascending-symbolic", tr(lang, "Monitorizare", "Tracking"), None),
         nav_row("view-list-bullet-symbolic", "Index", None),
     ];
     let rows: Vec<gtk::ListBoxRow> = built.iter().map(|(r, _, _)| r.clone()).collect();
     let row_boxes: Vec<gtk::Box> = built.iter().map(|(_, b, _)| b.clone()).collect();
     let mut hide_when_compact: Vec<gtk::Widget> = built.iter().flat_map(|(_, _, h)| h.clone()).collect();
     for (i, r) in rows.iter().enumerate() {
-        if !matches!(i, 0..=3 | 5) {
+        if !matches!(i, 0..=5) {
             r.set_sensitive(false);
             r.set_tooltip_text(Some(if i == 4 { tr(lang, "În versiunea a doua", "In version two") } else { soon }));
         }
@@ -2234,6 +2240,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         index_add_open: Cell::new(false),
         selected: Cell::new(None),
         exporting: Cell::new(false),
+        tracking_focus: Cell::new(None),
         vim_pending: Cell::new(None),
     });
     if state.settings.borrow().tray {
@@ -2420,7 +2427,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
             let source = match s.view.get() {
                 View::Month(year, month) => PageRef::Month { year, month },
                 View::Week(year, week) => PageRef::Week { year, week },
-                View::Day | View::Future(..) | View::Index | View::Topic(..) => PageRef::Day(s.shown.get()),
+                View::Day | View::Future(..) | View::Index | View::Topic(..) | View::Tracking(..) => PageRef::Day(s.shown.get()),
             };
             s.start_migration(source, false);
         }
@@ -2502,6 +2509,11 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 let (y, m) = s.future_start();
                 s.go_future(y, m);
             }
+            4 => {
+                let t = s.today.get();
+                s.tracking_focus.set(None);
+                s.go_tracking(t.year(), t.month());
+            }
             5 => s.go_index(),
             _ => {}
         }
@@ -2535,7 +2547,10 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         let weak = Rc::downgrade(&state);
         a.connect_activate(move |_, _| {
             if let Some(s) = weak.upgrade() {
-                if matches!(s.view.get(), View::Month(..)) {
+                if matches!(s.view.get(), View::Tracking(..)) {
+                    s.tracking_focus.set(None);
+                    s.shift_tracking(delta as i32);
+                } else if matches!(s.view.get(), View::Month(..)) {
                     s.shift_month(delta as i32);
                 } else if matches!(s.view.get(), View::Future(..)) {
                     s.shift_future(delta as i32);
@@ -2827,6 +2842,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     state.go_future(y, m);
                 }
                 Ok("index") => state.go_index(),
+                Ok("monitorizare") => state.go_tracking(t.year(), t.month()),
                 Ok("ghid") => {
                     gtk::prelude::WidgetExt::activate_action(&state.window, "win.guide", None).ok();
                 }
@@ -3020,6 +3036,46 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 if let Some(app) = s.window.application() {
                     app.quit();
                 }
+            });
+        }
+        Ok("test-monitorizare") => {
+            // Clic pe ziua de 3, apoi „Tură extra” din meniul ei; apoi fișierul lunii.
+            fn all<T: IsA<gtk::Widget>>(w: &gtk::Widget, out: &mut Vec<T>) {
+                if let Some(x) = w.downcast_ref::<T>() {
+                    out.push(x.clone());
+                }
+                let mut c = w.first_child();
+                while let Some(ch) = c {
+                    all(&ch, out);
+                    c = ch.next_sibling();
+                }
+            }
+            let s = state.clone();
+            let t = s.today.get();
+            s.go_tracking(t.year(), t.month());
+            glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                let mut bs: Vec<gtk::Button> = Vec::new();
+                all(s.window.upcast_ref(), &mut bs);
+                let day = bs.iter().find(|b| b.has_css_class("zi-serviciu") && b.tooltip_text().is_some_and(|t| t.contains(" 3 ")));
+                let Some(day) = day else { eprintln!("selftest-monitorizare: ziua 3 lipsește"); return };
+                day.emit_clicked();
+                let mut items: Vec<gtk::Button> = Vec::new();
+                all(day.upcast_ref(), &mut items);
+                let mut labels: Vec<gtk::Label> = Vec::new();
+                eprintln!("selftest-monitorizare: {} butoane în zi", items.len());
+                if let Some(b) = items.iter().filter(|b| b.has_css_class("flat")).find(|b| { labels.clear(); all(b.upcast_ref(), &mut labels); labels.iter().any(|l| l.label() == "Tură extra") }) {
+                    eprintln!("selftest-monitorizare: apăs „Tură extra”");
+                    b.emit_clicked();
+                }
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                    let t = s2.today.get();
+                    eprintln!("selftest-monitorizare: fișierul:\n{}", std::fs::read_to_string(s2.journal.tracking_path(t.year(), t.month())).unwrap_or_default());
+                    eprintln!("selftest-monitorizare: antet: {}", s2.title.subtitle());
+                    if let Some(app) = s2.window.application() {
+                        app.quit();
+                    }
+                });
             });
         }
         Ok("test-decripteaza") => {

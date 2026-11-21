@@ -316,7 +316,7 @@ impl Page {
         }
     }
 
-    fn header(&self, label: &str, title: &str) {
+    pub fn header(&self, label: &str, title: &str) {
         self.label.set_label(&label.to_uppercase());
         self.label.set_visible(!label.is_empty());
         self.title.set_label(title);

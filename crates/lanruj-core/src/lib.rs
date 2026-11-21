@@ -11,6 +11,7 @@ pub mod index;
 pub mod journal;
 pub mod lang;
 pub mod migrate;
+pub mod monitor;
 pub mod month;
 pub mod search;
 

@@ -451,3 +451,41 @@ picture.poza {
 /* Ghidul */
 .ghid-text { font-size: 15px; line-height: 1.4; }
 button.ghid-capitol { font-size: 13px; padding: 4px 10px; min-height: 0; border-radius: 99px; }
+
+/* ---- Monitorizare: luna de serviciu ---- */
+.file-monitorizare { margin-bottom: 12px; }
+.file-monitorizare .fila {
+  padding: 3px 12px; border-radius: 99px; font-size: 13px; font-weight: 700;
+  background: alpha(var(--cerneala), 0.08); color: var(--cerneala);
+}
+.file-monitorizare .fila.aleasa { background: var(--cerneala); color: var(--hartie); }
+.file-monitorizare .fila.curand { opacity: 0.45; }
+.luna-serviciu .zi-sapt { font-size: 12px; font-weight: 700; opacity: 0.6; color: var(--cerneala); }
+button.zi-serviciu {
+  padding: 4px 6px; min-height: 50px; border-radius: 8px;
+  background: alpha(white, 0.5); border: 1px solid var(--hartie-margine); box-shadow: none;
+}
+window.noapte button.zi-serviciu { background: alpha(white, 0.04); }
+button.zi-serviciu:hover { background: alpha(var(--cerneala), 0.06); }
+button.zi-serviciu:focus-visible { outline: 2px solid #3584e4; outline-offset: 1px; }
+button.zi-serviciu.azi { border: 2px solid #3584e4; }
+button.zi-serviciu .nr { font-weight: 700; font-size: 13px; color: var(--cerneala); }
+button.zi-serviciu.weekend .nr { color: #c0392b; }
+button.zi-serviciu .eticheta-zi { font-size: 11px; font-weight: 700; color: white; border-radius: 5px; padding: 0 4px; }
+button.zi-serviciu .eticheta-zi.goala { background: none; }
+button.zi-serviciu.tura { background: alpha(#1f3a5f, 0.13); }
+button.zi-serviciu.tura .eticheta-zi { background: #1f3a5f; }
+button.zi-serviciu.extra { background: alpha(#c98a12, 0.16); }
+button.zi-serviciu.extra .eticheta-zi { background: #c98a12; }
+button.zi-serviciu.concediu { background: alpha(#2e8b57, 0.15); }
+button.zi-serviciu.concediu .eticheta-zi { background: #2e8b57; }
+window.noapte button.zi-serviciu.tura .eticheta-zi { background: #3d6aa8; }
+.indiciu { font-size: 13px; opacity: 0.65; margin-top: 12px; }
+.total-rand { padding: 8px 0; border-bottom: 1px dashed var(--hartie-margine); font-size: 15px; }
+.total-nr { font-size: 22px; font-weight: 800; color: var(--cerneala); }
+.total-ore { font-size: 13px; opacity: 0.65; }
+.legenda { margin-top: 16px; font-size: 13px; }
+.legenda .patrat { min-width: 11px; min-height: 11px; border-radius: 3px; }
+.legenda .patrat.tura { background: #1f3a5f; }
+.legenda .patrat.extra { background: #c98a12; }
+.legenda .patrat.concediu { background: #2e8b57; }

@@ -6,6 +6,15 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 
 ## [Unreleased]
 
+### 2026-11-21 (afternoon)
+
+#### Added
+- **Tracking → Work**: the month as a calendar where each day can be marked as a shift (24 hours), an extra shift, leave or free, by clicking or with the keys T, E, C/L and Delete. The month's totals (shifts and hours, extra shifts, days of leave, total hours worked) appear next to it. Each month is saved as `monitorizare/YYYY-MM.md`, encrypted when the journal is. Sleep and Activities will follow.
+- A guide chapter about tracking.
+
+#### Changed
+- The two pages of the notebook always have the same width, however much text they hold.
+
 ### 2026-11-21
 
 #### Added

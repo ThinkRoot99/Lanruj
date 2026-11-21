@@ -7,7 +7,7 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 20] = [
+const CAPITOLE: [(&str, &str, &str, &str); 21] = [
     (
         "Cum începi",
         "O zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
@@ -203,6 +203,22 @@ const CAPITOLE: [(&str, &str, &str, &str); 20] = [
          Right-click a picture: name, size (small, medium, large), Link to…, Remove from the page. \
          Several pictures in a row show as a gallery. Click a picture to enlarge it: + − or the wheel to zoom, ← → for the others, Esc closes.\n\n\
          Big pictures are scaled down when copied; your original stays untouched.",
+    ),
+    (
+        "Monitorizarea",
+        "<b>Monitorizare</b>, din bara laterală, ține socoteala serviciului, lună de lună. În stânga e luna ca un calendar: \
+         un clic pe o zi deschide un meniu cu <b>Tură</b>, <b>Tură extra</b>, <b>Concediu</b> și <b>Liber</b>. Cu tastatura, pe ziua aleasă: \
+         <b>T</b>, <b>E</b>, <b>C</b> și <b>Delete</b>. În dreapta apar totalurile lunii: turele și orele lor (24 de ore pe tură), turele extra, \
+         zilele de concediu și totalul orelor lucrate. Săgețile din antet (sau Alt+← →) schimbă luna.\n\n\
+         Luna stă în <tt>monitorizare/2026-11.md</tt>, ca text simplu: <tt>- 2 tură</tt>, <tt>- 12 tură extra</tt>, <tt>- 15-17 concediu</tt>. \
+         Somnul și Activitățile vin într-un pas următor.",
+        "Tracking",
+        "<b>Tracking</b>, in the sidebar, keeps count of your work, month by month. On the left is the month as a calendar: \
+         clicking a day opens a menu with <b>Shift</b>, <b>Extra shift</b>, <b>Leave</b> and <b>Free</b>. With the keyboard, on the chosen day: \
+         <b>T</b>, <b>E</b>, <b>L</b> and <b>Delete</b>. On the right are the month's totals: shifts and their hours (24 hours per shift), extra shifts, \
+         days of leave and the total hours worked. The arrows in the header (or Alt+← →) change the month.\n\n\
+         The month is stored in <tt>monitorizare/2026-11.md</tt> as plain text: <tt>- 2 shift</tt>, <tt>- 12 extra shift</tt>, <tt>- 15-17 leave</tt>. \
+         Sleep and Activities are coming in a later step.",
     ),
     (
         "Etichete și nota zilei",
