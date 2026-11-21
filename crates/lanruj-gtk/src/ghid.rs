@@ -37,17 +37,17 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     (
         "Jurnalul",
         "<b>Jurnalul</b> (în bara laterală, sub Pagina zilei) e locul în care scrii pe larg, ca într-un caiet: ce s-a întâmplat, ce ai simțit, ce gândești. Fiecare zi are fișierul ei, <tt>jurnal/2026/2026-11-21.md</tt>, și se salvează singur, la o clipă după ce scrii. Cu săgețile din antet sau cu calendarul treci la altă zi.\n\n\
-         <b>Scrisul</b>: selectezi textul și alegi din bară îngroșat (Ctrl+B), cursiv (Ctrl+I), subliniat (Ctrl+U) sau tăiat (Ctrl+D), o culoare a textului sau un marker. Fără selecție, butonul se aplică pe ce scrii mai departe; culorile, pe cuvântul de la cursor. Butonul cu radieră scoate formatarea.\n\n\
-         <b>Rândurile</b>: T face din rând un titlu, „“ un citat; trei feluri de liste - cu buline, numerotate și cu căsuțe (un clic pe căsuță o bifează). Enter continuă lista, Enter pe un rând gol o termină, Tab o mută mai la dreapta.\n\n\
+         <b>Scrisul</b>: selectezi textul și alegi din bară îngroșat (Ctrl+B), cursiv (Ctrl+I), subliniat (Ctrl+U) sau tăiat (Ctrl+D), o culoare a textului sau un marker (Ctrl+Shift+G le arată pe toate, de ales cu săgețile; Ctrl+Shift+H pune markerul galben). Fără selecție, butonul se aplică pe ce scrii mai departe; culorile, pe cuvântul de la cursor. Ctrl+Space scoate formatarea. Ctrl+Z anulează.\n\n\
+         <b>Rândurile</b>: titlu (Ctrl+Shift+T), citat (Ctrl+Shift+Q) și trei feluri de liste - cu buline (Ctrl+Shift+8), numerotate (Ctrl+Shift+7) și cu căsuțe (Ctrl+Shift+9; Ctrl+Enter sau un clic bifează). Enter continuă lista. <b>Tab</b> face din rând o sub-listă, <b>Shift+Tab</b> îl întoarce un nivel mai sus; Enter pe un rând gol urcă și el un nivel, iar la primul nivel termină lista; Backspace chiar după semn face la fel. Listele numerotate merg pe niveluri: 2, 2.1, 2.1.1, apoi 3.\n\n\
          <b>Ora</b> (ceasul din bară sau Ctrl+Shift+O): când scrii de mai multe ori în aceeași zi, fiecare scriere începe cu ora ei.\n\n\
-         <b>Legăturile</b>: butonul cu lanțul pune o adresă web pe textul selectat. Butonul cu calendarul (Ctrl+L) leagă textul selectat - un cuvânt, o propoziție sau un paragraf întreg - de o zi, de un rând anume (sarcină, eveniment, notă), de planul săptămânii, de pagina lunii, de Planuri, de Index sau de Monitorizare. Legăturile se deschid cu Ctrl+clic.\n\n\
+         <b>Legăturile</b>: adresele scrise sau lipite (<tt>https://…</tt>, <tt>www.…</tt>, e-mail) devin legături singure. Butonul cu lanțul (Ctrl+K) pune o adresă pe textul selectat - un cuvânt sau o propoziție; fără selecție, cere textul și adresa; în interiorul unei legături, o schimbă sau o scoate. Butonul cu calendarul (Ctrl+L) leagă textul selectat - un cuvânt, o propoziție sau un paragraf întreg - de o zi, de un rând anume (sarcină, eveniment, notă), de planul săptămânii, de pagina lunii, de Planuri, de Index sau de Monitorizare. Legăturile se deschid cu Ctrl+clic.\n\n\
          <b>Și invers</b>: un rând legat din jurnal are pe pagina lui un semn mic; un clic pe el deschide ziua de jurnal care vorbește despre el. Monitorizarea arată jos ce zile din jurnal o pomenesc. Din meniul oricărui rând (clic dreapta), „Scrie în jurnal despre asta” deschide jurnalul de azi cu o legătură spre rând, gata de scris.",
         "The journal",
         "<b>The journal</b> (in the sidebar, under Day) is where you write at length, as in a notebook: what happened, what you felt, what you think. Every day has its own file, <tt>jurnal/2026/2026-11-21.md</tt>, and it saves itself a moment after you write. Use the arrows in the header or the calendar to go to another day.\n\n\
-         <b>Writing</b>: select the text and choose bold (Ctrl+B), italic (Ctrl+I), underline (Ctrl+U) or strikethrough (Ctrl+D), a text color or a marker. With no selection, the button applies to what you type next; colors apply to the word at the cursor. The eraser button clears the formatting.\n\n\
-         <b>Lines</b>: T turns the line into a heading, „“ into a quote; three kinds of lists - bulleted, numbered and checklists (click a box to tick it). Enter continues the list, Enter on an empty line ends it, Tab moves it to the right.\n\n\
+         <b>Writing</b>: select the text and choose bold (Ctrl+B), italic (Ctrl+I), underline (Ctrl+U) or strikethrough (Ctrl+D), a text color or a marker (Ctrl+Shift+G shows them all, to pick with the arrows; Ctrl+Shift+H adds the yellow marker). With no selection, the button applies to what you type next; colors apply to the word at the cursor. Ctrl+Space clears the formatting. Ctrl+Z undoes.\n\n\
+         <b>Lines</b>: heading (Ctrl+Shift+T), quote (Ctrl+Shift+Q) and three kinds of lists - bulleted (Ctrl+Shift+8), numbered (Ctrl+Shift+7) and checklists (Ctrl+Shift+9; Ctrl+Enter or a click ticks). Enter continues the list. <b>Tab</b> makes the line a sub-list, <b>Shift+Tab</b> takes it back one level; Enter on an empty line also goes up one level, and on the first level ends the list; Backspace right after the sign does the same. Numbered lists follow the levels: 2, 2.1, 2.1.1, then 3.\n\n\
          <b>The time</b> (the clock in the bar or Ctrl+Shift+O): when you write several times on the same day, each entry starts with its time.\n\n\
-         <b>Links</b>: the chain button puts a web address on the selected text. The calendar button (Ctrl+L) links the selected text - a word, a sentence or a whole paragraph - to a day, to a specific entry (task, event, note), to the week plan, the month page, the future log, the Index or Tracking. Open links with Ctrl+click.\n\n\
+         <b>Links</b>: typed or pasted addresses (<tt>https://…</tt>, <tt>www.…</tt>, e-mail) become links by themselves. The chain button (Ctrl+K) puts an address on the selected text - a word or a sentence; with no selection, it asks for the text and the address; inside a link, it changes or removes it. The calendar button (Ctrl+L) links the selected text - a word, a sentence or a whole paragraph - to a day, to a specific entry (task, event, note), to the week plan, the month page, the future log, the Index or Tracking. Open links with Ctrl+click.\n\n\
          <b>And the other way round</b>: an entry linked from the journal shows a small sign on its page; click it to open the journal day that talks about it. Tracking shows at the bottom which journal days mention it. From any entry's menu (right-click), \"Write about it in the journal\" opens today's journal with a link to the entry, ready to write.",
     ),
     (
@@ -262,13 +262,15 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     ),
     (
         "Căutarea",
-        "<b>Ctrl+F</b> sau lupa caută în tot jurnalul: zile, liste, planuri, pagini din index, etichete și calendarul lunilor. \
-         Literele mari și diacriticele nu contează („sedinta” găsește „Ședință”). Filtrele aleg sarcinile, evenimentele, notițele, ★ sau !. \
-         Clic pe un rezultat deschide pagina lui; Esc închide căutarea.",
+        "<b>Ctrl+F</b> sau lupa caută peste tot: în zile, liste, planuri, pagini din index, etichete, calendarul lunilor, în <b>jurnal</b>, în <b>bilete</b>, în notele din <b>Monitorizare</b> și în titlurile din <b>Index</b>. Rezultatele vin pe locuri, cele mai noi primele. \
+         Literele mari și diacriticele nu contează („sedinta” găsește „Ședință”). Toate cuvintele scrise trebuie să apară; <tt>„cu mama”</tt> între ghilimele caută exact expresia, iar <tt>-tata</tt> lasă deoparte ce conține cuvântul. \
+         Filtrele aleg sarcinile, evenimentele, notițele, ★ sau !, ori doar jurnalul, biletele sau Monitorizarea (fără cuvinte, Jurnal arată toate zilele scrise). \
+         <b>Enter</b> deschide primul rezultat, <b>↓</b> trece în listă; un rezultat din jurnal se deschide chiar la rândul găsit, cu cuvântul selectat. Esc închide căutarea.",
         "Search",
-        "<b>Ctrl+F</b> or the magnifier searches the whole journal: days, lists, plans, index pages, tags and month calendars. \
-         Case and accents don't matter. Filters pick tasks, events, notes, ★ or !. \
-         Click a result to open its page; Esc closes the search.",
+        "<b>Ctrl+F</b> or the magnifier searches everywhere: days, lists, plans, index pages, tags, month calendars, the <b>journal</b>, the <b>notes</b>, the notes in <b>Tracking</b> and the <b>Index</b> titles. Results come grouped by place, newest first. \
+         Case and accents don't matter. Every word you type must appear; <tt>\"with mum\"</tt> in quotes finds the exact phrase, and <tt>-dad</tt> leaves out what contains the word. \
+         The filters pick tasks, events, notes, ★ or !, or only the journal, the notes or Tracking (with no words, Journal lists every written day). \
+         <b>Enter</b> opens the first result, <b>↓</b> moves into the list; a journal result opens right at the line found, with the word selected. Esc closes the search.",
     ),
     (
         "Exportul și tipărirea",

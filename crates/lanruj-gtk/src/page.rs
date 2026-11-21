@@ -1311,7 +1311,7 @@ fn link_button(lang: lanruj_core::Lang, view: &gtk::TextView, night: bool) -> gt
 }
 
 /// „exemplu.ro” → „https://exemplu.ro”; o adresă de e-mail → „mailto:…”.
-fn normalize_url(t: &str) -> String {
+pub(crate) fn normalize_url(t: &str) -> String {
     if lanruj_core::colors::is_url(t) {
         t.to_string()
     } else if t.contains('@') && !t.contains('/') {

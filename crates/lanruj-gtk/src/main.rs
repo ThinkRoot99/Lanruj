@@ -392,6 +392,10 @@ impl App {
     }
 
     pub fn refresh(self: &Rc<Self>) {
+        // Biletele nu stau peste rezultatele căutării.
+        for w in self.notes_widgets.borrow().iter() {
+            w.set_visible(!self.searching.get());
+        }
         if self.searching.get() {
             for w in &self.normal_header {
                 w.set_visible(false);
@@ -1230,7 +1234,7 @@ impl App {
     fn show_shortcuts(&self) {
         let l = self.lang;
         let dialog = adw::ShortcutsDialog::new();
-        let sections: [(&str, Vec<(&str, &str)>); 4] = [
+        let sections: [(&str, Vec<(&str, &str)>); 5] = [
             (
                 tr(l, "General", "General"),
                 vec![
@@ -1271,6 +1275,24 @@ impl App {
                     (tr(l, "Legătură pe textul selectat (la editare)", "Link on the selected text (while editing)"), "<Control>k"),
                     (tr(l, "Salvează intrarea editată", "Save the edited entry"), "Return"),
                     (tr(l, "Renunță la editare", "Cancel editing"), "Escape"),
+                ],
+            ),
+            (
+                tr(l, "Jurnal", "Journal"),
+                vec![
+                    (tr(l, "Îngroșat / cursiv / subliniat", "Bold / italic / underline"), "<Control>b <Control>i <Control>u"),
+                    (tr(l, "Tăiat", "Strikethrough"), "<Control>d <Control><Shift>x"),
+                    (tr(l, "Marker galben", "Yellow marker"), "<Control><Shift>h"),
+                    (tr(l, "Culorile textului și markerele", "Text colors and markers"), "<Control><Shift>g"),
+                    (tr(l, "Fără formatare", "Clear formatting"), "<Control>space"),
+                    (tr(l, "Legătură web (text și adresă)", "Web link (text and address)"), "<Control>k"),
+                    (tr(l, "Leagă de o zi, un rând, o pagină sau Monitorizare", "Link to a day, an entry, a page or Tracking"), "<Control>l"),
+                    (tr(l, "Titlu / citat", "Heading / quote"), "<Control><Shift>t <Control><Shift>q"),
+                    (tr(l, "Listă cu buline / numerotată / cu căsuțe", "Bulleted / numbered / checklist"), "<Control><Shift>8 <Control><Shift>7 <Control><Shift>9"),
+                    (tr(l, "Un nivel mai la dreapta / mai la stânga", "One level in / out"), "Tab <Shift>Tab"),
+                    (tr(l, "Bifează căsuța rândului", "Tick the line's box"), "<Control>Return"),
+                    (tr(l, "Ora de acum (o scriere nouă)", "The time now (a new entry)"), "<Control><Shift>o"),
+                    (tr(l, "Anulează / refă", "Undo / redo"), "<Control>z <Control><Shift>z"),
                 ],
             ),
             (
@@ -3311,6 +3333,90 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     let s3 = s2.clone();
                     glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
                         if let Ok(p) = std::env::var("LANRUJ_PNG2") {
+                            save_png(&s3.window, &p);
+                        }
+                        if let Some(app) = s3.window.application() {
+                            app.quit();
+                        }
+                    });
+                });
+            });
+        }
+        Ok("test-jurnal2") => {
+            // Listele pe niveluri, legăturile automate și căutarea.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                use gtk::gdk::{Key, ModifierType};
+                let t = s.today.get();
+                s.go_diary(t);
+                let buf = s.diary.view.buffer();
+                buf.set_text("");
+                let none = ModifierType::empty();
+                let typ = |txt: &str| {
+                    for c in txt.chars() {
+                        let mut at = buf.iter_at_mark(&buf.get_insert());
+                        buf.insert(&mut at, &c.to_string());
+                    }
+                };
+                let paste = |txt: &str| {
+                    let mut at = buf.iter_at_mark(&buf.get_insert());
+                    buf.insert(&mut at, txt);
+                };
+                let key = |k: Key, m: ModifierType| {
+                    if s.diary_key(k, m) == glib::Propagation::Proceed && k == Key::Return {
+                        let mut at = buf.iter_at_mark(&buf.get_insert());
+                        buf.insert(&mut at, "\n");
+                    }
+                };
+                paste("Vezi https://thinkroot.xyz/proiecte și www.exemplu.ro azi.");
+                typ(" Scrie la ana@exemplu.ro mâine");
+                key(Key::Return, none);
+                s.diary_test_list("1. ");
+                typ("unu");
+                key(Key::Return, none);
+                typ("doi");
+                key(Key::Return, none);
+                key(Key::Tab, none);
+                typ("doi-unu");
+                key(Key::Return, none);
+                key(Key::Tab, none);
+                typ("adânc");
+                key(Key::Return, none);
+                key(Key::Return, none);
+                typ("doi-doi");
+                key(Key::Return, none);
+                key(Key::ISO_Left_Tab, ModifierType::SHIFT_MASK);
+                typ("trei");
+                key(Key::Return, none);
+                key(Key::Return, none);
+                typ("gata cu lista");
+                key(Key::Return, none);
+                s.diary_test_list("• ");
+                typ("a");
+                key(Key::Return, none);
+                key(Key::Tab, none);
+                typ("b");
+                key(Key::Return, none);
+                key(Key::BackSpace, none);
+                typ("c");
+                s.flush_diary();
+                let text = std::fs::read_to_string(s.journal.diary_path(t)).unwrap_or_default();
+                eprintln!("selftest-jurnal2-fisier:\n{text}");
+                let q = lanruj_core::search::Query::parse("doi-unu");
+                eprintln!("selftest-cauta-jurnal: {:?}", s.journal.search_diary(&q, 10));
+                s.open_search();
+                s.cautare.entry.set_text("proiecte");
+                s.cautare.run(&s);
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                    if let Ok(p) = std::env::var("LANRUJ_PNG2") {
+                        save_png(&s2.window, &p);
+                    }
+                    s2.close_search();
+                    s2.go_diary(s2.today.get());
+                    let s3 = s2.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                        if let Ok(p) = std::env::var("LANRUJ_PNG") {
                             save_png(&s3.window, &p);
                         }
                         if let Some(app) = s3.window.application() {

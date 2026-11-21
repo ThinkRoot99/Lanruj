@@ -246,7 +246,7 @@ impl App {
         self.edit_note(None);
     }
 
-    fn edit_note(self: &Rc<Self>, which: Option<usize>) {
+    pub(crate) fn edit_note(self: &Rc<Self>, which: Option<usize>) {
         let lang = self.lang;
         let old = which.and_then(|i| self.journal.load_notes().ok().and_then(|n| n.get(i).cloned()));
         let d = adw::Dialog::builder().title(if which.is_some() { tr(lang, "Biletul", "The note") } else { tr(lang, "Bilet nou", "New note") }).content_width(400).build();

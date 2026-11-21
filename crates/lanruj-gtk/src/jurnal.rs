@@ -180,23 +180,211 @@ fn line_text(buf: &gtk::TextBuffer, line: i32) -> String {
     line_bounds(buf, line).map(|(a, b)| buf.text(&a, &b, false).to_string()).unwrap_or_default()
 }
 
-/// Semnul de listă de la începutul rândului: (lungimea în caractere, semnul pentru rândul următor).
-fn list_prefix(text: &str) -> Option<(usize, String)> {
-    let indent = text.len() - text.trim_start_matches(' ').len();
-    let rest = &text[indent..];
-    let pad = " ".repeat(indent);
-    for s in ["• ", "☐ ", "☑ "] {
-        if rest.starts_with(s) {
-            let next = if s == "☑ " { "☐ " } else { s };
-            return Some((indent + 2, format!("{pad}{next}")));
+/// Numerele de la începutul unui rând numerotat: „2.1. ” → (5, [2, 1]).
+fn num_prefix(rest: &str) -> Option<(usize, Vec<u32>)> {
+    let b = rest.as_bytes();
+    let mut nums = Vec::new();
+    let mut i = 0;
+    loop {
+        let st = i;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == st || i - st > 4 {
+            return None;
+        }
+        nums.push(rest[st..i].parse().ok()?);
+        if i < b.len() && b[i] == b'.' {
+            i += 1;
+            if i < b.len() && b[i] == b' ' {
+                return Some((i + 1, nums));
+            }
+        } else {
+            return None;
         }
     }
-    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-    if !digits.is_empty() && rest[digits.len()..].starts_with(". ") {
-        let n: u32 = digits.parse().ok()?;
-        return Some((indent + digits.len() + 2, format!("{pad}{}. ", n + 1)));
+}
+
+/// Felul unui rând de listă.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ListKind {
+    Bullet,
+    Check,
+    Number,
+}
+
+/// Semnul de listă de la începutul rândului: (spațiile din față, lungimea semnului cu tot cu ele, felul).
+fn list_info(text: &str) -> Option<(usize, usize, ListKind)> {
+    let indent = text.len() - text.trim_start_matches(' ').len();
+    let rest = &text[indent..];
+    if rest.starts_with("• ") {
+        return Some((indent, indent + 2, ListKind::Bullet));
     }
-    None
+    if rest.starts_with("☐ ") || rest.starts_with("☑ ") {
+        return Some((indent, indent + 2, ListKind::Check));
+    }
+    num_prefix(rest).map(|(len, _)| (indent, indent + len, ListKind::Number))
+}
+
+/// Semnul de listă de la începutul rândului: (lungimea în caractere, semnul pentru rândul următor).
+fn list_prefix(text: &str) -> Option<(usize, String)> {
+    let (indent, len, kind) = list_info(text)?;
+    let pad = " ".repeat(indent);
+    let next = match kind {
+        ListKind::Bullet => "• ",
+        ListKind::Check => "☐ ",
+        // Numărul corect îl pune renumerotarea.
+        ListKind::Number => "1. ",
+    };
+    Some((len, format!("{pad}{next}")))
+}
+
+/// Renumerotează lista din jurul rândului `line`, pe niveluri: 1., 2., 2.1., 2.1.1., 3.
+fn renumber(buf: &gtk::TextBuffer, line: i32) {
+    let count = buf.line_count();
+    let is_list = |l: i32| list_info(&line_text(buf, l)).is_some();
+    if line < 0 || line >= count || !is_list(line) {
+        return;
+    }
+    let mut first = line;
+    while first > 0 && is_list(first - 1) {
+        first -= 1;
+    }
+    let mut last = line;
+    while last + 1 < count && is_list(last + 1) {
+        last += 1;
+    }
+    let cursor = buf.create_mark(None, &buf.iter_at_mark(&buf.get_insert()), false);
+    let mut counters: Vec<u32> = Vec::new();
+    for l in first..=last {
+        let text = line_text(buf, l);
+        let Some((indent, len, kind)) = list_info(&text) else { continue };
+        let level = indent / 2;
+        counters.truncate(level + 1);
+        while counters.len() < level + 1 {
+            counters.push(0);
+        }
+        if kind != ListKind::Number {
+            continue;
+        }
+        counters[level] += 1;
+        // Doar nivelurile numerotate de deasupra intră în număr (sub o bulină, începe de la 1).
+        let tail: Vec<String> = match counters[..=level].iter().rposition(|c| *c == 0) {
+            Some(z) => counters[z + 1..=level].iter().map(u32::to_string).collect(),
+            None => counters[..=level].iter().map(u32::to_string).collect(),
+        };
+        let new = format!("{}. ", tail.join("."));
+        let old: String = text.chars().skip(indent).take(len - indent).collect();
+        if old != new {
+            let (start, _) = line_bounds(buf, l).expect("rând");
+            let mut a = start;
+            a.forward_chars(indent as i32);
+            let mut b = a;
+            b.forward_chars((len - indent) as i32);
+            buf.delete(&mut a, &mut b);
+            buf.insert(&mut a, &new);
+        }
+    }
+    buf.place_cursor(&buf.iter_at_mark(&cursor));
+    buf.delete_mark(&cursor);
+}
+
+/// Mută rândul la dreapta (`right`) sau la stânga cu un nivel (două spații).
+fn shift_line(buf: &gtk::TextBuffer, line: i32, right: bool) {
+    let Some((mut a, _)) = line_bounds(buf, line) else { return };
+    if right {
+        buf.insert(&mut a, "  ");
+    } else {
+        let text = line_text(buf, line);
+        let n = text.len() - text.trim_start_matches(' ').len();
+        let mut b = a;
+        b.forward_chars(n.min(2) as i32);
+        buf.delete(&mut a, &mut b);
+    }
+}
+
+/// Scoate semnul de listă al rândului (rămâne text obișnuit).
+fn drop_prefix(buf: &gtk::TextBuffer, line: i32) {
+    let text = line_text(buf, line);
+    let Some((_, len, _)) = list_info(&text) else { return };
+    let Some((mut a, _)) = line_bounds(buf, line) else { return };
+    let mut b = a;
+    b.forward_chars(len as i32);
+    buf.delete(&mut a, &mut b);
+}
+
+/// Adresele scrise sau lipite devin legături (web, „www.…”, e-mail), după ce sunt întregi.
+fn autolink(buf: &gtk::TextBuffer, from: i32, to: i32, paste: bool, night: bool) {
+    use lanruj_core::colors::{is_email, is_url};
+    for l in from..=to {
+        let Some((start, _)) = line_bounds(buf, l) else { continue };
+        let base = start.offset();
+        let chars: Vec<char> = line_text(buf, l).chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            while i < chars.len() && chars[i].is_whitespace() {
+                i += 1;
+            }
+            let mut a = i;
+            while i < chars.len() && !chars[i].is_whitespace() {
+                i += 1;
+            }
+            let mut b = i;
+            let complete = i < chars.len() || paste || l < to;
+            while a < b && "(„«\"'[".contains(chars[a]) {
+                a += 1;
+            }
+            while b > a && ".,;:!?)»”\"']".contains(chars[b - 1]) {
+                b -= 1;
+            }
+            if !complete || a >= b {
+                continue;
+            }
+            let w: String = chars[a..b].iter().collect();
+            let url = if is_url(&w) {
+                w.clone()
+            } else if w.starts_with("www.") && w.len() > 6 && w[4..].contains('.') {
+                format!("https://{w}")
+            } else if is_email(&w) {
+                format!("mailto:{w}")
+            } else {
+                continue;
+            };
+            let (ia, ib) = (buf.iter_at_offset(base + a as i32), buf.iter_at_offset(base + b as i32));
+            let mut k = ia;
+            let mut linked = false;
+            while k.offset() < ib.offset() {
+                if style_at(&k).link.is_some() {
+                    linked = true;
+                    break;
+                }
+                k.forward_char();
+            }
+            if !linked {
+                buf.apply_tag(&link_tag(buf, &url, night), &ia, &ib);
+            }
+        }
+    }
+}
+
+/// Bucata legată de la cursor (aceeași adresă înainte și după), dacă e într-o legătură.
+fn link_range(buf: &gtk::TextBuffer) -> Option<(i32, i32, String)> {
+    let at = buf.iter_at_mark(&buf.get_insert());
+    let mut probe = at;
+    let url = style_at(&at).link.or_else(|| if probe.backward_char() { style_at(&probe).link } else { None })?;
+    let same = |it: &gtk::TextIter| style_at(it).link.as_deref() == Some(url.as_str());
+    let mut a = at;
+    while a.backward_char() {
+        if !same(&a) {
+            a.forward_char();
+            break;
+        }
+    }
+    let mut b = at;
+    while !b.is_end() && same(&b) {
+        b.forward_char();
+    }
+    Some((a.offset(), b.offset(), url))
 }
 
 impl Diary {
@@ -250,17 +438,18 @@ impl Diary {
                 mk("strike", Some("format-text-strikethrough-symbolic"), None, tr(lang, "Tăiat (Ctrl+D)", "Strikethrough (Ctrl+D)")),
             ],
             vec![
-                mk("titlu", None, Some("T"), tr(lang, "Titlu", "Heading")),
-                mk("citat", None, Some("„“"), tr(lang, "Citat", "Quote")),
-                mk("lista", Some("view-list-bullet-symbolic"), None, tr(lang, "Listă", "List")),
-                mk("numere", Some("view-list-ordered-symbolic"), None, tr(lang, "Listă numerotată", "Numbered list")),
-                mk("casute", None, Some("☐"), tr(lang, "Listă cu căsuțe", "Checklist")),
+                mk("titlu", None, Some("T"), tr(lang, "Titlu (Ctrl+Shift+T)", "Heading (Ctrl+Shift+T)")),
+                mk("citat", None, Some("„“"), tr(lang, "Citat (Ctrl+Shift+Q)", "Quote (Ctrl+Shift+Q)")),
+                mk("lista", Some("view-list-bullet-symbolic"), None, tr(lang, "Listă (Ctrl+Shift+8); Tab și Shift+Tab schimbă nivelul", "List (Ctrl+Shift+8); Tab and Shift+Tab change the level")),
+                mk("numere", Some("view-list-ordered-symbolic"), None, tr(lang, "Listă numerotată (Ctrl+Shift+7): 1, 1.1, 1.1.1", "Numbered list (Ctrl+Shift+7): 1, 1.1, 1.1.1")),
+                mk("casute", None, Some("☐"), tr(lang, "Listă cu căsuțe (Ctrl+Shift+9); Ctrl+Enter bifează", "Checklist (Ctrl+Shift+9); Ctrl+Enter ticks")),
             ],
             vec![
                 mk("ora", Some("preferences-system-time-symbolic"), None, tr(lang, "Ora de acum (Ctrl+Shift+O): o scriere nouă în aceeași zi", "The time now (Ctrl+Shift+O): a new entry on the same day")),
+                mk("web", Some("insert-link-symbolic"), None, tr(lang, "Legătură web pe text (Ctrl+K); adresele scrise devin legături singure", "Web link on text (Ctrl+K); typed addresses become links by themselves")),
                 mk("leaga", Some("x-office-calendar-symbolic"), None, tr(lang, "Leagă de o zi, un rând, o pagină sau Monitorizare (Ctrl+L)", "Link to a day, an entry, a page or Tracking (Ctrl+L)")),
             ],
-            vec![mk("curata", Some("edit-clear-all-symbolic"), None, tr(lang, "Fără formatare", "Clear formatting"))],
+            vec![mk("curata", Some("edit-clear-all-symbolic"), None, tr(lang, "Fără formatare (Ctrl+Space)", "Clear formatting (Ctrl+Space)"))],
         ];
         for (k, g) in groups.into_iter().enumerate() {
             if k > 0 {
@@ -341,6 +530,8 @@ impl Diary {
                 buf.apply_tag(&tag(&buf, n), &buf.iter_at_offset(start), &buf.end_iter());
             }
         }
+        // Adresele scrise ca text simplu (de mână sau dinainte) se văd și ele ca legături.
+        autolink(&buf, 0, buf.line_count() - 1, true, night);
         buf.place_cursor(&buf.end_iter());
         self.typing.replace(None);
         self.loading.set(false);
@@ -578,7 +769,7 @@ impl App {
         Some(b)
     }
 
-    fn go_page(self: &Rc<Self>, r: PageRef) {
+    pub(crate) fn go_page(self: &Rc<Self>, r: PageRef) {
         match r {
             PageRef::Day(d) => self.go(d),
             PageRef::Week { year, week } => self.go_week(year, week),
@@ -848,6 +1039,20 @@ impl App {
         let pos = dy.buttons.iter().position(|(id, _)| *id == "strike").expect("buton");
         let after = dy.buttons[pos].1.next_sibling().expect("separator");
         dy.bar.insert_child_after(&colors, Some(&after));
+        // Legătura web are în jurnal butonul ei (text și adresă).
+        let mut c = colors.first_child();
+        while let Some(ch) = c {
+            if ch.has_css_class("buton-legatura") {
+                ch.set_visible(false);
+            }
+            c = ch.next_sibling();
+        }
+        let weak = Rc::downgrade(self);
+        dy.button("web").connect_clicked(move |_| {
+            if let Some(app) = weak.upgrade() {
+                app.diary_web_link();
+            }
+        });
 
         let ins = Rc::downgrade(self);
         buf.connect_insert_text(move |_, it, text| {
@@ -891,6 +1096,10 @@ impl App {
                     set_line_kind(buf, line, Some(k));
                 }
                 dy.pending_line.set(None);
+                let inserted = buf.text(&at, &buf.iter_at_offset(o + n), false);
+                if n > 1 || inserted.chars().any(char::is_whitespace) {
+                    autolink(buf, at.line(), line, n > 1, dy.night.get());
+                }
                 dy.loading.set(false);
                 if dy.typing.borrow().is_some() {
                     dy.typing.replace(Some((o + n, st)));
@@ -979,80 +1188,13 @@ impl App {
             }
         });
 
-        // Tastele: B, I, U, D, L, Shift+O; Enter în liste; Tab în liste.
+        // Tastele jurnalului (vezi și scurtăturile, Ctrl+?).
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = Rc::downgrade(self);
-        keys.connect_key_pressed(move |_, key, _, mods| {
-            use gtk::gdk::{Key, ModifierType};
-            let Some(app) = weak.upgrade() else { return glib::Propagation::Proceed };
-            let ctrl = mods.contains(ModifierType::CONTROL_MASK);
-            let shift = mods.contains(ModifierType::SHIFT_MASK);
-            if ctrl {
-                let k = key.to_lower();
-                let id = match k {
-                    Key::b => Some("bold"),
-                    Key::i => Some("italic"),
-                    Key::u => Some("underline"),
-                    Key::d => Some("strike"),
-                    _ => None,
-                };
-                if let Some(id) = id {
-                    app.diary_toggle(id);
-                    return glib::Propagation::Stop;
-                }
-                if k == Key::l {
-                    app.diary_link_dialog();
-                    return glib::Propagation::Stop;
-                }
-                if k == Key::o && shift {
-                    app.diary_time();
-                    return glib::Propagation::Stop;
-                }
-                return glib::Propagation::Proceed;
-            }
-            let buf = app.diary.buf();
-            let cur = buf.iter_at_mark(&buf.get_insert());
-            let line = cur.line();
-            let text = line_text(&buf, line);
-            if matches!(key, Key::Return | Key::KP_Enter) && !shift && buf.selection_bounds().is_none() {
-                if let Some((len, next)) = list_prefix(&text) {
-                    let content = text.chars().skip(len).collect::<String>();
-                    if content.trim().is_empty() {
-                        // Enter pe un rând de listă gol: lista se termină.
-                        let (a, _) = line_bounds(&buf, line).expect("rând");
-                        let mut b = a;
-                        b.forward_chars(len as i32);
-                        let (mut a, mut b) = (a, b);
-                        buf.delete(&mut a, &mut b);
-                    } else {
-                        let mut at = cur;
-                        buf.insert(&mut at, &format!("\n{next}"));
-                    }
-                    return glib::Propagation::Stop;
-                }
-                // După un titlu sau o oră, rândul următor e text obișnuit.
-                if line_kind(&buf, line).is_some() && cur.ends_line() {
-                    let mut at = cur;
-                    buf.insert(&mut at, "\n");
-                    set_line_kind(&buf, line + 1, None);
-                    return glib::Propagation::Stop;
-                }
-            }
-            if matches!(key, Key::Tab | Key::ISO_Left_Tab) && list_prefix(&text).is_some() {
-                let (mut a, _) = line_bounds(&buf, line).expect("rând");
-                if key == Key::ISO_Left_Tab || shift {
-                    if text.starts_with("  ") {
-                        let mut b = a;
-                        b.forward_chars(2);
-                        buf.delete(&mut a, &mut b);
-                    }
-                } else {
-                    buf.insert(&mut a, "  ");
-                }
-                return glib::Propagation::Stop;
-            }
-            glib::Propagation::Proceed
+        keys.connect_key_pressed(move |_, key, _, mods| match weak.upgrade() {
+            Some(app) => app.diary_key(key, mods),
+            None => glib::Propagation::Proceed,
         });
         dy.view.add_controller(keys);
 
@@ -1111,6 +1253,103 @@ impl App {
             v.set_cursor_from_name(Some(if on_link && ctrl { "pointer" } else { "text" }));
         });
         dy.view.add_controller(motion);
+    }
+
+    /// O tastă apăsată în jurnal (înaintea câmpului de text).
+    pub fn diary_key(self: &Rc<Self>, key: gtk::gdk::Key, mods: gtk::gdk::ModifierType) -> glib::Propagation {
+        use gtk::gdk::{Key, ModifierType};
+        let app = self;
+        let ctrl = mods.contains(ModifierType::CONTROL_MASK);
+        let shift = mods.contains(ModifierType::SHIFT_MASK);
+        let stop = glib::Propagation::Stop;
+        let buf = app.diary.buf();
+        let cur = buf.iter_at_mark(&buf.get_insert());
+        let line = cur.line();
+        let text = line_text(&buf, line);
+        let info = list_info(&text);
+        if ctrl {
+            let k = key.to_lower();
+            match (shift, k) {
+                (false, Key::b) => app.diary_toggle("bold"),
+                (false, Key::i) => app.diary_toggle("italic"),
+                (false, Key::u) => app.diary_toggle("underline"),
+                (false, Key::d) | (true, Key::x) => app.diary_toggle("strike"),
+                (false, Key::k) => app.diary_web_link(),
+                (false, Key::l) => app.diary_link_dialog(),
+                (false, Key::space) | (false, Key::backslash) => app.diary_clear(),
+                (true, Key::o) => app.diary_time(),
+                (true, Key::t) => app.diary_line_kind("r:titlu"),
+                (true, Key::q) => app.diary_line_kind("r:citat"),
+                (true, Key::h) => app.diary_marker(),
+                (true, Key::g) => app.diary_colors(),
+                (true, Key::_8 | Key::asterisk) => app.diary_list("• "),
+                (true, Key::_7 | Key::ampersand | Key::slash) => app.diary_list("1. "),
+                (true, Key::_9 | Key::parenleft) => app.diary_list("☐ "),
+                (false, Key::Return | Key::KP_Enter) if matches!(info, Some((_, _, ListKind::Check))) => {
+                    let (indent, _, _) = info.expect("listă");
+                    let c = text.chars().nth(indent).unwrap_or('☐');
+                    let (start, _) = line_bounds(&buf, line).expect("rând");
+                    let mut a = start;
+                    a.forward_chars(indent as i32);
+                    let mut b = a;
+                    b.forward_char();
+                    buf.delete(&mut a, &mut b);
+                    buf.insert(&mut a, if c == '☐' { "☑" } else { "☐" });
+                }
+                _ => return glib::Propagation::Proceed,
+            }
+            return stop;
+        }
+        let no_sel = buf.selection_bounds().is_none();
+        if matches!(key, Key::Return | Key::KP_Enter) && !shift && no_sel {
+            if let Some((indent, len, _)) = info {
+                let content: String = text.chars().skip(len).collect();
+                if content.trim().is_empty() {
+                    // Enter pe un rând gol: un nivel mai sus; la primul nivel, lista se termină.
+                    if indent >= 2 { shift_line(&buf, line, false) } else { drop_prefix(&buf, line) }
+                } else {
+                    let (_, next) = list_prefix(&text).expect("listă");
+                    let mut at = cur;
+                    buf.insert(&mut at, &format!("\n{next}"));
+                }
+                renumber(&buf, buf.iter_at_mark(&buf.get_insert()).line());
+                renumber(&buf, line);
+                return stop;
+            }
+            // După un titlu sau o oră, rândul următor e text obișnuit.
+            if line_kind(&buf, line).is_some() && cur.ends_line() {
+                let mut at = cur;
+                buf.insert(&mut at, "\n");
+                set_line_kind(&buf, line + 1, None);
+                return stop;
+            }
+        }
+        if matches!(key, Key::Tab | Key::ISO_Left_Tab) && info.is_some() {
+            let (first, last) = match buf.selection_bounds() {
+                Some((a, b)) => (a.line(), b.line()),
+                None => (line, line),
+            };
+            let right = !(key == Key::ISO_Left_Tab || shift);
+            for l in first..=last {
+                if list_info(&line_text(&buf, l)).is_some() {
+                    shift_line(&buf, l, right);
+                }
+            }
+            renumber(&buf, line);
+            return stop;
+        }
+        // Backspace chiar după semnul listei: un nivel mai sus, apoi semnul dispare.
+        if key == Key::BackSpace
+            && no_sel
+            && let Some((indent, len, _)) = info
+            && cur.line_offset() as usize == len
+        {
+            if indent >= 2 { shift_line(&buf, line, false) } else { drop_prefix(&buf, line) }
+            renumber(&buf, line);
+            renumber(&buf, line + 1);
+            return stop;
+        }
+        glib::Propagation::Proceed
     }
 
     /// B, I, U, tăiat: pe selecție (toată are → se scoate) sau pe ce urmează să scrii.
@@ -1177,7 +1416,7 @@ impl App {
         let same = |t: &str| {
             let r = t.trim_start_matches(' ');
             match sign {
-                "1. " => r.chars().take_while(|c| c.is_ascii_digit()).count() > 0 && list_prefix(t).is_some() && !r.starts_with(['•', '☐', '☑']),
+                "1. " => matches!(list_info(t), Some((_, _, ListKind::Number))),
                 "☐ " => r.starts_with("☐ ") || r.starts_with("☑ "),
                 _ => r.starts_with(sign),
             }
@@ -1201,6 +1440,264 @@ impl App {
             }
         }
         dy.view.grab_focus();
+    }
+
+    /// Fără formatare: pe selecție sau pe ce urmează să scrii.
+    fn diary_clear(self: &Rc<Self>) {
+        let buf = self.diary.buf();
+        match buf.selection_bounds() {
+            Some((a, b)) => set_style(&buf, &a, &b, &Style::default(), false),
+            None => {
+                let at = buf.iter_at_mark(&buf.get_insert()).offset();
+                self.diary.typing.replace(Some((at, Style::default())));
+            }
+        }
+        self.diary.show_state();
+        self.diary.view.grab_focus();
+    }
+
+    /// Markerul galben (Ctrl+Shift+H): îl pune sau, dacă e deja peste tot, îl scoate.
+    fn diary_marker(self: &Rc<Self>) {
+        let dy = &self.diary;
+        let buf = dy.buf();
+        let yellow = lanruj_core::colors::YELLOW_MARKER;
+        match buf.selection_bounds() {
+            Some((a, b)) => {
+                let mut it = a;
+                let mut all = true;
+                while it.offset() < b.offset() {
+                    if it.char() != '\n' && style_at(&it).marker.as_deref() != Some(yellow) {
+                        all = false;
+                        break;
+                    }
+                    it.forward_char();
+                }
+                let mut marks = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with("b#")) {
+                        marks.push(t.clone());
+                    }
+                });
+                for t in &marks {
+                    buf.remove_tag(t, &a, &b);
+                }
+                if !all {
+                    buf.apply_tag(&color_tag(&buf, true, yellow, dy.night.get()), &a, &b);
+                }
+            }
+            None => {
+                let at = buf.iter_at_mark(&buf.get_insert()).offset();
+                let mut st = dy.style_here();
+                st.marker = if st.marker.is_some() { None } else { Some(yellow.to_string()) };
+                dy.typing.replace(Some((at, st)));
+            }
+        }
+        dy.view.grab_focus();
+    }
+
+    /// Culorile din tastatură (Ctrl+Shift+G): o fereastră mică cu culorile și markerele;
+    /// săgețile și Enter aleg, Esc închide.
+    fn diary_colors(self: &Rc<Self>) {
+        let dy = &self.diary;
+        let pop = gtk::Popover::new();
+        let bar = crate::page::color_bar(self.lang, crate::page::ColorTarget::Field(dy.view.clone(), dy.night.get()));
+        let mut c = bar.first_child();
+        let mut first: Option<gtk::Widget> = None;
+        while let Some(ch) = c {
+            if ch.has_css_class("buton-legatura") {
+                ch.set_visible(false);
+            } else if let Some(b) = ch.downcast_ref::<gtk::Button>() {
+                b.set_focus_on_click(true);
+                b.set_can_focus(true);
+                first.get_or_insert_with(|| b.clone().upcast());
+                let p = pop.clone();
+                b.connect_clicked(move |_| p.popdown());
+            }
+            c = ch.next_sibling();
+        }
+        pop.set_child(Some(&bar));
+        pop.set_parent(&self.diary.view);
+        let at = dy.buf().iter_at_mark(&dy.buf().get_insert());
+        let r = dy.view.iter_location(&at);
+        let (x, y) = dy.view.buffer_to_window_coords(gtk::TextWindowType::Widget, r.x(), r.y() + r.height());
+        pop.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x, y, 1, 1)));
+        let v = dy.view.clone();
+        pop.connect_closed(move |p| {
+            p.unparent();
+            v.grab_focus();
+        });
+        pop.popup();
+        if let Some(f) = first {
+            f.grab_focus();
+        }
+    }
+
+    /// Legătura web (Ctrl+K): textul și adresa. Pe o selecție, textul e cel selectat;
+    /// în interiorul unei legături, o schimbă sau o scoate.
+    fn diary_web_link(self: &Rc<Self>) {
+        let dy = &self.diary;
+        let lang = self.lang;
+        let buf = dy.buf();
+        let range: Option<(i32, i32, Option<String>)> = match buf.selection_bounds() {
+            Some((a, b)) => Some((a.offset(), b.offset(), style_at(&a).link)),
+            None => link_range(&buf).map(|(a, b, u)| (a, b, Some(u))),
+        };
+        let old_text = range.as_ref().map(|(a, b, _)| buf.text(&buf.iter_at_offset(*a), &buf.iter_at_offset(*b), false).to_string()).unwrap_or_default();
+        let old_url = range.as_ref().and_then(|(_, _, u)| u.clone()).filter(|u| !u.starts_with("lanruj:")).unwrap_or_default();
+        let pop = gtk::Popover::new();
+        let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        b.set_margin_top(6);
+        b.set_margin_bottom(6);
+        b.set_margin_start(6);
+        b.set_margin_end(6);
+        let text = gtk::Entry::builder().placeholder_text(tr(lang, "Textul legăturii", "Link text")).text(old_text.as_str()).width_chars(36).build();
+        let url = gtk::Entry::builder().placeholder_text("https://…").text(old_url.as_str()).width_chars(36).build();
+        b.append(&gtk::Label::builder().label(tr(lang, "Text", "Text")).xalign(0.0).css_classes(["caption", "dim-label"]).build());
+        b.append(&text);
+        b.append(&gtk::Label::builder().label(tr(lang, "Adresa", "Address")).xalign(0.0).css_classes(["caption", "dim-label"]).build());
+        b.append(&url);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let put = gtk::Button::builder().label(tr(lang, "Pune legătura", "Add link")).css_classes(["suggested-action"]).build();
+        let rm = gtk::Button::builder().label(tr(lang, "Scoate legătura", "Remove link")).visible(range.as_ref().is_some_and(|r| r.2.is_some())).build();
+        row.append(&put);
+        row.append(&rm);
+        b.append(&row);
+        pop.set_child(Some(&b));
+        pop.set_parent(&dy.view);
+        let at = buf.iter_at_mark(&buf.get_insert());
+        let r = dy.view.iter_location(&at);
+        let (x, y) = dy.view.buffer_to_window_coords(gtk::TextWindowType::Widget, r.x(), r.y() + r.height());
+        pop.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x, y, 1, 1)));
+        let apply = {
+            let (weak, pop, text, url) = (Rc::downgrade(self), pop.clone(), text.clone(), url.clone());
+            let range = range.clone();
+            move || {
+                let Some(app) = weak.upgrade() else { return };
+                let address = url.text().trim().to_string();
+                if address.is_empty() {
+                    url.grab_focus();
+                    return;
+                }
+                let address = crate::page::normalize_url(&address);
+                let shown = text.text().trim().to_string();
+                let shown = if shown.is_empty() { address.trim_start_matches("mailto:").to_string() } else { shown };
+                let buf = app.diary.buf();
+                let (a, b) = match &range {
+                    Some((a, b, _)) => (*a, *b),
+                    None => {
+                        let o = buf.iter_at_mark(&buf.get_insert()).offset();
+                        (o, o)
+                    }
+                };
+                let cur: String = buf.text(&buf.iter_at_offset(a), &buf.iter_at_offset(b), false).into();
+                let (a, b) = if cur != shown {
+                    let (mut ia, mut ib) = (buf.iter_at_offset(a), buf.iter_at_offset(b));
+                    buf.delete(&mut ia, &mut ib);
+                    buf.insert(&mut ia, &shown);
+                    (a, a + shown.chars().count() as i32)
+                } else {
+                    (a, b)
+                };
+                let (ia, ib) = (buf.iter_at_offset(a), buf.iter_at_offset(b));
+                let mut links = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with('l')) {
+                        links.push(t.clone());
+                    }
+                });
+                for t in &links {
+                    buf.remove_tag(t, &ia, &ib);
+                }
+                buf.apply_tag(&link_tag(&buf, &address, app.diary.night.get()), &ia, &ib);
+                buf.place_cursor(&buf.iter_at_offset(b));
+                app.schedule_diary_save();
+                pop.popdown();
+            }
+        };
+        let ap = Rc::new(apply);
+        let a1 = ap.clone();
+        put.connect_clicked(move |_| a1());
+        let a2 = ap.clone();
+        url.connect_activate(move |_| a2());
+        let (a3, u2) = (ap.clone(), url.clone());
+        text.connect_activate(move |_| {
+            if u2.text().is_empty() {
+                u2.grab_focus();
+            } else {
+                a3();
+            }
+        });
+        let (weak, p2) = (Rc::downgrade(self), pop.clone());
+        rm.connect_clicked(move |_| {
+            if let (Some(app), Some((a, b, _))) = (weak.upgrade(), range.clone()) {
+                let buf = app.diary.buf();
+                let (ia, ib) = (buf.iter_at_offset(a), buf.iter_at_offset(b));
+                let mut links = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with('l')) {
+                        links.push(t.clone());
+                    }
+                });
+                for t in &links {
+                    buf.remove_tag(t, &ia, &ib);
+                }
+            }
+            p2.popdown();
+        });
+        let v = dy.view.clone();
+        pop.connect_closed(move |p| {
+            p.unparent();
+            v.grab_focus();
+        });
+        pop.popup();
+        if old_text.is_empty() {
+            text.grab_focus();
+        } else {
+            url.grab_focus();
+        }
+    }
+
+    /// Deschide jurnalul zilei `d` la rândul `line`, cu primul cuvânt căutat selectat.
+    pub fn open_diary_at(self: &Rc<Self>, d: NaiveDate, line: usize, words: &[String]) {
+        self.go_diary(d);
+        let dy = &self.diary;
+        let buf = dy.buf();
+        let Some((a, _)) = line_bounds(&buf, line as i32) else { return };
+        let text = line_text(&buf, line as i32);
+        let chars: Vec<char> = text.chars().collect();
+        let folded: Vec<String> = chars.iter().map(|c| lanruj_core::search::fold(&c.to_string())).collect();
+        let mut sel = (0usize, 0usize);
+        'find: for w in words {
+            let wc: Vec<char> = w.chars().collect();
+            for i in 0..chars.len() {
+                let mut j = i;
+                let mut k = 0;
+                while k < wc.len() && j < chars.len() {
+                    let f: Vec<char> = folded[j].chars().collect();
+                    if f.is_empty() || f[0] != wc[k] {
+                        break;
+                    }
+                    j += 1;
+                    k += 1;
+                }
+                if k == wc.len() {
+                    sel = (i, j);
+                    break 'find;
+                }
+            }
+        }
+        let mut s = a;
+        s.forward_chars(sel.0 as i32);
+        let mut e = a;
+        e.forward_chars(sel.1 as i32);
+        buf.select_range(&e, &s);
+        dy.view.grab_focus();
+        let v = dy.view.clone();
+        let mark = buf.create_mark(None, &s, false);
+        glib::idle_add_local_once(move || {
+            v.scroll_to_mark(&mark, 0.15, true, 0.0, 0.3);
+            v.buffer().delete_mark(&mark);
+        });
     }
 
     /// Ora de acum, ca început al unei scrieri noi în aceeași zi.
