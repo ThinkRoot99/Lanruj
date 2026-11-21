@@ -337,8 +337,8 @@ mod tests {
         assert_eq!(link(&lc, 0, 100, None), "Sună la <span style=\"color:#1c71d8\">service</span>");
         assert_eq!(to_markdown(&runs("Vezi [harta](https://maps.example) și [nu e legătură](abc)")), "Vezi [harta](https://maps.example) și [nu e legătură](abc)");
         assert_eq!(
-            urls("Scrie la root@thinkroot.xyz, vezi https://thinkroot.xyz/ și [Delfinariu](https://d.ro)."),
-            vec!["mailto:root@thinkroot.xyz", "https://thinkroot.xyz/", "https://d.ro"]
+            urls("Scrie la ana@example.org, vezi https://example.org/ și [Delfinariu](https://d.ro)."),
+            vec!["mailto:ana@example.org", "https://example.org/", "https://d.ro"]
         );
         assert!(!is_email("a@b") && !is_email("@x.ro") && is_email("ana.pop@mail.example.ro"));
         assert_eq!(t2, "<span style=\"color:#c01c28\">Sună</span> la service");

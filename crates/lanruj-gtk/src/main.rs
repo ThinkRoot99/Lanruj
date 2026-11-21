@@ -2968,7 +2968,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 all(s.right.root.upcast_ref(), &mut labels);
                 for l in labels.iter().filter(|l| l.label().contains("<a href")) {
                     eprintln!("selftest-deschide: etichetă: {}", l.label());
-                    let _: bool = l.emit_by_name("activate-link", &[&"https://thinkroot.xyz/"]);
+                    let _: bool = l.emit_by_name("activate-link", &[&"https://example.org/"]);
                 }
                 let mut buttons: Vec<gtk::Button> = Vec::new();
                 all(s.right.root.upcast_ref(), &mut buttons);
