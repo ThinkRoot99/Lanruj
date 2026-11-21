@@ -3,3 +3,4 @@ target/
 # Ale utilizatorului, nu ale depozitului
 img de pe net/
 idei pentru *.txt
+.public-exclude

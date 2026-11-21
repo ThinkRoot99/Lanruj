@@ -24,7 +24,7 @@ The journal lives in `~/.lanruj`, as one Markdown file per day (for example `202
 
 ## Building from source
 
-You need Rust (1.85 or newer), GTK 4.18 or newer and libadwaita 1.8 or newer, with their development files.
+You need Rust (1.88 or newer), GTK 4.18 or newer and libadwaita 1.8 or newer, with their development files.
 
 ```
 cargo build --release
