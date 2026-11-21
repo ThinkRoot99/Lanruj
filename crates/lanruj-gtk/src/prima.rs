@@ -365,21 +365,34 @@ impl Wizard {
 
         // Fontul și mărimea scrisului; mostra de sus se schimbă pe loc.
         b.append(&label(tr(lang, "Fontul", "Font"), &["heading"]));
-        let mut names: Vec<&str> = vec![tr(lang, "Al sistemului", "System font")];
-        names.extend(crate::fonturi::FONTS.iter().map(|f| if lang == Lang::Ro { f.ro } else { f.en }));
-        let font = gtk::DropDown::builder().model(&gtk::StringList::new(&names)).halign(gtk::Align::Start).build();
+        // Butoane, câte patru pe rând; fiecare nume e scris cu fontul lui.
+        let grid = gtk::Grid::builder().column_homogeneous(true).row_spacing(8).column_spacing(8).build();
         let cur_font = self.choice.borrow().font.clone();
-        font.set_selected(crate::fonturi::FONTS.iter().position(|f| f.key == cur_font).map(|i| i as u32 + 1).unwrap_or(0));
-        let w = self.clone();
-        font.connect_selected_notify(move |d| {
-            let key = match d.selected() {
-                0 => String::new(),
-                i => crate::fonturi::FONTS.get(i as usize - 1).map(|f| f.key.to_string()).unwrap_or_default(),
-            };
-            w.choice.borrow_mut().font = key;
-            w.apply_writing();
-        });
-        b.append(&font);
+        let mut options: Vec<(String, String, Option<&str>)> = vec![(String::new(), tr(lang, "Al sistemului", "System font").to_string(), None)];
+        options.extend(crate::fonturi::FONTS.iter().map(|f| (f.key.to_string(), (if lang == Lang::Ro { f.ro } else { f.en }).to_string(), Some(f.family))));
+        let mut first: Option<gtk::ToggleButton> = None;
+        for (i, (key, name, family)) in options.into_iter().enumerate() {
+            let l = gtk::Label::new(None);
+            match family {
+                Some(fam) => l.set_markup(&format!("<span font_family=\"{fam}\" size=\"large\">{}</span>", glib::markup_escape_text(&name))),
+                None => l.set_label(&name),
+            }
+            let t = gtk::ToggleButton::builder().child(&l).active(key == cur_font).build();
+            if let Some(f) = &first {
+                t.set_group(Some(f));
+            } else {
+                first = Some(t.clone());
+            }
+            let w = self.clone();
+            t.connect_toggled(move |x| {
+                if x.is_active() {
+                    w.choice.borrow_mut().font = key.clone();
+                    w.apply_writing();
+                }
+            });
+            grid.attach(&t, (i % 4) as i32, (i / 4) as i32, 1, 1);
+        }
+        b.append(&grid);
         b.append(&label(tr(lang, "Mărimea textului", "Text size"), &["heading"]));
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.set_homogeneous(true);
