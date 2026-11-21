@@ -4,3 +4,6 @@ target/
 img de pe net/
 idei pentru *.txt
 .public-exclude
+# Unelte locale, nu fac parte din codul aplicației
+jurnal_proba.py
+culori_proba.py

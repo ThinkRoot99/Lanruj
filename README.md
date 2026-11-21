@@ -43,7 +43,6 @@ LANRUJ_DIR=/path/to/a/test/folder cargo run
 - `crates/lanruj-gtk`: the GTK application.
 - `data/icons`: the app icon.
 - `data/fonts`: the bundled fonts and their licences.
-- `site`: the website (English and Romanian).
 
 ## Fonts
 
