@@ -433,22 +433,124 @@ impl App {
         }
     }
 
-    /// ☰ → Tot jurnalul ca arhivă .zip (fișierele Markdown și pozele, fără setările calculatorului).
+    /// ☰ → Tot jurnalul ca arhivă .zip: întâi alegi parola (jurnalul criptat are mereu), apoi fișierul.
     pub fn export_zip(self: &Rc<Self>) {
-        let name = format!("lanruj-{}.zip", self.today.get().format("%Y-%m-%d"));
-        self.save_dialog(tr(self.lang, "Tot jurnalul ca arhivă", "The whole journal as an archive"), &name, |app, path| {
-            match write_zip(app.journal.root(), &path) {
-                Ok(n) => {
-                    let msg = match app.lang {
-                        Lang::Ro => format!("Arhiva are {n} fișiere: {}", path.display()),
-                        Lang::En => format!("The archive has {n} files: {}", path.display()),
-                    };
-                    app.toast(&msg);
-                }
-                Err(e) => app.error(&e),
-            }
+        let lang = self.lang;
+        let encrypted = self.journal.key().is_some();
+        let dialog = adw::Dialog::builder().title(tr(lang, "Tot jurnalul ca arhivă zip", "The whole journal as zip")).content_width(480).build();
+        let b = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        b.set_margin_top(6);
+        b.set_margin_bottom(18);
+        b.set_margin_start(18);
+        b.set_margin_end(18);
+        let info = gtk::Label::builder().wrap(true).xalign(0.0).build();
+        info.set_label(if encrypted {
+            tr(lang, "Jurnalul e criptat, deci și arhiva are parolă. Se deschide cu parola în 7-Zip sau în managerul de arhive.", "The journal is encrypted, so the archive has a password too. It opens with the password in 7-Zip or the archive manager.")
+        } else {
+            tr(lang, "Toate paginile și pozele, într-o singură arhivă. Cu parolă, arhiva se deschide doar cu ea (în 7-Zip sau în managerul de arhive).", "All pages and pictures in one archive. With a password, it opens only with it (in 7-Zip or the archive manager).")
         });
+        b.append(&info);
+        let with = gtk::CheckButton::with_label(tr(lang, "Cu parolă", "With a password"));
+        let without = gtk::CheckButton::with_label(tr(lang, "Fără parolă", "Without a password"));
+        without.set_group(Some(&with));
+        if encrypted {
+            with.set_active(true);
+        } else {
+            without.set_active(true);
+            b.append(&without);
+            b.append(&with);
+        }
+        let p1 = gtk::PasswordEntry::builder().placeholder_text(tr(lang, "Parola arhivei", "Archive password")).show_peek_icon(true).build();
+        let p2 = gtk::PasswordEntry::builder().placeholder_text(tr(lang, "Încă o dată parola", "The password again")).show_peek_icon(true).build();
+        for p in [&p1, &p2] {
+            with.bind_property("active", p, "visible").sync_create().build();
+            b.append(p);
+        }
+        let err = gtk::Label::builder().css_classes(["error"]).xalign(0.0).wrap(true).visible(false).build();
+        b.append(&err);
+        let go = gtk::Button::builder().label(tr(lang, "Alege unde se salvează…", "Choose where to save…")).css_classes(["suggested-action", "pill"]).halign(gtk::Align::End).build();
+        b.append(&go);
+        let view = adw::ToolbarView::new();
+        view.add_top_bar(&adw::HeaderBar::new());
+        view.set_content(Some(&b));
+        dialog.set_child(Some(&view));
+        let (weak, dl) = (Rc::downgrade(self), dialog.clone());
+        go.connect_clicked(move |_| {
+            let Some(app) = weak.upgrade() else { return };
+            let password = if with.is_active() {
+                let (a, c) = (p1.text().to_string(), p2.text().to_string());
+                let msg = if a.chars().count() < 8 {
+                    Some(tr(lang, "Parola trebuie să aibă cel puțin 8 caractere.", "The password needs at least 8 characters."))
+                } else if a != c {
+                    Some(tr(lang, "Cele două parole nu sunt la fel.", "The two passwords don't match."))
+                } else {
+                    None
+                };
+                if let Some(m) = msg {
+                    err.set_label(m);
+                    err.set_visible(true);
+                    return;
+                }
+                Some(a)
+            } else {
+                None
+            };
+            dl.close();
+            let name = format!("lanruj-{}.zip", app.today.get().format("%Y-%m-%d"));
+            app.save_dialog(tr(lang, "Tot jurnalul ca arhivă", "The whole journal as an archive"), &name, move |app, path| {
+                let (root, key) = (app.journal.root().to_path_buf(), app.journal.key());
+                let weak = Rc::downgrade(app);
+                let password = password.clone();
+                app.toast(tr(app.lang, "Se face arhiva…", "Making the archive…"));
+                glib::spawn_future_local(async move {
+                    let p2 = path.clone();
+                    let res = gio::spawn_blocking(move || {
+                        let j = lanruj_core::Journal::new(&root);
+                        j.set_key(key);
+                        write_zip_readable(&j, &p2, password.as_deref())
+                    })
+                    .await;
+                    let Some(app) = weak.upgrade() else { return };
+                    match res {
+                        Ok(Ok(n)) => {
+                            let msg = match app.lang {
+                                Lang::Ro => format!("Arhiva are {n} fișiere: {}", path.display()),
+                                Lang::En => format!("The archive has {n} files: {}", path.display()),
+                            };
+                            app.toast(&msg);
+                        }
+                        Ok(Err(e)) => app.error(&e),
+                        Err(_) => {}
+                    }
+                });
+            });
+        });
+        dialog.present(Some(&self.window));
     }
+}
+
+/// Arhiva de export: fișierele jurnalului decriptate (dacă e cazul), cu parolă AES-256 sau fără.
+pub fn write_zip_readable(j: &lanruj_core::Journal, out: &Path, password: Option<&str>) -> std::io::Result<usize> {
+    let file = std::fs::File::create(out)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let mut opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    if let Some(p) = password {
+        opts = opts.with_aes_encryption(zip::AesMode::Aes256, p);
+    }
+    let root = j.root();
+    let mut count = 0;
+    for p in j.all_files() {
+        if p == out {
+            continue;
+        }
+        let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().replace('\\', "/");
+        let data = j.read_bytes(&p)?;
+        zip.start_file(format!("lanruj/{rel}"), opts).map_err(std::io::Error::other)?;
+        zip.write_all(&data)?;
+        count += 1;
+    }
+    zip.finish().map_err(std::io::Error::other)?;
+    Ok(count)
 }
 
 /// Pune în arhivă tot dosarul jurnalului (fără fișierele ascunse de stare și setări).
@@ -483,6 +585,29 @@ pub fn write_zip(root: &Path, out: &Path) -> std::io::Result<usize> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn arhiva_cu_parola() {
+        use std::io::Read;
+        let root = std::env::temp_dir().join(format!("lanruj-zipp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let j = lanruj_core::Journal::new(&root);
+        let (key, _) = lanruj_core::crypt::create(&root, "parola-jurnal").unwrap();
+        j.set_key(Some(std::sync::Arc::new(key)));
+        j.write_text(&root.join("2026/11/2026-11-21.md"), "# zi\n\n- Secret\n").unwrap();
+        let out = std::env::temp_dir().join(format!("lanruj-zipp-{}.zip", std::process::id()));
+        assert_eq!(super::write_zip_readable(&j, &out, Some("parola-arhiva")).unwrap(), 1, "fără fișierele cheii");
+        let mut z = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+        assert!(z.by_index(0).is_err(), "fără parolă nu se deschide");
+        let mut text = String::new();
+        z.by_index_decrypt(0, b"parola-arhiva").unwrap().read_to_string(&mut text).unwrap();
+        assert_eq!(text, "# zi\n\n- Secret\n", "în arhivă e text, nu conținut age");
+        std::fs::remove_dir_all(root).unwrap();
+        if let Ok(keep) = std::env::var("LANRUJ_PASTREAZA_ZIP") {
+            std::fs::copy(&out, keep).unwrap();
+        }
+        std::fs::remove_file(out).unwrap();
+    }
+
     #[test]
     fn arhiva_jurnalului() {
         let root = std::env::temp_dir().join(format!("lanruj-zip-{}", std::process::id()));

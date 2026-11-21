@@ -229,7 +229,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 19] = [
          cu hârtia și culorile tale, întreagă chiar dacă pe ecran trebuie derulată.\n\
          <b>Mai multe zile ca PDF</b>: alegi de la ce zi până la ce zi (cel mult un an); fiecare zi devine o pagină.\n\
          <b>Tipărește</b> (Ctrl+P): aceleași pagini, prin fereastra de tipărire a calculatorului (de acolo se poate salva și ca PDF).\n\
-         <b>Tot jurnalul ca arhivă zip</b>: toate fișierele Markdown și pozele, bune ca copie de siguranță sau ca să le muți pe alt calculator.\n\n\
+         <b>Tot jurnalul ca arhivă zip</b>: toate fișierele Markdown și pozele, bune ca copie de siguranță sau ca să le muți pe alt calculator. Alegi „fără parolă” sau „cu parolă” (cel puțin 8 caractere; arhiva se deschide cu parola în 7-Zip sau în managerul de arhive). Un jurnal criptat dă mereu o arhivă cu parolă.\n\n\
          În PDF nu apar câmpul de scris, „+ etichetă” și intrarea aleasă. În timpul migrării sau al căutării exportul așteaptă să le termini.",
         "Export and print",
         "In <b>☰ → Export and print</b>:\n\n\
@@ -237,7 +237,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 19] = [
          with your paper and colors, whole even if it needs scrolling on screen.\n\
          <b>Several days as PDF</b>: pick the first and last day (at most a year); each day becomes a page.\n\
          <b>Print</b> (Ctrl+P): the same pages, through the computer's print window (which can also save as PDF).\n\
-         <b>The whole journal as zip</b>: every Markdown file and picture, good as a backup or to move to another computer.\n\n\
+         <b>The whole journal as zip</b>: every Markdown file and picture, good as a backup or to move to another computer. Choose \"without a password\" or \"with a password\" (at least 8 characters; the archive opens with it in 7-Zip or the archive manager). An encrypted journal always gives a password-protected archive.\n\n\
          The writing field, \"+ tag\" and the selected entry don't appear in the PDF. During a migration or a search, export waits until you finish.",
     ),
     (
