@@ -454,15 +454,15 @@ button.ghid-capitol { font-size: 13px; padding: 4px 10px; min-height: 0; border-
 
 /* ---- Monitorizare: luna de serviciu ---- */
 .file-monitorizare { margin-bottom: 12px; }
-.file-monitorizare .fila {
-  padding: 3px 12px; border-radius: 99px; font-size: 13px; font-weight: 700;
-  background: alpha(var(--cerneala), 0.08); color: var(--cerneala);
+button.fila {
+  padding: 3px 12px; min-height: 0; border-radius: 99px; font-size: 13px; font-weight: 700;
+  background: alpha(var(--cerneala), 0.08); color: var(--cerneala); box-shadow: none;
 }
-.file-monitorizare .fila.aleasa { background: var(--cerneala); color: var(--hartie); }
-.file-monitorizare .fila.curand { opacity: 0.45; }
+button.fila:hover { background: alpha(var(--cerneala), 0.16); }
+button.fila.aleasa { background: var(--cerneala); color: var(--hartie); }
 .luna-serviciu .zi-sapt { font-size: 12px; font-weight: 700; opacity: 0.6; color: var(--cerneala); }
 button.zi-serviciu {
-  padding: 4px 6px; min-height: 50px; border-radius: 8px;
+  padding: 3px 5px; min-height: 52px; min-width: 0; border-radius: 8px;
   background: alpha(white, 0.5); border: 1px solid var(--hartie-margine); box-shadow: none;
 }
 window.noapte button.zi-serviciu { background: alpha(white, 0.04); }
@@ -489,3 +489,22 @@ window.noapte button.zi-serviciu.tura .eticheta-zi { background: #3d6aa8; }
 .legenda .patrat.tura { background: #1f3a5f; }
 .legenda .patrat.extra { background: #c98a12; }
 .legenda .patrat.concediu { background: #2e8b57; }
+
+/* ---- Monitorizare: activități și somn ---- */
+.activitate-noua { margin-bottom: 12px; }
+.grila-activitati, .grila-somn { margin-top: 4px; }
+.activitate-nume { font-size: 12px; font-weight: 700; color: var(--cerneala); opacity: 0.8; padding: 0 2px 4px; }
+.zi-activitate { font-size: 13px; color: var(--cerneala); min-width: 52px; }
+.zi-activitate.weekend { color: #c0392b; }
+.zi-activitate.azi { font-weight: 800; background: alpha(#3584e4, 0.15); border-radius: 6px; padding: 0 4px; }
+entry.ore-somn { min-height: 26px; padding: 0 6px; font-size: 13px; background: alpha(white, 0.55); }
+window.noapte entry.ore-somn { background: alpha(white, 0.06); }
+.supl { font-size: 10px; font-weight: 800; color: #c98a12; }
+.legenda .patrat.noaptea { background: #1f3a5f; }
+.legenda .patrat.ziua { background: #c98a12; }
+window.noapte .legenda .patrat.noaptea { background: #9ebce6; }
+.total-nr.mic { font-size: 17px; }
+levelbar.bara-activitate block.filled { background: var(--cerneala); border-radius: 3px; }
+levelbar.bara-activitate block.empty { background: alpha(var(--cerneala), 0.10); border-radius: 3px; }
+levelbar.bara-activitate trough { min-height: 6px; }
+.titlu-meniu { padding: 6px 10px 2px; }

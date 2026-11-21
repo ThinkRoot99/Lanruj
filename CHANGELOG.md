@@ -9,7 +9,11 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 ### 2026-11-21 (afternoon)
 
 #### Added
-- **Tracking → Work**: the month as a calendar where each day can be marked as a shift (24 hours), an extra shift, leave or free, by clicking or with the keys T, E, C/L and Delete. The month's totals (shifts and hours, extra shifts, days of leave, total hours worked) appear next to it. Each month is saved as `monitorizare/YYYY-MM.md`, encrypted when the journal is. Sleep and Activities will follow.
+- **Tracking**, with three tabs, month by month:
+  - **Activities**: your own list (coffee, reading, making the bed…), ticked day by day, with how many days you did each one. The list carries over to the following months.
+  - **Sleep**: how long you slept at night and during the day, with an automatic chart of the month and the averages.
+  - **Work**: shifts (24 hours), leave and overtime (from-to, for example 08:00-12:00), with the month's totals.
+  Each month is saved as `monitorizare/YYYY-MM.md`, encrypted when the journal is.
 - A guide chapter about tracking.
 
 #### Changed

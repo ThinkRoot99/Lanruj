@@ -206,19 +206,23 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
     ),
     (
         "Monitorizarea",
-        "<b>Monitorizare</b>, din bara laterală, ține socoteala serviciului, lună de lună. În stânga e luna ca un calendar: \
-         un clic pe o zi deschide un meniu cu <b>Tură</b>, <b>Tură extra</b>, <b>Concediu</b> și <b>Liber</b>. Cu tastatura, pe ziua aleasă: \
-         <b>T</b>, <b>E</b>, <b>C</b> și <b>Delete</b>. În dreapta apar totalurile lunii: turele și orele lor (24 de ore pe tură), turele extra, \
-         zilele de concediu și totalul orelor lucrate. Săgețile din antet (sau Alt+← →) schimbă luna.\n\n\
-         Luna stă în <tt>monitorizare/2026-11.md</tt>, ca text simplu: <tt>- 2 tură</tt>, <tt>- 12 tură extra</tt>, <tt>- 15-17 concediu</tt>. \
-         Somnul și Activitățile vin într-un pas următor.",
+        "<b>Monitorizare</b>, din bara laterală, are trei file, lună de lună. Săgețile din antet (sau Alt+← →) schimbă luna.\n\n\
+         <b>Activități</b>: scrii sus ce vrei să urmărești (cafea, citit, făcut patul…) și apeși Enter; apoi bifezi zilele în care le-ai făcut. \
+         În dreapta vezi în câte zile ai făcut fiecare. Lista trece singură în lunile următoare; clic dreapta pe un nume îl scoate.\n\n\
+         <b>Somn</b>: pentru fiecare zi scrii cât ai dormit noaptea și cât ziua (7:30, 7,5 sau 45m), apoi Enter. \
+         În dreapta, graficul lunii se face singur: noaptea cu albastru, ziua cu ocru deasupra, plus mediile.\n\n\
+         <b>Serviciu</b>: clic pe o zi pentru <b>Tură</b> (24 de ore), <b>Concediu</b> sau <b>Liber</b>, iar jos în meniu adaugi <b>ore suplimentare</b> \
+         (de exemplu 08:00-12:00). Cu tastatura, pe ziua aleasă: T, C, O, Delete. În dreapta: turele, orele suplimentare, zilele de concediu și totalul orelor lucrate.\n\n\
+         Luna stă în <tt>monitorizare/2026-11.md</tt>, ca text simplu.",
         "Tracking",
-        "<b>Tracking</b>, in the sidebar, keeps count of your work, month by month. On the left is the month as a calendar: \
-         clicking a day opens a menu with <b>Shift</b>, <b>Extra shift</b>, <b>Leave</b> and <b>Free</b>. With the keyboard, on the chosen day: \
-         <b>T</b>, <b>E</b>, <b>L</b> and <b>Delete</b>. On the right are the month's totals: shifts and their hours (24 hours per shift), extra shifts, \
-         days of leave and the total hours worked. The arrows in the header (or Alt+← →) change the month.\n\n\
-         The month is stored in <tt>monitorizare/2026-11.md</tt> as plain text: <tt>- 2 shift</tt>, <tt>- 12 extra shift</tt>, <tt>- 15-17 leave</tt>. \
-         Sleep and Activities are coming in a later step.",
+        "<b>Tracking</b>, in the sidebar, has three tabs, month by month. The arrows in the header (or Alt+← →) change the month.\n\n\
+         <b>Activities</b>: type at the top what you want to follow (coffee, reading, making the bed…) and press Enter; then tick the days you did them. \
+         On the right you see on how many days you did each one. The list carries over to the next months; right-click a name to remove it.\n\n\
+         <b>Sleep</b>: for each day, type how long you slept at night and during the day (7:30, 7.5 or 45m), then Enter. \
+         On the right, the month's chart draws itself: night in blue, daytime sleep in ochre on top, plus the averages.\n\n\
+         <b>Work</b>: click a day for <b>Shift</b> (24 hours), <b>Leave</b> or <b>Free</b>, and add <b>overtime</b> at the bottom of the menu \
+         (for example 08:00-12:00). With the keyboard, on the chosen day: T, L, O, Delete. On the right: shifts, overtime, days of leave and total hours worked.\n\n\
+         The month is stored in <tt>monitorizare/2026-11.md</tt> as plain text.",
     ),
     (
         "Etichete și nota zilei",

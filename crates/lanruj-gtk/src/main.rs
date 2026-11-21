@@ -69,6 +69,8 @@ pub struct App {
     pub exporting: Cell<bool>,
     /// Monitorizare: ziua aleasă cu tastatura, ca să rămână aleasă după schimbare.
     pub tracking_focus: Cell<Option<NaiveDate>>,
+    /// Monitorizare: fila aleasă (Activități, Somn, Serviciu).
+    pub tracking_tab: Cell<monitorizare::Tab>,
     /// Schema Vim: prima tastă dintr-o pereche (dd, gg, >>, <<).
     vim_pending: Cell<Option<char>>,
     /// Ziua din calendarul lunii care se editează acum.
@@ -2241,6 +2243,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         selected: Cell::new(None),
         exporting: Cell::new(false),
         tracking_focus: Cell::new(None),
+        tracking_tab: Cell::new(monitorizare::Tab::default()),
         vim_pending: Cell::new(None),
     });
     if state.settings.borrow().tray {
@@ -2842,7 +2845,14 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     state.go_future(y, m);
                 }
                 Ok("index") => state.go_index(),
-                Ok("monitorizare") => state.go_tracking(t.year(), t.month()),
+                Ok("monitorizare") => {
+                    state.tracking_tab.set(match std::env::var("LANRUJ_FILA").as_deref() {
+                        Ok("somn") => monitorizare::Tab::Sleep,
+                        Ok("serviciu") => monitorizare::Tab::Work,
+                        _ => monitorizare::Tab::Activities,
+                    });
+                    state.go_tracking(t.year(), t.month());
+                }
                 Ok("ghid") => {
                     gtk::prelude::WidgetExt::activate_action(&state.window, "win.guide", None).ok();
                 }
@@ -3052,6 +3062,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
             }
             let s = state.clone();
             let t = s.today.get();
+            s.tracking_tab.set(monitorizare::Tab::Work);
             s.go_tracking(t.year(), t.month());
             glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
                 let mut bs: Vec<gtk::Button> = Vec::new();
@@ -3063,12 +3074,27 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 all(day.upcast_ref(), &mut items);
                 let mut labels: Vec<gtk::Label> = Vec::new();
                 eprintln!("selftest-monitorizare: {} butoane în zi", items.len());
-                if let Some(b) = items.iter().filter(|b| b.has_css_class("flat")).find(|b| { labels.clear(); all(b.upcast_ref(), &mut labels); labels.iter().any(|l| l.label() == "Tură extra") }) {
-                    eprintln!("selftest-monitorizare: apăs „Tură extra”");
+                if let Some(b) = items.iter().filter(|b| b.has_css_class("flat")).find(|b| { labels.clear(); all(b.upcast_ref(), &mut labels); labels.iter().any(|l| l.label() == "Concediu") }) {
+                    eprintln!("selftest-monitorizare: apăs „Concediu”");
                     b.emit_clicked();
                 }
-                let s2 = s.clone();
+                // Ziua de 4: ore suplimentare 08:00-12:00, din formularul meniului.
+                let s3 = s.clone();
                 glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                    let mut bs: Vec<gtk::Button> = Vec::new();
+                    all(s3.window.upcast_ref(), &mut bs);
+                    let Some(day) = bs.iter().find(|b| b.has_css_class("zi-serviciu") && b.tooltip_text().is_some_and(|t| t.contains(" 4 "))) else { return };
+                    let mut es: Vec<gtk::Entry> = Vec::new();
+                    all(day.upcast_ref(), &mut es);
+                    if es.len() >= 2 {
+                        es[0].set_text("08:00");
+                        es[1].set_text("12:00");
+                        es[1].emit_activate();
+                    }
+                    eprintln!("selftest-monitorizare: {} câmpuri de ore", es.len());
+                });
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
                     let t = s2.today.get();
                     eprintln!("selftest-monitorizare: fișierul:\n{}", std::fs::read_to_string(s2.journal.tracking_path(t.year(), t.month())).unwrap_or_default());
                     eprintln!("selftest-monitorizare: antet: {}", s2.title.subtitle());
