@@ -518,3 +518,18 @@ window.noapte entry.numar-activitate { background: alpha(white, 0.06); }
 .note-luna-titlu { margin-top: 18px; }
 .nota-luna { padding: 6px 0; border-bottom: 1px dashed var(--hartie-margine); }
 .nota-luna .text { font-size: 14px; }
+
+/* ---- Prima pornire ---- */
+togglebutton.alegere-mare, button.alegere-mare { min-height: 54px; font-size: 17px; font-weight: 700; }
+.punct-pas { min-width: 8px; min-height: 8px; border-radius: 99px; background: alpha(currentColor, 0.2); }
+.punct-pas.acum { background: @accent_bg_color; min-width: 22px; }
+.mostra-hartie { padding: 18px 26px; min-height: 120px; }
+.text-mostra { color: var(--cerneala); font-size: 15px; }
+.patrat-culoare { min-width: 14px; min-height: 14px; border-radius: 4px; border: 1px solid alpha(black, 0.2); }
+.patrat-culoare.c-alb { background: #fdfdfb; }
+.patrat-culoare.c-cald { background: #f6efe0; }
+.patrat-culoare.c-galbui { background: #fbf3cf; }
+.patrat-culoare.c-albastru { background: #eef3f8; }
+.patrat-culoare.c-maro { background: #efe4d6; }
+.alegere-cripta { font-weight: 700; margin-top: 6px; }
+.sub-alegere { margin-left: 28px; font-size: 14px; }

@@ -13,6 +13,7 @@ mod migrare;
 mod monitorizare;
 mod page;
 mod poze;
+mod prima;
 mod setari;
 mod tava;
 mod tiparire;
@@ -1917,6 +1918,11 @@ fn build_ui(app: &adw::Application) {
         let _ = st.save();
     }
     let root = Journal::default_root();
+    // Prima pornire: limba, hârtia și criptarea, apoi caietul.
+    if prima::needed(&root) {
+        prima::show(app, root, |app, key| build_main(app, key));
+        return;
+    }
     let settings = setari::Settings::load();
     let lang = settings.lang();
     // Jurnal criptat: fereastra cu parola apare imediat; dacă parola e ținută minte,

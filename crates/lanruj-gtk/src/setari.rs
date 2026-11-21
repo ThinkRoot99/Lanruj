@@ -149,6 +149,11 @@ pub const LANGS: [(Option<Lang>, &str, &str, &str); 3] = [
     (Some(Lang::En), "en", "English", "English"),
 ];
 
+/// Există deja setări (deci nu e prima pornire)?
+pub fn exists() -> bool {
+    path().is_file()
+}
+
 fn path() -> PathBuf {
     // La probe (LANRUJ_DIR), setările stau lângă jurnalul de probă.
     if let Some(d) = std::env::var_os("LANRUJ_DIR").filter(|d| !d.is_empty()) {
