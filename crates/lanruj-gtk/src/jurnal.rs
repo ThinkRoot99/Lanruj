@@ -7,7 +7,7 @@
 //! ca în pagini (`f#…`, `b#…`, `l…`); felul rândului: `r:ora`, `r:titlu`, `r:citat`.
 
 use crate::page::{color_tag, link_tag, open_uri};
-use crate::{App, View, tr};
+use crate::{App, View, fonturi, tr};
 use adw::prelude::*;
 use chrono::{Datelike, NaiveDate};
 use gtk::glib;
@@ -37,12 +37,15 @@ pub struct Diary {
     buttons: Vec<(&'static str, gtk::Button)>,
     /// Locul culorilor și markerelor în bară.
     colors_slot: gtk::Box,
+    /// Fontul bucății de text (doar în jurnal): butonul și lista lui.
+    font_button: gtk::MenuButton,
+    font_list: gtk::ListBox,
 }
 
 const INLINE: [(&str, &str); 4] = [("s:bold", "bold"), ("s:italic", "italic"), ("s:strike", "strike"), ("s:underline", "underline")];
 
 fn is_inline(name: &str) -> bool {
-    name.starts_with("s:") || name.starts_with("f#") || name.starts_with("b#") || name.starts_with('l')
+    name.starts_with("t:") || name.starts_with("s:") || name.starts_with("f#") || name.starts_with("b#") || name.starts_with('l')
 }
 
 fn tag(buf: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
@@ -55,6 +58,15 @@ fn tag(buf: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
         "s:italic" => t.set_style(gtk::pango::Style::Italic),
         "s:strike" => t.set_strikethrough(true),
         "s:underline" => t.set_underline(gtk::pango::Underline::Single),
+        n if n.starts_with("t:") => {
+            let family = &n[2..];
+            t.set_family(Some(family));
+            if let Some(f) = fonturi::FONTS.iter().find(|f| f.family == family)
+                && f.scale != 1.0
+            {
+                t.set_scale(f.scale);
+            }
+        }
         "r:ora" => {
             t.set_weight(700);
             t.set_pixels_above_lines(12);
@@ -96,7 +108,9 @@ fn style_at(it: &gtk::TextIter) -> Style {
             "s:strike" => st.strike = true,
             "s:underline" => st.underline = true,
             _ => {
-                if let Some(h) = n.strip_prefix('f') {
+                if let Some(f) = n.strip_prefix("t:") {
+                    st.font = Some(f.to_string());
+                } else if let Some(h) = n.strip_prefix('f') {
                     st.color = Some(h.to_string());
                 } else if let Some(h) = n.strip_prefix('b') {
                     st.marker = Some(h.to_string());
@@ -124,6 +138,9 @@ fn style_tags(buf: &gtk::TextBuffer, st: &Style, night: bool) -> Vec<gtk::TextTa
     }
     if let Some(l) = &st.link {
         v.push(link_tag(buf, l, night));
+    }
+    if let Some(f) = &st.font {
+        v.push(tag(buf, &format!("t:{f}")));
     }
     v
 }
@@ -458,9 +475,32 @@ impl Diary {
             ],
         ];
         let colors_slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        // Fontul: o listă cu fonturile Lanruj, fiecare scris cu el însuși.
+        let font_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
+        let row = |markup: &str| {
+            let l = gtk::Label::builder().label(markup).use_markup(true).xalign(0.0).build();
+            l.set_margin_start(6);
+            l.set_margin_end(6);
+            gtk::ListBoxRow::builder().child(&l).build()
+        };
+        font_list.append(&row(&glib::markup_escape_text(tr(lang, "Fontul din setări", "The font from Preferences"))));
+        for f in &fonturi::FONTS {
+            font_list.append(&row(&format!("<span font_family=\"{}\" size=\"large\">{}</span>", f.family, f.ro)));
+        }
+        let fpop = gtk::Popover::builder().child(&font_list).build();
+        let font_button = gtk::MenuButton::builder()
+            .label("Aa")
+            .popover(&fpop)
+            .focus_on_click(false)
+            .css_classes(["flat", "unealta-jurnal", "buton-font"])
+            .tooltip_text(tr(lang, "Fontul (Ctrl+Shift+F): pe textul selectat sau, fără selecție, pe tot rândul; doar în jurnal", "Font (Ctrl+Shift+F): on the selected text or, with no selection, on the whole line; only in the journal"))
+            .build();
         // Fiecare grupă e o cutie: pe fereastră îngustă, trece întreagă pe rândul următor.
         for (k, g) in groups.into_iter().enumerate() {
             let group = if k == 1 { colors_slot.clone() } else { gtk::Box::new(gtk::Orientation::Horizontal, 2) };
+            if k == 0 {
+                group.append(&font_button);
+            }
             if k > 0 {
                 group.add_css_class("grupa-jurnal");
             }
@@ -503,6 +543,8 @@ impl Diary {
             lang,
             buttons,
             colors_slot,
+            font_button,
+            font_list,
         })
     }
 
@@ -546,6 +588,11 @@ impl Diary {
 
     /// Textul din câmp, în Markdown.
     pub fn serialize(&self) -> String {
+        lanruj_core::diary::to_doc(&self.lines())
+    }
+
+    /// Rândurile din câmp, cu felul și bucățile lor.
+    fn lines(&self) -> Vec<Line> {
         let buf = self.buf();
         let mut lines = Vec::new();
         for l in 0..buf.line_count() {
@@ -568,7 +615,7 @@ impl Diary {
             }
             lines.push(Line { kind, spans });
         }
-        lanruj_core::diary::to_doc(&lines)
+        lines
     }
 
     fn count_words(&self) {
@@ -617,6 +664,16 @@ impl Diary {
         for (id, on) in [("bold", st.bold), ("italic", st.italic), ("underline", st.underline), ("strike", st.strike)] {
             let b = self.button(id);
             if on { b.add_css_class("aprins") } else { b.remove_css_class("aprins") }
+        }
+        match st.font.as_deref().and_then(|f| fonturi::FONTS.iter().find(|x| x.family == f)) {
+            Some(f) => {
+                self.font_button.set_label(f.ro);
+                self.font_button.add_css_class("aprins");
+            }
+            None => {
+                self.font_button.set_label("Aa");
+                self.font_button.remove_css_class("aprins");
+            }
         }
         let line = buf.iter_at_mark(&buf.get_insert()).line();
         let kind = line_kind(&buf, line);
@@ -1052,6 +1109,14 @@ impl App {
             c = ch.next_sibling();
         }
         let weak = Rc::downgrade(self);
+        dy.font_list.connect_row_activated(move |_, row| {
+            if let Some(app) = weak.upgrade() {
+                let font = row.index().checked_sub(1).and_then(|i| fonturi::FONTS.get(i as usize)).map(|f| f.family);
+                app.diary.font_button.popdown();
+                app.diary_font(font);
+            }
+        });
+        let weak = Rc::downgrade(self);
         dy.button("web").connect_clicked(move |_| {
             if let Some(app) = weak.upgrade() {
                 app.diary_web_link();
@@ -1092,7 +1157,13 @@ impl App {
                     })
                 };
                 dy.loading.set(true);
-                set_style(buf, &at, &buf.iter_at_offset(o + n), &st, dy.night.get());
+                // Stilul moștenit ține până la capătul rândului; rândurile noi pornesc curate.
+                let inserted_text = buf.text(&at, &buf.iter_at_offset(o + n), false).to_string();
+                let first = inserted_text.find('\n').map(|b| inserted_text[..b].chars().count() as i32).unwrap_or(n);
+                set_style(buf, &at, &buf.iter_at_offset(o + first), &st, dy.night.get());
+                if first < n {
+                    set_style(buf, &buf.iter_at_offset(o + first), &buf.iter_at_offset(o + n), &Style::default(), dy.night.get());
+                }
                 // Felul rândului (oră, titlu, citat) se întinde pe tot rândul.
                 let line = buf.iter_at_offset(o + n).line();
                 let pending = dy.pending_line.get().filter(|(l, _)| *l == line).map(|(_, k)| k);
@@ -1275,6 +1346,12 @@ impl App {
                 (true, Key::q) => app.diary_line_kind("r:citat"),
                 (true, Key::h) => app.diary_marker(),
                 (true, Key::g) => app.diary_colors(),
+                (true, Key::f) => {
+                    app.diary.font_button.popup();
+                    if let Some(r) = app.diary.font_list.row_at_index(0) {
+                        r.grab_focus();
+                    }
+                }
                 (true, Key::_8 | Key::asterisk) => app.diary_list("• "),
                 (true, Key::_7 | Key::ampersand | Key::slash) => app.diary_list("1. "),
                 (true, Key::_9 | Key::parenleft) => app.diary_list("☐ "),
@@ -1459,6 +1536,41 @@ impl App {
         }
         self.diary.show_state();
         self.diary.view.grab_focus();
+    }
+
+    /// Fontul (doar în jurnal): pe textul selectat; fără selecție, pe tot rândul (și pe ce scrii
+    /// mai departe în el); pe un rând gol, pe ce urmează să scrii. `None` = fontul din setări.
+    fn diary_font(self: &Rc<Self>, font: Option<&str>) {
+        let dy = &self.diary;
+        let buf = dy.buf();
+        let range = buf.selection_bounds().or_else(|| {
+            let line = buf.iter_at_mark(&buf.get_insert()).line();
+            line_bounds(&buf, line).filter(|(a, b)| a.offset() < b.offset())
+        });
+        match range {
+            Some((a, b)) => {
+                let mut fonts = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with("t:")) {
+                        fonts.push(t.clone());
+                    }
+                });
+                for t in &fonts {
+                    buf.remove_tag(t, &a, &b);
+                }
+                if let Some(f) = font {
+                    buf.apply_tag(&tag(&buf, &format!("t:{f}")), &a, &b);
+                }
+            }
+            None => {
+                let at = buf.iter_at_mark(&buf.get_insert()).offset();
+                let mut st = dy.style_here();
+                st.font = font.map(str::to_string);
+                dy.typing.replace(Some((at, st)));
+            }
+        }
+        dy.show_state();
+        dy.view.grab_focus();
     }
 
     /// Markerul galben (Ctrl+Shift+H): îl pune sau, dacă e deja peste tot, îl scoate.
@@ -1739,6 +1851,14 @@ impl App {
     }
 
     #[cfg(debug_assertions)]
+    pub fn diary_test_font(self: &Rc<Self>, f: Option<&str>) {
+        self.diary_font(f);
+    }
+    #[cfg(debug_assertions)]
+    pub fn diary_test_title(self: &Rc<Self>) {
+        self.diary_line_kind("r:titlu");
+    }
+    #[cfg(debug_assertions)]
     pub fn diary_test_toggle(self: &Rc<Self>, id: &str) {
         self.diary_toggle(id);
     }
@@ -1771,5 +1891,230 @@ impl App {
         let a = all[..byte].chars().count() as i32;
         let id = self.journal.entry_anchor(PageRef::Day(d), 0, self.lang).ok().flatten().expect("semn");
         self.diary_link_to(Some((a, a + 5)), &Target::Entry(PageRef::Day(d), id), "piață");
+    }
+}
+
+// ---- Jurnalul pe hârtie: textul așezat pe foi A4, cu fonturile, culorile și listele lui ----
+
+/// A4 în puncte și marginile.
+const PW: f64 = 595.0;
+const PH: f64 = 842.0;
+const PM: f64 = 56.0;
+
+/// Un rând tipărit: al câtelea rând din al câtelea paragraf, cât de la stânga, cât de înalt,
+/// unde îi e linia de bază și cât loc lasă deasupra.
+struct PLine {
+    para: usize,
+    line: i32,
+    x: f64,
+    h: f64,
+    base: f64,
+    before: f64,
+}
+
+pub struct DiaryPrint {
+    head: String,
+    title: String,
+    paras: Vec<(LineKind, String)>,
+    family: String,
+    size: f64,
+}
+
+fn esc(s: &str) -> String {
+    glib::markup_escape_text(s).to_string()
+}
+
+/// O bucată în markup Pango; `factor` mărește scrisul (titlurile), înmulțit cu mărirea fontului.
+fn span_markup(sp: &Span, factor: f64) -> String {
+    let st = &sp.style;
+    let mut attrs = Vec::new();
+    let mut size = factor;
+    if let Some(f) = &st.font {
+        attrs.push(format!("font_family=\"{}\"", esc(f)));
+        // Scrisul de mână e mărit puțin, ca pe ecran.
+        if let Some(x) = fonturi::FONTS.iter().find(|x| x.family == f.as_str()) {
+            size *= x.scale;
+        }
+    }
+    if size != 1.0 {
+        attrs.push(format!("size=\"{:.0}%\"", size * 100.0));
+    }
+    if st.bold {
+        attrs.push("weight=\"bold\"".into());
+    }
+    if st.italic {
+        attrs.push("style=\"italic\"".into());
+    }
+    if st.underline || st.link.is_some() {
+        attrs.push("underline=\"single\"".into());
+    }
+    if st.strike {
+        attrs.push("strikethrough=\"true\"".into());
+    }
+    match (&st.color, &st.link) {
+        (Some(c), _) => attrs.push(format!("foreground=\"{c}\"")),
+        (None, Some(_)) => attrs.push("foreground=\"#1c71d8\"".into()),
+        _ => {}
+    }
+    if let Some(m) = &st.marker {
+        attrs.push(format!("background=\"{m}\""));
+    }
+    if attrs.is_empty() { esc(&sp.text) } else { format!("<span {}>{}</span>", attrs.join(" "), esc(&sp.text)) }
+}
+
+impl DiaryPrint {
+    fn layouts(&self, cr: &gtk::cairo::Context) -> (Vec<gtk::pango::Layout>, Vec<PLine>) {
+        let width = PW - 2.0 * PM;
+        let mut layouts = Vec::new();
+        let mut lines = Vec::new();
+        for (k, (kind, markup)) in self.paras.iter().enumerate() {
+            let layout = pangocairo::functions::create_layout(cr);
+            let mut fd = gtk::pango::FontDescription::from_string(&self.family);
+            fd.set_size((self.size * gtk::pango::SCALE as f64) as i32);
+            layout.set_font_description(Some(&fd));
+            let indent = if *kind == LineKind::Quote { 22.0 } else { 0.0 };
+            layout.set_width(((width - indent) * gtk::pango::SCALE as f64) as i32);
+            layout.set_wrap(gtk::pango::WrapMode::WordChar);
+            let m = match kind {
+                LineKind::Time => format!("<span weight=\"bold\" foreground=\"#1c71d8\">{markup}</span>"),
+                LineKind::Title => format!("<span weight=\"bold\">{markup}</span>"),
+                LineKind::Quote => format!("<span style=\"italic\" foreground=\"#555555\">{markup}</span>"),
+                LineKind::Text => markup.clone(),
+            };
+            layout.set_markup(&m);
+            let before = match kind {
+                LineKind::Time => 12.0,
+                LineKind::Title => 10.0,
+                _ => 2.0,
+            };
+            let mut it = layout.iter();
+            let mut n = 0;
+            loop {
+                let (_, logical) = it.line_extents();
+                let s = gtk::pango::SCALE as f64;
+                let base = it.baseline() as f64 / s - logical.y() as f64 / s;
+                lines.push(PLine { para: k, line: n, x: PM + indent, h: logical.height() as f64 / s, base, before: if n == 0 { before } else { 0.0 } });
+                n += 1;
+                if !it.next_line() {
+                    break;
+                }
+            }
+            layouts.push(layout);
+        }
+        (layouts, lines)
+    }
+
+    /// Rândurile fiecărei foi, cu înălțimea lor pe foaie.
+    fn pages(&self, cr: &gtk::cairo::Context) -> (Vec<gtk::pango::Layout>, Vec<Vec<(PLine, f64)>>) {
+        let (layouts, lines) = self.layouts(cr);
+        let mut pages: Vec<Vec<(PLine, f64)>> = vec![Vec::new()];
+        // Prima foaie începe sub titlu.
+        let mut y = PM + 52.0;
+        for l in lines {
+            let top = y + l.before;
+            // Nu încape: foaie nouă (rândul începe sus, fără spațiul de deasupra).
+            if top + l.h > PH - PM && !pages.last().is_some_and(|p| p.is_empty()) {
+                y = PM + l.h;
+                pages.push(vec![(l, PM)]);
+                continue;
+            }
+            let h = l.h;
+            pages.last_mut().expect("foaie").push((l, top));
+            y = top + h;
+        }
+        (layouts, pages)
+    }
+
+    pub fn page_count(&self, cr: &gtk::cairo::Context) -> i32 {
+        self.pages(cr).1.len() as i32
+    }
+
+    pub fn draw(&self, cr: &gtk::cairo::Context, n: i32) {
+        let (layouts, pages) = self.pages(cr);
+        let total = pages.len();
+        let Some(page) = pages.get(n as usize) else { return };
+        let small = |cr: &gtk::cairo::Context, s: &str, size: f64, bold: bool, x: f64, y: f64, center: bool, color: f64| {
+            let l = pangocairo::functions::create_layout(cr);
+            let mut fd = gtk::pango::FontDescription::from_string(&self.family);
+            fd.set_size((size * gtk::pango::SCALE as f64) as i32);
+            if bold {
+                fd.set_weight(gtk::pango::Weight::Bold);
+            }
+            l.set_font_description(Some(&fd));
+            l.set_text(s);
+            let (_, r) = l.pixel_extents();
+            cr.set_source_rgb(color, color, color * 1.1);
+            cr.move_to(if center { x - r.width() as f64 / 2.0 } else { x }, y);
+            pangocairo::functions::show_layout(cr, &l);
+        };
+        if n == 0 {
+            small(cr, &self.head.to_uppercase(), 8.0, true, PM, PM - 6.0, false, 0.45);
+            small(cr, &self.title, 18.0, true, PM, PM + 8.0, false, 0.12);
+        }
+        cr.set_source_rgb(0.1, 0.1, 0.12);
+        for (l, y) in page {
+            let Some(line) = layouts[l.para].line_readonly(l.line) else { continue };
+            cr.set_source_rgb(0.1, 0.1, 0.12);
+            cr.move_to(l.x, y + l.base);
+            pangocairo::functions::show_layout_line(cr, &line);
+        }
+        if total > 1 {
+            small(cr, &format!("{} / {total}", n + 1), 8.0, false, PW / 2.0, PH - PM + 18.0, true, 0.5);
+        }
+    }
+
+    pub fn write_pdf(&self, path: &std::path::Path) -> Result<(), String> {
+        let surface = gtk::cairo::PdfSurface::new(PW, PH, path).map_err(|e| e.to_string())?;
+        let cr = gtk::cairo::Context::new(&surface).map_err(|e| e.to_string())?;
+        for n in 0..self.page_count(&cr) {
+            self.draw(&cr, n);
+            cr.show_page().map_err(|e| e.to_string())?;
+        }
+        surface.finish();
+        Ok(())
+    }
+}
+
+impl App {
+    /// Jurnalul zilei arătate, pregătit pentru hârtie (din ce e acum în câmp).
+    pub fn diary_print(&self) -> Option<DiaryPrint> {
+        let d = self.diary.date.get()?;
+        let font = fonturi::by_key(&self.settings.borrow().font);
+        let paras = self.diary.lines().into_iter().map(|l| {
+                let factor = if l.kind == LineKind::Title { 1.35 } else { 1.0 };
+                (l.kind, l.spans.iter().map(|sp| span_markup(sp, factor)).collect::<String>())
+            }).collect();
+        Some(DiaryPrint {
+            head: tr(self.lang, "Jurnal", "Journal").to_string(),
+            title: self.lang.day_title(d),
+            paras,
+            family: font.map(|f| f.family).unwrap_or("Sans").to_string(),
+            size: 11.0 * font.map(|f| f.scale).unwrap_or(1.0),
+        })
+    }
+
+    /// Ctrl+P în jurnal: jurnalul zilei, la tipar.
+    pub fn print_diary(self: &Rc<Self>) {
+        let Some(dp) = self.diary_print() else { return };
+        let dp = Rc::new(dp);
+        let op = gtk::PrintOperation::new();
+        op.set_job_name("Lanruj");
+        op.set_use_full_page(true);
+        let d1 = dp.clone();
+        op.connect_begin_print(move |op, ctx| {
+            op.set_n_pages(d1.page_count(&ctx.cairo_context()).max(1));
+        });
+        let d2 = dp.clone();
+        op.connect_draw_page(move |_, ctx, n| {
+            let cr = ctx.cairo_context();
+            let scale = (ctx.width() / PW).min(ctx.height() / PH);
+            cr.save().ok();
+            cr.scale(scale, scale);
+            d2.draw(&cr, n);
+            cr.restore().ok();
+        });
+        if let Err(e) = op.run(gtk::PrintOperationAction::PrintDialog, Some(&self.window)) {
+            self.error(&std::io::Error::other(e.to_string()));
+        }
     }
 }

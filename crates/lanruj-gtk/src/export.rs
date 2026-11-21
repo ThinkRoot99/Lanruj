@@ -260,10 +260,6 @@ impl App {
             self.toast(tr(self.lang, "Termină întâi migrarea sau căutarea.", "Finish the migration or the search first."));
             return false;
         }
-        if matches!(self.view.get(), View::Diary(_)) {
-            self.toast(tr(self.lang, "Jurnalul nu se poate încă tipări sau salva ca PDF.", "The journal can't be printed or saved as PDF yet."));
-            return false;
-        }
         true
     }
 
@@ -322,6 +318,15 @@ impl App {
         if let View::Tracking(y, m) = self.view.get() {
             self.save_dialog(tr(self.lang, "Luna ca PDF", "The month as PDF"), &name, move |app, path| {
                 match crate::tiparire::Sheet::new(app, y, m).write_pdf(&path) {
+                    Ok(()) => app.done_toast(&path),
+                    Err(e) => app.error(&std::io::Error::other(e)),
+                }
+            });
+            return;
+        }
+        if matches!(self.view.get(), View::Diary(_)) {
+            self.save_dialog(tr(self.lang, "Jurnalul ca PDF", "The journal as PDF"), &name, |app, path| {
+                match app.diary_print().ok_or_else(|| "nimic de exportat".to_string()).and_then(|d| d.write_pdf(&path)) {
                     Ok(()) => app.done_toast(&path),
                     Err(e) => app.error(&std::io::Error::other(e)),
                 }
@@ -412,6 +417,11 @@ impl App {
         }
         if let View::Tracking(y, m) = self.view.get() {
             self.print_tracking(y, m);
+            return;
+        }
+        // Jurnalul are foile lui (textul așezat pe A4), nu o captură a caietului.
+        if matches!(self.view.get(), View::Diary(_)) {
+            self.print_diary();
             return;
         }
         let Some(s) = self.current_shot() else { return };

@@ -9,6 +9,8 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 ### 2026-11-21 (afternoon)
 
 #### Added
+- **Fonts in the journal**: any piece of text can have its own font (the Aa button or Ctrl+Shift+F), on the selection or the whole line, saved as `<span style="font-family:…">`; the rest of the app keeps the font from Preferences.
+- **Printing the journal**: Ctrl+P and Ctrl+Shift+E on the journal print or save the open day's text, laid out on A4 sheets with its fonts, colors, headings and lists, and page numbers.
 - **Journal toolbar in groups**: text style, colors, lines, lists, then time and links; each group wraps as a whole on narrow windows. Clearing the formatting keeps the links. The keyboard shortcuts window describes every key exactly, with its own sections for pages and the journal. Printing and PDF say plainly that the journal can't be exported yet.
 - **Journal writing**: typed or pasted web addresses, `www.` addresses and e-mails become links by themselves; the link button (Ctrl+K) asks for the text and the address, or changes and removes a link; lists change level with Tab and Shift+Tab, Enter on an empty line and Backspace after the sign go up one level, and numbered lists follow the levels (2, 2.1, 2.1.1); keyboard shortcuts for everything (headings, quotes, lists, colors, markers, clearing).
 - **Search everywhere**: the journal, the notes, Tracking notes and Index titles, besides the pages; exact phrases in quotes and `-word` to leave words out; Enter opens the first result, ↓ moves into the list, and journal results open at the line found.

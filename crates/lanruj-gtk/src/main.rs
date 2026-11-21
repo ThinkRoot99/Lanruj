@@ -1258,8 +1258,8 @@ impl App {
                     (tr(l, "Pagina de după: ziua, săptămâna, luna sau ziua de jurnal, după ce e deschis", "Next page: the day, week, month or journal day, whichever is open"), "<Alt>Right <Control>Page_Down"),
                     (tr(l, "Înapoi la azi (în jurnal, la jurnalul de azi)", "Back to today (in the journal, to today's journal)"), "<Alt>Home"),
                     (tr(l, "Mergi la o dată aleasă din calendar", "Go to a date picked from a calendar"), "<Control>g"),
-                    (tr(l, "Tipărește pagina deschisă (jurnalul, încă nu)", "Print the open page (not the journal yet)"), "<Control>p"),
-                    (tr(l, "Salvează pagina deschisă ca PDF (jurnalul, încă nu)", "Save the open page as PDF (not the journal yet)"), "<Control><Shift>e"),
+                    (tr(l, "Tipărește pagina deschisă (în jurnal: textul zilei, pe foi A4)", "Print the open page (in the journal: the day's text, on A4 sheets)"), "<Control>p"),
+                    (tr(l, "Salvează pagina deschisă ca PDF (în jurnal: textul zilei, pe foi A4)", "Save the open page as PDF (in the journal: the day's text, on A4 sheets)"), "<Control><Shift>e"),
                 ],
             ),
             (
@@ -1284,6 +1284,7 @@ impl App {
                     (tr(l, "Cursiv, la fel", "Italic, the same way"), "<Control>i"),
                     (tr(l, "Subliniat, la fel", "Underline, the same way"), "<Control>u"),
                     (tr(l, "Tăiat, la fel", "Strikethrough, the same way"), "<Control>d <Control><Shift>x"),
+                    (tr(l, "Fontul textului selectat sau, fără selecție, al rândului (doar în jurnal)", "Font of the selected text or, with no selection, of the line (only in the journal)"), "<Control><Shift>f"),
                     (tr(l, "Scoate formatarea și culorile de pe textul selectat (legăturile rămân)", "Clear the formatting and colors from the selected text (links stay)"), "<Control>space"),
                     (tr(l, "Marker galben pe textul selectat; dacă îl are deja, îl scoate", "Yellow marker on the selected text; if it has one, removes it"), "<Control><Shift>h"),
                     (tr(l, "Alege culoarea textului sau a markerului (săgeți și Enter)", "Pick a text or marker color (arrows and Enter)"), "<Control><Shift>g"),
@@ -3430,6 +3431,49 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                             app.quit();
                         }
                     });
+                });
+            });
+        }
+        Ok("test-jurnal3") => {
+            // Fonturi pe rânduri și jurnalul ca PDF.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                let t = s.today.get();
+                s.go_diary(t);
+                let buf = s.diary.view.buffer();
+                buf.set_text("");
+                let put = |txt: &str| {
+                    let mut at = buf.iter_at_mark(&buf.get_insert());
+                    buf.insert(&mut at, txt);
+                };
+                put("Primul rând, scris de mână cu Caveat.");
+                s.diary_test_font(Some("Caveat"));
+                put("\nAl doilea rând, cu Lora, un font cu serife.");
+                s.diary_test_font(Some("Lora"));
+                put("\nUn titlu cu Patrick Hand");
+                s.diary_test_font(Some("Patrick Hand"));
+                s.diary_test_title();
+                put("\nTextul obișnuit, cu fontul din setări, **nu** se schimbă.\n");
+                for k in 1..=40 {
+                    put(&format!("Rândul {k}: o zi lungă, cu multe de povestit, ca să se vadă cum trece textul pe foaia a doua.\n"));
+                }
+                s.flush_diary();
+                let text = std::fs::read_to_string(s.journal.diary_path(t)).unwrap_or_default();
+                eprintln!("selftest-jurnal3-fisier:\n{}", text.lines().take(8).collect::<Vec<_>>().join("\n"));
+                if let Ok(p) = std::env::var("LANRUJ_PDF") {
+                    let r = s.diary_print().expect("jurnal").write_pdf(std::path::Path::new(&p));
+                    eprintln!("selftest-jurnal3-pdf: {r:?}");
+                }
+                buf.place_cursor(&buf.start_iter());
+                s.diary.view.scroll_to_iter(&mut buf.start_iter(), 0.0, false, 0.0, 0.0);
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                    if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                        save_png(&s2.window, &p);
+                    }
+                    if let Some(app) = s2.window.application() {
+                        app.quit();
+                    }
                 });
             });
         }
