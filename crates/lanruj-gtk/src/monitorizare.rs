@@ -376,7 +376,7 @@ impl Page {
                 Lang::En => format!("{days} of {passed} days"),
             };
             if a.timed {
-                let avg = if days > 0 { sum / days } else { 0 };
+                let avg = sum.checked_div(days).unwrap_or(0);
                 let total = match lang {
                     Lang::Ro => format!("{} în total · {} pe zi · {of}", seconds_text(sum), seconds_text(avg)),
                     Lang::En => format!("{} in total · {} a day · {of}", seconds_text(sum), seconds_text(avg)),
