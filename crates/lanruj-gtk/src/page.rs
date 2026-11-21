@@ -114,6 +114,12 @@ impl Page {
                 self.banner.append(&topic_box(app, &t, true));
                 self.banner.set_visible(true);
             }
+            // Și ce a fost la serviciu (din Monitorizare).
+            let work = app.journal.work_on(d);
+            if !work.is_empty() {
+                self.banner.append(&Page::work_box(app, d, &work, true));
+                self.banner.set_visible(true);
+            }
         }
         let mut any = false;
         // Pozele paginii, pentru fereastra de mărire (← → trec de la una la alta).
@@ -288,6 +294,13 @@ impl Page {
             }
             for t in app.journal.topics_on(d) {
                 let b = topic_box(app, &t, false);
+                b.set_margin_start(10);
+                self.list.append(&b);
+                any = true;
+            }
+            let work = app.journal.work_on(d);
+            if !work.is_empty() {
+                let b = Page::work_box(app, d, &work, false);
                 b.set_margin_start(10);
                 self.list.append(&b);
                 any = true;
@@ -562,6 +575,7 @@ impl Page {
                         shown.push(format!("▸ {}", t.title));
                     }
                 }
+                shown.extend(crate::monitorizare::work_short(lang, &app.journal.work_on(d)));
                 let text = gtk::Label::builder()
                     .label(shown.join(" · "))
                     .xalign(0.0)

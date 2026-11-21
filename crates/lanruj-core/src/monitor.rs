@@ -6,8 +6,9 @@
 //!
 //! ## Serviciu
 //!
-//! - 2 tură
-//! - 3 ore suplimentare 08:00-12:00
+//! - 2 serviciu: predare la 8
+//! - 3 ore suplimentare 08:00-12:00: inventar
+//! - 5 rezervă
 //! - 15-17 concediu
 //!
 //! ## Somn
@@ -17,10 +18,10 @@
 //!
 //! ## Activități
 //!
-//! Listă: cafea, citit, făcut patul
+//! Listă: cafea, citit, flotări (număr), apă (pahare)
 //!
-//! - 1 cafea, citit
-//! - 2 făcut patul
+//! - 1 cafea, citit, flotări 30, apă 6
+//! - 2 apă 4
 //! ```
 //!
 //! Zilele la rând cu același fel de serviciu se scriu ca interval. Secțiunile
@@ -30,15 +31,17 @@ use crate::journal::Journal;
 use crate::lang::Lang;
 use crate::search::fold;
 use chrono::{Datelike, NaiveDate};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 
 /// Ce a fost într-o zi, la serviciu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shift {
-    /// O tură de 24 de ore.
-    Shift,
+    /// O zi de serviciu, de 24 de ore.
+    Service,
+    /// O zi de rezervă.
+    Reserve,
     /// Concediu de odihnă.
     Leave,
 }
@@ -48,17 +51,20 @@ impl Shift {
 
     fn word(self, lang: Lang) -> &'static str {
         match (self, lang) {
-            (Shift::Shift, Lang::Ro) => "tură",
+            (Shift::Service, Lang::Ro) => "serviciu",
+            (Shift::Reserve, Lang::Ro) => "rezervă",
             (Shift::Leave, Lang::Ro) => "concediu",
-            (Shift::Shift, Lang::En) => "shift",
+            (Shift::Service, Lang::En) => "duty",
+            (Shift::Reserve, Lang::En) => "standby",
             (Shift::Leave, Lang::En) => "leave",
         }
     }
 
     fn parse(w: &str) -> Option<Shift> {
         match fold(w.trim()).as_str() {
-            // „tură extra” din fișierele vechi rămâne o tură.
-            "tura" | "shift" | "tura extra" | "extra" | "extra shift" => Some(Shift::Shift),
+            // „tură” și „tură extra” din fișierele vechi sunt zile de serviciu.
+            "serviciu" | "duty" | "tura" | "shift" | "tura extra" | "extra" | "extra shift" => Some(Shift::Service),
+            "rezerva" | "standby" | "reserve" => Some(Shift::Reserve),
             "concediu" | "co" | "leave" => Some(Shift::Leave),
             _ => None,
         }
@@ -123,6 +129,56 @@ pub fn duration(m: u32) -> String {
     format!("{}:{:02}", m / 60, m % 60)
 }
 
+/// Ore suplimentare: intervalul și o notă (poate fi goală).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Overtime {
+    pub span: Span,
+    pub note: String,
+}
+
+/// O activitate urmărită: cu bifă sau cu număr (și unitate, de exemplu „pahare”).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Activity {
+    pub name: String,
+    pub counted: bool,
+    pub unit: Option<String>,
+}
+
+impl Activity {
+    pub fn check(name: &str) -> Activity {
+        Activity { name: name.to_string(), counted: false, unit: None }
+    }
+
+    /// „cafea”, „flotări (număr)”, „apă (pahare)”.
+    fn parse(s: &str) -> Option<Activity> {
+        let s = s.trim();
+        if s.is_empty() {
+            return None;
+        }
+        if let Some((name, rest)) = s.split_once('(') {
+            let unit = rest.trim_end_matches(')').trim();
+            let plain = matches!(fold(unit).as_str(), "numar" | "number" | "");
+            return Some(Activity { name: name.trim().to_string(), counted: true, unit: (!plain).then(|| unit.to_string()) });
+        }
+        Some(Activity::check(s))
+    }
+
+    fn text(&self, lang: Lang) -> String {
+        match (&self.unit, self.counted) {
+            (Some(u), _) => format!("{} ({u})", self.name),
+            (None, true) => format!("{} ({})", self.name, if lang == Lang::Ro { "număr" } else { "number" }),
+            (None, false) => self.name.clone(),
+        }
+    }
+}
+
+/// Ce s-a întâmplat la serviciu într-o zi, pentru celelalte pagini (zi, săptămână, lună).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkOnDay {
+    Day(Shift, String),
+    Overtime(Span, String),
+}
+
 /// Somnul unei zile, în minute.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Sleep {
@@ -134,12 +190,14 @@ pub struct Sleep {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tracking {
     pub work: BTreeMap<u32, Shift>,
-    pub overtime: BTreeMap<u32, Vec<Span>>,
+    /// Notele zilelor de serviciu, rezervă sau concediu.
+    pub work_notes: BTreeMap<u32, String>,
+    pub overtime: BTreeMap<u32, Vec<Overtime>>,
     pub sleep: BTreeMap<u32, Sleep>,
     /// Activitățile urmărite, în ordinea lor.
-    pub activities: Vec<String>,
-    /// Ce activități s-au făcut în fiecare zi.
-    pub done: BTreeMap<u32, BTreeSet<String>>,
+    pub activities: Vec<Activity>,
+    /// Ce activități s-au făcut în fiecare zi și de câte ori (o bifă = 1).
+    pub done: BTreeMap<u32, BTreeMap<String, u32>>,
     /// Alte secțiuni, ca text, ca să nu se piardă la scriere.
     pub other: Vec<String>,
 }
@@ -148,6 +206,7 @@ pub struct Tracking {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Totals {
     pub shifts: u32,
+    pub reserve: u32,
     pub leave: u32,
     /// Minute suplimentare.
     pub overtime: u32,
@@ -206,14 +265,19 @@ impl Tracking {
                 Sec::Work => {
                     let Some(rest) = item else { continue };
                     let (d, word) = rest.split_once(' ').unwrap_or((rest, ""));
+                    // Nota stă după „: ” (orele „08:00” nu au spațiu după două puncte).
+                    let (word, note) = word.split_once(": ").map(|(w, n)| (w, n.trim().to_string())).unwrap_or((word, String::new()));
                     let f = fold(word);
                     if let Some(span) = f.strip_prefix("ore suplimentare ").or_else(|| f.strip_prefix("overtime ")).and_then(Span::parse) {
                         if let Some((a, _)) = days(d) {
-                            t.overtime.entry(a).or_default().push(span);
+                            t.overtime.entry(a).or_default().push(Overtime { span, note });
                         }
                     } else if let (Some((a, b)), Some(k)) = (days(d), Shift::parse(word)) {
                         for n in a..=b {
                             t.work.insert(n, k);
+                            if !note.is_empty() {
+                                t.work_notes.insert(n, note.clone());
+                            }
                         }
                     }
                 }
@@ -231,15 +295,20 @@ impl Tracking {
                 }
                 Sec::Activities => {
                     if let Some(list) = line.strip_prefix("Listă:").or_else(|| line.strip_prefix("Lista:")).or_else(|| line.strip_prefix("List:")) {
-                        t.activities = list.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
+                        t.activities = list.split(',').filter_map(Activity::parse).collect();
                     } else if let Some(rest) = item {
                         let (d, names) = rest.split_once(' ').unwrap_or((rest, ""));
                         let Ok(d) = d.parse::<u32>() else { continue };
                         let set = t.done.entry(d).or_default();
                         for a in names.split(',').map(str::trim).filter(|a| !a.is_empty()) {
-                            set.insert(a.to_string());
-                            if !t.activities.iter().any(|x| x == a) {
-                                t.activities.push(a.to_string());
+                            // „flotări 30” = 30; „cafea” = 1.
+                            let (name, n) = match a.rsplit_once(' ') {
+                                Some((name, n)) if n.parse::<u32>().is_ok() => (name.trim(), n.parse::<u32>().unwrap_or(1)),
+                                _ => (a, 1),
+                            };
+                            set.insert(name.to_string(), n);
+                            if !t.activities.iter().any(|x| x.name == name) {
+                                t.activities.push(Activity::check(name));
                             }
                         }
                     }
@@ -262,20 +331,25 @@ impl Tracking {
             out.push_str(if ro { "\n## Serviciu\n\n" } else { "\n## Work\n\n" });
             let mut lines: Vec<(u32, String)> = Vec::new();
             let ds: Vec<u32> = self.work.keys().copied().collect();
+            let note = |d: &u32| self.work_notes.get(d).map(String::as_str).unwrap_or("");
             let mut i = 0;
             while i < ds.len() {
                 let k = self.work[&ds[i]];
                 let mut j = i;
-                while j + 1 < ds.len() && ds[j + 1] == ds[j] + 1 && self.work[&ds[j + 1]] == k {
+                // Doar zilele fără notă se strâng într-un interval.
+                while j + 1 < ds.len() && ds[j + 1] == ds[j] + 1 && self.work[&ds[j + 1]] == k && note(&ds[j]).is_empty() && note(&ds[j + 1]).is_empty() {
                     j += 1;
                 }
                 let d = if j > i { format!("{}-{}", ds[i], ds[j]) } else { ds[i].to_string() };
-                lines.push((ds[i], format!("- {d} {}\n", k.word(lang))));
+                let n = note(&ds[i]);
+                let n = if n.is_empty() { String::new() } else { format!(": {n}") };
+                lines.push((ds[i], format!("- {d} {}{n}\n", k.word(lang))));
                 i = j + 1;
             }
-            for (d, spans) in &self.overtime {
-                for s in spans {
-                    lines.push((*d, format!("- {d} {} {}\n", if ro { "ore suplimentare" } else { "overtime" }, s.text())));
+            for (d, list) in &self.overtime {
+                for o in list {
+                    let n = if o.note.is_empty() { String::new() } else { format!(": {}", o.note) };
+                    lines.push((*d, format!("- {d} {} {}{n}\n", if ro { "ore suplimentare" } else { "overtime" }, o.span.text())));
                 }
             }
             lines.sort_by_key(|(d, _)| *d);
@@ -296,14 +370,19 @@ impl Tracking {
         }
         if !self.activities.is_empty() {
             out.push_str(if ro { "\n## Activități\n\n" } else { "\n## Activities\n\n" });
-            out.push_str(&format!("{} {}\n", if ro { "Listă:" } else { "List:" }, self.activities.join(", ")));
+            let list: Vec<String> = self.activities.iter().map(|a| a.text(lang)).collect();
+            out.push_str(&format!("{} {}\n", if ro { "Listă:" } else { "List:" }, list.join(", ")));
             let rows: Vec<String> = self
                 .done
                 .iter()
-                .filter(|(_, s)| !s.is_empty())
+                .filter(|(_, s)| s.values().any(|n| *n > 0))
                 .map(|(d, s)| {
-                    // În ordinea listei.
-                    let names: Vec<&str> = self.activities.iter().filter(|a| s.contains(*a)).map(String::as_str).collect();
+                    // În ordinea listei; cele cu număr îl au după nume.
+                    let names: Vec<String> = self
+                        .activities
+                        .iter()
+                        .filter_map(|a| s.get(&a.name).filter(|n| **n > 0).map(|n| if a.counted { format!("{} {n}", a.name) } else { a.name.clone() }))
+                        .collect();
                     format!("- {d} {}\n", names.join(", "))
                 })
                 .collect();
@@ -324,11 +403,12 @@ impl Tracking {
         let mut t = Totals::default();
         for k in self.work.values() {
             match k {
-                Shift::Shift => t.shifts += 1,
+                Shift::Service => t.shifts += 1,
+                Shift::Reserve => t.reserve += 1,
                 Shift::Leave => t.leave += 1,
             }
         }
-        t.overtime = self.overtime.values().flatten().map(Span::minutes).sum();
+        t.overtime = self.overtime.values().flatten().map(|o| o.span.minutes()).sum();
         t
     }
 
@@ -338,9 +418,27 @@ impl Tracking {
         (avg(self.sleep.values().filter_map(|s| s.night).collect()), avg(self.sleep.values().filter_map(|s| s.day).collect()))
     }
 
-    /// În câte zile s-a făcut fiecare activitate.
-    pub fn activity_counts(&self) -> Vec<(String, u32)> {
-        self.activities.iter().map(|a| (a.clone(), self.done.values().filter(|s| s.contains(a)).count() as u32)).collect()
+    /// Pentru fiecare activitate: în câte zile s-a făcut și cât în total (la cele cu număr).
+    pub fn activity_counts(&self) -> Vec<(Activity, u32, u32)> {
+        self.activities
+            .iter()
+            .map(|a| {
+                let vals: Vec<u32> = self.done.values().filter_map(|s| s.get(&a.name).copied()).filter(|n| *n > 0).collect();
+                (a.clone(), vals.len() as u32, vals.iter().sum())
+            })
+            .collect()
+    }
+
+    /// Ce s-a întâmplat la serviciu în ziua `day`: ziua (cu nota) și orele suplimentare.
+    pub fn work_on(&self, day: u32) -> Vec<WorkOnDay> {
+        let mut out = Vec::new();
+        if let Some(k) = self.work.get(&day) {
+            out.push(WorkOnDay::Day(*k, self.work_notes.get(&day).cloned().unwrap_or_default()));
+        }
+        for o in self.overtime.get(&day).into_iter().flatten() {
+            out.push(WorkOnDay::Overtime(o.span, o.note.clone()));
+        }
+        out
     }
 
     pub fn is_empty(&self) -> bool {
@@ -393,7 +491,7 @@ impl Journal {
         Ok(t)
     }
 
-    /// Schimbă ziua `date` la serviciu (cu `None` o face liberă).
+    /// Schimbă ziua `date` la serviciu (cu `None` o face liberă, fără notă).
     pub fn set_shift(&self, date: NaiveDate, kind: Option<Shift>, lang: Lang) -> io::Result<Tracking> {
         self.update_tracking(date.year(), date.month(), lang, |t| match kind {
             Some(k) => {
@@ -401,8 +499,14 @@ impl Journal {
             }
             None => {
                 t.work.remove(&date.day());
+                t.work_notes.remove(&date.day());
             }
         })
+    }
+
+    /// Ce s-a întâmplat la serviciu în ziua `date` (pentru pagina zilei, a săptămânii și a lunii).
+    pub fn work_on(&self, date: NaiveDate) -> Vec<WorkOnDay> {
+        self.read_tracking(date.year(), date.month()).map(|t| t.work_on(date.day())).unwrap_or_default()
     }
 }
 
@@ -410,24 +514,31 @@ impl Journal {
 mod tests {
     use super::*;
 
-    const LUNA: &str = "# Noiembrie 2026\n\n## Serviciu\n\n- 2 tură\n- 3 ore suplimentare 08:00-12:00\n- 15-17 concediu\n- 18 tură\n- 18 ore suplimentare 22:00-02:00\n\n## Somn\n\n- 1 noapte 7:30\n- 1 zi 0:45\n- 2 noapte 6:30\n\n## Activități\n\nListă: cafea, citit, făcut patul\n\n- 1 cafea, citit\n- 2 cafea, făcut patul\n\n## Note\n\nceva\n";
+    const LUNA: &str = "# Noiembrie 2026\n\n## Serviciu\n\n- 2 serviciu: predare la 8\n- 3 ore suplimentare 08:00-12:00: inventar\n- 5 rezervă\n- 15-17 concediu\n- 18 serviciu\n- 18 ore suplimentare 22:00-02:00\n\n## Somn\n\n- 1 noapte 7:30\n- 1 zi 0:45\n- 2 noapte 6:30\n\n## Activități\n\nListă: cafea, citit, flotări (număr), apă (pahare)\n\n- 1 cafea, citit, flotări 30, apă 6\n- 2 cafea, apă 4\n\n## Note\n\nceva\n";
 
     #[test]
     fn citire_si_scriere() {
         let t = Tracking::parse(LUNA);
-        assert_eq!(t.totals(), Totals { shifts: 2, leave: 3, overtime: 8 * 60 });
+        assert_eq!(t.totals(), Totals { shifts: 2, reserve: 1, leave: 3, overtime: 8 * 60 });
         assert_eq!(t.totals().worked(), 56 * 60);
+        assert_eq!(t.work_notes[&2], "predare la 8");
+        assert_eq!(t.overtime[&3][0].note, "inventar");
         assert_eq!(t.sleep[&1], Sleep { night: Some(450), day: Some(45) });
         assert_eq!(t.sleep_average(), (Some(420), Some(45)));
-        assert_eq!(t.activity_counts(), vec![("cafea".into(), 2), ("citit".into(), 1), ("făcut patul".into(), 1)]);
+        let c = t.activity_counts();
+        assert_eq!((c[0].1, c[2].1, c[2].2, c[3].2), (2, 1, 30, 10), "cafea 2 zile; flotări o zi, 30; apă 10 pahare");
+        assert_eq!(c[3].0.unit.as_deref(), Some("pahare"));
         assert_eq!(t.to_markdown(2026, 11, Lang::Ro), LUNA, "se scrie înapoi la fel");
-        // Fișierele vechi: „tură extra” devine tură.
-        assert_eq!(Tracking::parse("## Serviciu\n\n- 12 tură extra\n").work[&12], Shift::Shift);
+        assert_eq!(t.work_on(3), vec![WorkOnDay::Overtime(Span { start: 480, end: 720 }, "inventar".into())]);
+        assert_eq!(t.work_on(2), vec![WorkOnDay::Day(Shift::Service, "predare la 8".into())]);
+        // Fișierele vechi: „tură” și „tură extra” sunt zile de serviciu.
+        let old = Tracking::parse("## Serviciu\n\n- 11 tură\n- 12 tură extra\n");
+        assert_eq!((old.work[&11], old.work[&12]), (Shift::Service, Shift::Service));
         // Engleza.
-        let en = Tracking::parse("# November 2026\n\n## Work\n\n- 2 shift\n- 3 overtime 8-12\n\n## Sleep\n\n- 1 night 7.5\n\n## Activities\n\nList: coffee\n\n- 1 coffee\n");
-        assert_eq!(en.totals(), Totals { shifts: 1, leave: 0, overtime: 240 });
+        let en = Tracking::parse("# November 2026\n\n## Work\n\n- 2 duty\n- 3 overtime 8-12\n- 4 standby\n\n## Sleep\n\n- 1 night 7.5\n\n## Activities\n\nList: coffee, push-ups (number)\n\n- 1 coffee, push-ups 20\n");
+        assert_eq!(en.totals(), Totals { shifts: 1, reserve: 1, leave: 0, overtime: 240 });
         assert_eq!(en.sleep[&1].night, Some(450));
-        assert_eq!(en.activity_counts(), vec![("coffee".into(), 1)]);
+        assert_eq!(en.activity_counts()[1].2, 20);
     }
 
     #[test]
@@ -445,11 +556,13 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lanruj-monitor-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let j = Journal::new(&root);
-        j.update_tracking(2026, 11, Lang::Ro, |t| t.activities = vec!["cafea".into(), "citit".into()]).unwrap();
-        assert_eq!(j.load_tracking(2026, 12).unwrap().activities, vec!["cafea", "citit"], "decembrie primește lista din noiembrie");
-        assert_eq!(j.load_tracking(2027, 1).unwrap().activities, vec!["cafea", "citit"]);
+        j.update_tracking(2026, 11, Lang::Ro, |t| t.activities = vec![Activity::check("cafea"), Activity { name: "apă".into(), counted: true, unit: Some("pahare".into()) }]).unwrap();
+        let dec = j.load_tracking(2026, 12).unwrap().activities;
+        assert_eq!(dec.len(), 2, "decembrie primește lista din noiembrie");
+        assert_eq!(dec[1].unit.as_deref(), Some("pahare"));
         let d = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
-        j.set_shift(d, Some(Shift::Shift), Lang::Ro).unwrap();
+        j.set_shift(d, Some(Shift::Service), Lang::Ro).unwrap();
+        assert_eq!(j.work_on(d), vec![WorkOnDay::Day(Shift::Service, String::new())]);
         j.set_shift(d, None, Lang::Ro).unwrap();
         assert!(!j.tracking_path(2026, 10).exists(), "o lună goală nu lasă fișier");
         std::fs::remove_dir_all(root).unwrap();

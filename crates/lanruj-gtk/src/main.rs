@@ -3083,13 +3083,17 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
                     let mut bs: Vec<gtk::Button> = Vec::new();
                     all(s3.window.upcast_ref(), &mut bs);
-                    let Some(day) = bs.iter().find(|b| b.has_css_class("zi-serviciu") && b.tooltip_text().is_some_and(|t| t.contains(" 4 "))) else { return };
+                    let Some(day) = bs.iter().find(|b| b.has_css_class("zi-serviciu") && b.tooltip_text().is_some_and(|t| t.contains(" 5 "))) else { return };
                     let mut es: Vec<gtk::Entry> = Vec::new();
                     all(day.upcast_ref(), &mut es);
-                    if es.len() >= 2 {
-                        es[0].set_text("08:00");
-                        es[1].set_text("12:00");
-                        es[1].emit_activate();
+                    let ph = |e: &gtk::Entry, t: &str| e.placeholder_text().as_deref() == Some(t);
+                    if let (Some(from), Some(to)) = (es.iter().find(|e| ph(e, "08:00")), es.iter().find(|e| ph(e, "12:00"))) {
+                        from.set_text("09:00");
+                        to.set_text("11:00");
+                        if let Some(n) = es.iter().find(|e| e.placeholder_text().is_some_and(|p| p.starts_with("notă"))) {
+                            n.set_text("probă");
+                        }
+                        to.emit_activate();
                     }
                     eprintln!("selftest-monitorizare: {} câmpuri de ore", es.len());
                 });

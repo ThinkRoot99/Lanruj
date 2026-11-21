@@ -508,3 +508,10 @@ levelbar.bara-activitate block.filled { background: var(--cerneala); border-radi
 levelbar.bara-activitate block.empty { background: alpha(var(--cerneala), 0.10); border-radius: 3px; }
 levelbar.bara-activitate trough { min-height: 6px; }
 .titlu-meniu { padding: 6px 10px 2px; }
+button.zi-serviciu.rezerva { background: alpha(#7a4fa0, 0.14); }
+button.zi-serviciu.rezerva .eticheta-zi { background: #7a4fa0; }
+.legenda .patrat.rezerva { background: #7a4fa0; }
+.are-nota { font-size: 11px; color: #c98a12; }
+entry.numar-activitate { min-height: 24px; min-width: 0; padding: 0 4px; font-size: 13px; background: alpha(white, 0.55); }
+window.noapte entry.numar-activitate { background: alpha(white, 0.06); }
+.serviciu-zi { border-left-color: #2e8b57; }

@@ -10,7 +10,7 @@ use adw::prelude::*;
 use chrono::{Datelike, Duration, NaiveDate};
 use gtk::glib;
 use lanruj_core::Lang;
-use lanruj_core::monitor::{Shift, Span, Totals, Tracking, duration, parse_duration};
+use lanruj_core::monitor::{Activity, Overtime, Shift, Span, Totals, Tracking, WorkOnDay, duration, parse_duration};
 use std::rc::Rc;
 
 /// Fila aleasă.
@@ -126,20 +126,25 @@ fn work_summary(lang: Lang, t: Totals) -> String {
     match lang {
         Lang::Ro => {
             let ture = match t.shifts {
-                1 => "o tură".to_string(),
-                n if n % 100 >= 20 => format!("{n} de ture"),
-                n => format!("{n} ture"),
+                1 => "un serviciu".to_string(),
+                n if n % 100 >= 20 => format!("{n} de servicii"),
+                n => format!("{n} servicii"),
+            };
+            let rez = match t.reserve {
+                1 => "o rezervă".to_string(),
+                n if n % 100 >= 20 => format!("{n} de rezerve"),
+                n => format!("{n} rezerve"),
             };
             let co = match t.leave {
                 1 => "o zi de concediu".to_string(),
                 n if n % 100 >= 20 => format!("{n} de zile de concediu"),
                 n => format!("{n} zile de concediu"),
             };
-            format!("{ture} · {ot} suplimentare · {co}")
+            format!("{ture} · {rez} · {ot} suplimentare · {co}")
         }
         Lang::En => {
             let s = |n: u32, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
-            format!("{} · {ot} overtime · {}", s(t.shifts, "shift", "shifts"), s(t.leave, "day of leave", "days of leave"))
+            format!("{} · {} · {ot} overtime · {}", s(t.shifts, "duty", "duties"), s(t.reserve, "standby", "standbys"), s(t.leave, "day of leave", "days of leave"))
         }
     }
 }
@@ -185,32 +190,50 @@ impl Page {
 
     fn activities_grid(&self, app: &Rc<App>, y: i32, m: u32, t: &Tracking) {
         let lang = app.lang;
-        // Adaugă o activitate.
+        // Adaugă o activitate: numele, felul (bifă sau număr) și, la număr, unitatea (opțional).
+        let form = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        form.add_css_class("activitate-noua");
         let add = gtk::Entry::builder()
-            .placeholder_text(tr(lang, "Activitate nouă (de exemplu: cafea, citit), apoi Enter", "New activity (for example: coffee, reading), then Enter"))
-            .css_classes(["activitate-noua"])
+            .placeholder_text(tr(lang, "Activitate nouă (cafea, flotări, apă…)", "New activity (coffee, push-ups, water…)"))
+            .hexpand(true)
             .build();
-        let weak = Rc::downgrade(app);
-        add.connect_activate(move |e| {
-            let name = e.text().trim().replace(',', " ").to_string();
-            let Some(app) = weak.upgrade() else { return };
-            if name.is_empty() {
-                return;
-            }
-            app.change_tracking(y, m, None, move |t| {
-                if !t.activities.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
-                    t.activities.push(name);
+        let kinds = gtk::StringList::new(&[tr(lang, "cu bifă", "tick"), tr(lang, "cu număr", "count")]);
+        let kind = gtk::DropDown::builder().model(&kinds).build();
+        let unit = gtk::Entry::builder().placeholder_text(tr(lang, "unitate: pahare", "unit: glasses")).width_chars(12).visible(false).build();
+        let u2 = unit.clone();
+        kind.connect_selected_notify(move |k| u2.set_visible(k.selected() == 1));
+        form.append(&add);
+        form.append(&kind);
+        form.append(&unit);
+        let submit = {
+            let (weak, add, kind, unit) = (Rc::downgrade(app), add.clone(), kind.clone(), unit.clone());
+            move || {
+                let name = add.text().trim().replace([',', '(', ')'], " ").trim().to_string();
+                let Some(app) = weak.upgrade() else { return };
+                if name.is_empty() {
+                    return;
                 }
-            });
-        });
-        self.list.append(&add);
+                let counted = kind.selected() == 1;
+                let u = unit.text().trim().replace([',', '(', ')'], " ").trim().to_string();
+                let a = Activity { name: name.clone(), counted, unit: (counted && !u.is_empty()).then_some(u) };
+                app.change_tracking(y, m, None, move |t| {
+                    if !t.activities.iter().any(|x| x.name.to_lowercase() == name.to_lowercase()) {
+                        t.activities.push(a);
+                    }
+                });
+            }
+        };
+        let s1 = submit.clone();
+        add.connect_activate(move |_| s1());
+        unit.connect_activate(move |_| submit());
+        self.list.append(&form);
         if t.activities.is_empty() {
             self.list.append(
                 &gtk::Label::builder()
                     .label(tr(
                         lang,
-                        "Scrie mai sus lucrurile pe care vrei să le urmărești în fiecare zi: cafea, citit, făcut patul, mers pe jos… Apoi bifezi zilele în care le-ai făcut.",
-                        "Type above the things you want to follow every day: coffee, reading, making the bed, walking… Then tick the days you did them.",
+                        "Scrie mai sus ce vrei să urmărești în fiecare zi. „Cu bifă” e pentru lucruri făcute sau nu (cafea, făcut patul); „cu număr” e pentru cantități (flotări, apă în pahare).",
+                        "Type above what you want to follow every day. \"Tick\" is for things done or not (coffee, making the bed); \"count\" is for amounts (push-ups, water in glasses).",
                     ))
                     .wrap(true)
                     .xalign(0.0)
@@ -219,18 +242,29 @@ impl Page {
             );
             return;
         }
-        let grid = gtk::Grid::builder().row_spacing(2).column_spacing(4).css_classes(["grila-activitati"]).build();
-        // Capul de tabel: numele activităților (clic dreapta: scoate).
+        let grid = gtk::Grid::builder().row_spacing(2).column_spacing(6).css_classes(["grila-activitati"]).build();
+        // Capul de tabel: numele activităților (și unitatea); clic dreapta: scoate.
         for (c, a) in t.activities.iter().enumerate() {
-            let l = gtk::Label::builder().label(a).css_classes(["activitate-nume"]).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(9).build();
-            l.set_tooltip_text(Some(&format!("{a}\n{}", tr(lang, "Clic dreapta: scoate din listă", "Right-click: remove from the list"))));
+            let head = match &a.unit {
+                Some(u) => format!("{}\n({u})", a.name),
+                None => a.name.clone(),
+            };
+            let l = gtk::Label::builder()
+                .label(head)
+                .justify(gtk::Justification::Center)
+                .css_classes(["activitate-nume"])
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .max_width_chars(9)
+                .valign(gtk::Align::End)
+                .build();
+            l.set_tooltip_text(Some(&format!("{}\n{}", a.name, tr(lang, "Clic dreapta: scoate din listă", "Right-click: remove from the list"))));
             let menu = gtk::GestureClick::builder().button(3).build();
-            let (weak, name) = (Rc::downgrade(app), a.clone());
+            let (weak, name) = (Rc::downgrade(app), a.name.clone());
             menu.connect_pressed(move |_, _, _, _| {
                 if let Some(app) = weak.upgrade() {
                     let n = name.clone();
                     app.change_tracking(y, m, None, move |t| {
-                        t.activities.retain(|x| *x != n);
+                        t.activities.retain(|x| x.name != n);
                         for s in t.done.values_mut() {
                             s.remove(&n);
                         }
@@ -253,30 +287,71 @@ impl Page {
             grid.attach(&l, 0, row, 1, 1);
             let done = t.done.get(&d.day());
             for (c, a) in t.activities.iter().enumerate() {
-                let cb = gtk::CheckButton::builder().active(done.is_some_and(|s| s.contains(a))).halign(gtk::Align::Center).build();
-                cb.set_sensitive(d <= today);
-                let (weak, name, day) = (Rc::downgrade(app), a.clone(), d.day());
-                cb.connect_toggled(move |b| {
-                    let on = b.is_active();
-                    let Some(app) = weak.upgrade() else { return };
-                    let n = name.clone();
-                    // Fără reîmprospătare: bifa e deja pe ecran; se refac doar totalurile.
-                    let res = app.journal.update_tracking(y, m, app.lang, move |t| {
-                        let s = t.done.entry(day).or_default();
-                        if on { s.insert(n); } else { s.remove(&n); }
-                    });
-                    match res {
-                        Ok(t) => app.right.fill_activity_counts(&app, y, m, &t),
-                        Err(e) => app.error(&e),
+                let n = done.and_then(|s| s.get(&a.name)).copied().unwrap_or(0);
+                let (name, day) = (a.name.clone(), d.day());
+                // Salvează valoarea zilei fără să refacă ecranul; se refac doar totalurile din dreapta.
+                let store = {
+                    let weak = Rc::downgrade(app);
+                    move |v: u32| {
+                        let Some(app) = weak.upgrade() else { return };
+                        let n = name.clone();
+                        let res = app.journal.update_tracking(y, m, app.lang, move |t| {
+                            let s = t.done.entry(day).or_default();
+                            if v > 0 { s.insert(n, v); } else { s.remove(&n); }
+                            if s.is_empty() {
+                                t.done.remove(&day);
+                            }
+                        });
+                        match res {
+                            Ok(t) => app.right.fill_activity_counts(&app, y, m, &t),
+                            Err(e) => app.error(&e),
+                        }
                     }
-                });
-                grid.attach(&cb, c as i32 + 1, row, 1, 1);
+                };
+                let w: gtk::Widget = if a.counted {
+                    let e = gtk::Entry::builder().width_chars(3).max_width_chars(4).xalign(0.5).css_classes(["numar-activitate"]).build();
+                    if n > 0 {
+                        e.set_text(&n.to_string());
+                    }
+                    e.set_input_purpose(gtk::InputPurpose::Digits);
+                    e.set_sensitive(d <= today);
+                    let last = Rc::new(std::cell::Cell::new(n));
+                    let save = {
+                        let last = last.clone();
+                        move |e: &gtk::Entry| {
+                            let text = e.text().trim().to_string();
+                            let v = if text.is_empty() { Some(0) } else { text.parse::<u32>().ok() };
+                            let Some(v) = v else {
+                                e.add_css_class("error");
+                                return;
+                            };
+                            e.remove_css_class("error");
+                            if v != last.get() {
+                                last.set(v);
+                                store(v);
+                            }
+                        }
+                    };
+                    let s1 = save.clone();
+                    e.connect_activate(move |e| s1(e));
+                    let fo = gtk::EventControllerFocus::new();
+                    let ew = e.clone();
+                    fo.connect_leave(move |_| save(&ew));
+                    e.add_controller(fo);
+                    e.upcast()
+                } else {
+                    let cb = gtk::CheckButton::builder().active(n > 0).halign(gtk::Align::Center).build();
+                    cb.set_sensitive(d <= today);
+                    cb.connect_toggled(move |b| store(u32::from(b.is_active())));
+                    cb.upcast()
+                };
+                grid.attach(&w, c as i32 + 1, row, 1, 1);
             }
         }
         self.list.append(&grid);
     }
 
-    /// Dreapta, la Activități: în câte zile ai făcut fiecare.
+    /// Dreapta, la Activități: în câte zile ai făcut fiecare și, la cele cu număr, cât în total.
     pub fn fill_activity_counts(&self, app: &Rc<App>, y: i32, m: u32, t: &Tracking) {
         let lang = app.lang;
         self.header(tr(lang, "Luna aceasta", "This month"), tr(lang, "De câte ori", "How often"));
@@ -286,21 +361,74 @@ impl Page {
         let today = app.today.get();
         // Zilele trecute ale lunii (toată luna, dacă e o lună trecută).
         let passed = days_in(y, m).into_iter().filter(|d| *d <= today).count() as u32;
-        for (a, n) in t.activity_counts() {
+        for (a, days, sum) in t.activity_counts() {
             let row = gtk::Box::new(gtk::Orientation::Vertical, 4);
             row.add_css_class("total-rand");
             let top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            top.append(&gtk::Label::builder().label(&a).xalign(0.0).hexpand(true).build());
+            top.append(&gtk::Label::builder().label(&a.name).xalign(0.0).hexpand(true).build());
             let of = match lang {
-                Lang::Ro => format!("{n} din {passed} zile"),
-                Lang::En => format!("{n} of {passed} days"),
+                Lang::Ro => format!("{days} din {passed} zile"),
+                Lang::En => format!("{days} of {passed} days"),
             };
-            top.append(&gtk::Label::builder().label(of).css_classes(["total-ore"]).build());
+            if a.counted {
+                let unit = a.unit.clone().unwrap_or_default();
+                let avg = if days > 0 { sum as f64 / days as f64 } else { 0.0 };
+                let avg = format!("{avg:.1}");
+                let avg = if lang == Lang::Ro { avg.replace('.', ",") } else { avg };
+                let total = match lang {
+                    Lang::Ro => format!("{sum} {unit} · {avg} pe zi · {of}"),
+                    Lang::En => format!("{sum} {unit} · {avg} a day · {of}"),
+                };
+                top.append(&gtk::Label::builder().label(total.replace("  ", " ")).css_classes(["total-ore"]).build());
+            } else {
+                top.append(&gtk::Label::builder().label(of).css_classes(["total-ore"]).build());
+            }
             row.append(&top);
-            let bar = gtk::LevelBar::builder().min_value(0.0).max_value(passed.max(1) as f64).value(n as f64).css_classes(["bara-activitate"]).build();
+            let bar = gtk::LevelBar::builder().min_value(0.0).max_value(passed.max(1) as f64).value(days as f64).css_classes(["bara-activitate"]).build();
             row.append(&bar);
             self.list.append(&row);
         }
+    }
+
+    /// O casetă pentru pagina zilei sau a săptămânii: ce a fost la serviciu (cu notele).
+    /// Clic: deschide Monitorizare → Serviciu în luna zilei.
+    pub fn work_box(app: &Rc<App>, d: NaiveDate, items: &[WorkOnDay], big: bool) -> gtk::Box {
+        let lang = app.lang;
+        let b = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        b.add_css_class("tema-zi");
+        b.add_css_class("serviciu-zi");
+        if big {
+            b.add_css_class("mare");
+        }
+        for it in items {
+            let (head, note) = match it {
+                WorkOnDay::Day(Shift::Service, n) => (format!("▸ {} · 24 h", tr(lang, "Serviciu", "Duty")), n),
+                WorkOnDay::Day(Shift::Reserve, n) => (format!("▸ {}", tr(lang, "Rezervă", "Standby")), n),
+                WorkOnDay::Day(Shift::Leave, n) => (format!("▸ {}", tr(lang, "Concediu", "Leave")), n),
+                WorkOnDay::Overtime(span, n) => (format!("▸ {} {}", tr(lang, "Ore suplimentare", "Overtime"), span.text()), n),
+            };
+            b.append(&gtk::Label::builder().label(head).xalign(0.0).wrap(true).css_classes(["tema-titlu"]).build());
+            if !note.is_empty() {
+                let l = gtk::Label::builder().label(note.as_str()).xalign(0.0).wrap(true).css_classes(["text"]).build();
+                l.set_margin_start(14);
+                b.append(&l);
+            }
+        }
+        b.set_tooltip_text(Some(tr(lang, "Clic: deschide Monitorizare → Serviciu", "Click: open Tracking → Work")));
+        b.set_cursor_from_name(Some("pointer"));
+        let click = gtk::GestureClick::builder().button(1).build();
+        let weak = Rc::downgrade(app);
+        click.connect_released(move |_, _, _, _| {
+            if let Some(app) = weak.upgrade() {
+                glib::idle_add_local_once(move || {
+                    app.tracking_tab.set(Tab::Work);
+                    app.tracking_focus.set(Some(d));
+                    app.go_tracking(d.year(), d.month());
+                });
+            }
+        });
+        b.add_controller(click);
+        b
     }
 
     // ---- Somn ----
@@ -444,8 +572,9 @@ impl Page {
         let focus = app.tracking_focus.get();
         for d in days_in(y, m) {
             let i = offset + d.day() as i32 - 1;
-            let ot: Vec<Span> = t.overtime.get(&d.day()).cloned().unwrap_or_default();
-            let cell = day_button(app, d, t.work.get(&d.day()).copied(), &ot, d == today);
+            let ot: Vec<Overtime> = t.overtime.get(&d.day()).cloned().unwrap_or_default();
+            let note = t.work_notes.get(&d.day()).cloned().unwrap_or_default();
+            let cell = day_button(app, d, t.work.get(&d.day()).copied(), &note, &ot, d == today);
             if focus == Some(d) {
                 let c = cell.clone();
                 glib::idle_add_local_once(move || {
@@ -459,8 +588,8 @@ impl Page {
             &gtk::Label::builder()
                 .label(tr(
                     lang,
-                    "Clic pe o zi: Tură, Concediu, Ore suplimentare sau Liber. Cu tastatura, pe ziua aleasă: T, C, O, Delete.",
-                    "Click a day: Shift, Leave, Overtime or Free. With the keyboard, on the chosen day: T, L, O, Delete.",
+                    "Clic pe o zi: Serviciu, Rezervă, Concediu sau Liber, o notă și orele suplimentare. Cu tastatura, pe ziua aleasă: S, R, C, O, Delete.",
+                    "Click a day: Duty, Standby, Leave or Free, a note and overtime. With the keyboard, on the chosen day: D, S, L, O, Delete.",
                 ))
                 .wrap(true)
                 .xalign(0.0)
@@ -478,7 +607,8 @@ impl Page {
         }
         let tot = t.totals();
         let rows = [
-            (tr(lang, "Ture", "Shifts"), tot.shifts.to_string(), format!("{} h", tot.shifts * Shift::HOURS)),
+            (tr(lang, "Servicii", "Duties"), tot.shifts.to_string(), format!("{} h", tot.shifts * Shift::HOURS)),
+            (tr(lang, "Rezerve", "Standbys"), tot.reserve.to_string(), String::new()),
             (tr(lang, "Ore suplimentare", "Overtime"), hours_text(tot.overtime), String::new()),
             (tr(lang, "Zile de concediu", "Days of leave"), tot.leave.to_string(), String::new()),
             (tr(lang, "Total ore lucrate", "Total hours worked"), hours_text(tot.worked()), String::new()),
@@ -493,9 +623,14 @@ impl Page {
             row.append(&gtk::Label::builder().label(value).css_classes(["total-nr"]).build());
             self.list.append(&row);
         }
-        let leg = gtk::Box::new(gtk::Orientation::Horizontal, 14);
-        leg.add_css_class("legenda");
-        for (class, text) in [("tura", tr(lang, "Tură, 24 h", "Shift, 24 h")), ("concediu", tr(lang, "CO = concediu", "Leave")), ("extra", tr(lang, "Ore suplimentare", "Overtime"))] {
+        // Legenda, câte două pe rând, ca să nu lățească pagina.
+        let leg = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).max_children_per_line(2).min_children_per_line(1).column_spacing(14).row_spacing(4).css_classes(["legenda"]).build();
+        for (class, text) in [
+            ("tura", tr(lang, "Serv. = serviciu, 24 h", "Duty, 24 h")),
+            ("rezerva", tr(lang, "Rez. = rezervă", "Standby")),
+            ("concediu", tr(lang, "CO = concediu", "Leave")),
+            ("extra", tr(lang, "Ore suplimentare", "Overtime")),
+        ] {
             let b = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             b.append(&gtk::Box::builder().css_classes(["patrat", class]).valign(gtk::Align::Center).build());
             b.append(&gtk::Label::new(Some(text)));
@@ -555,7 +690,7 @@ fn draw_sleep(cr: &gtk::cairo::Context, w: f64, h: f64, data: &[(u32, u32)], dar
 }
 
 /// O zi din calendarul de serviciu: numărul, ce a fost și orele suplimentare.
-fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], today: bool) -> gtk::Button {
+fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, note: &str, ot: &[Overtime], today: bool) -> gtk::Button {
     let lang = app.lang;
     let (y, m, day) = (d.year(), d.month(), d.day());
     let b = gtk::Button::builder().css_classes(["zi-serviciu"]).build();
@@ -566,13 +701,23 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
         b.add_css_class("azi");
     }
     let inside = gtk::Box::new(gtk::Orientation::Vertical, 1);
-    inside.append(&gtk::Label::builder().label(day.to_string()).xalign(0.0).css_classes(["nr"]).build());
-    let ot_min: u32 = ot.iter().map(Span::minutes).sum();
+    let has_note = !note.is_empty() || ot.iter().any(|o| !o.note.is_empty());
+    let top = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+    top.append(&gtk::Label::builder().label(day.to_string()).xalign(0.0).hexpand(true).css_classes(["nr"]).build());
+    if has_note {
+        top.append(&gtk::Label::builder().label("✎").css_classes(["are-nota"]).build());
+    }
+    inside.append(&top);
+    let ot_min: u32 = ot.iter().map(|o| o.span.minutes()).sum();
     let tag = gtk::Label::builder().css_classes(["eticheta-zi"]).build();
     match kind {
-        Some(Shift::Shift) => {
-            tag.set_label(tr(lang, "Tură", "Shift"));
+        Some(Shift::Service) => {
+            tag.set_label(tr(lang, "Serv.", "Duty"));
             b.add_css_class("tura");
+        }
+        Some(Shift::Reserve) => {
+            tag.set_label(tr(lang, "Rez.", "Stby"));
+            b.add_css_class("rezerva");
         }
         Some(Shift::Leave) => {
             tag.set_label(tr(lang, "CO", "Leave"));
@@ -594,8 +739,14 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
     inside.append(&supl);
     b.set_child(Some(&inside));
     let mut tip = lang.day_title(d);
-    for s in ot {
-        tip.push_str(&format!("\n{} {}", tr(lang, "Ore suplimentare:", "Overtime:"), s.text()));
+    if !note.is_empty() {
+        tip.push_str(&format!("\n{note}"));
+    }
+    for o in ot {
+        tip.push_str(&format!("\n{} {}", tr(lang, "Ore suplimentare:", "Overtime:"), o.span.text()));
+        if !o.note.is_empty() {
+            tip.push_str(&format!(" ({})", o.note));
+        }
     }
     b.set_tooltip_text(Some(&tip));
 
@@ -618,7 +769,8 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
         }
     };
     for (k, ro, en, key) in [
-        (Some(Shift::Shift), "Tură", "Shift", "T"),
+        (Some(Shift::Service), "Serviciu", "Duty", if lang == Lang::En { "D" } else { "S" }),
+        (Some(Shift::Reserve), "Rezervă", "Standby", if lang == Lang::En { "S" } else { "R" }),
         (Some(Shift::Leave), "Concediu", "Leave", if lang == Lang::En { "L" } else { "C" }),
         (None, "Liber", "Free", "Del"),
     ] {
@@ -634,11 +786,31 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
         });
         menu.append(&item);
     }
+    // Nota zilei (la serviciu, rezervă sau concediu).
+    menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    menu.append(&gtk::Label::builder().label(tr(lang, "Notă", "Note")).xalign(0.0).css_classes(["heading", "titlu-meniu"]).build());
+    let note_entry = gtk::Entry::builder()
+        .text(note)
+        .placeholder_text(if kind.is_some() { tr(lang, "o notă pentru ziua aceasta, apoi Enter", "a note for this day, then Enter") } else { tr(lang, "alege întâi Serviciu, Rezervă sau Concediu", "choose Duty, Standby or Leave first") })
+        .sensitive(kind.is_some())
+        .build();
+    let (weak, p) = (Rc::downgrade(app), pop.clone());
+    note_entry.connect_activate(move |e| {
+        let text = e.text().trim().to_string();
+        p.popdown();
+        if let Some(app) = weak.upgrade() {
+            app.change_tracking(y, m, Some(d), move |t| {
+                if text.is_empty() { t.work_notes.remove(&day); } else { t.work_notes.insert(day, text); }
+            });
+        }
+    });
+    menu.append(&note_entry);
     menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     menu.append(&gtk::Label::builder().label(tr(lang, "Ore suplimentare", "Overtime")).xalign(0.0).css_classes(["heading", "titlu-meniu"]).build());
-    for (i, s) in ot.iter().enumerate() {
+    for (i, o) in ot.iter().enumerate() {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.append(&gtk::Label::builder().label(s.text()).xalign(0.0).hexpand(true).build());
+        let text = if o.note.is_empty() { o.span.text() } else { format!("{} · {}", o.span.text(), o.note) };
+        row.append(&gtk::Label::builder().label(text).xalign(0.0).hexpand(true).wrap(true).max_width_chars(28).build());
         let del = gtk::Button::builder().icon_name("edit-delete-symbolic").css_classes(["flat", "circular"]).tooltip_text(tr(lang, "Șterge", "Delete")).build();
         let (weak, p) = (Rc::downgrade(app), pop.clone());
         del.connect_clicked(move |_| {
@@ -668,9 +840,12 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
     let add = gtk::Button::builder().label(tr(lang, "Adaugă", "Add")).css_classes(["suggested-action"]).build();
     form.append(&add);
     menu.append(&form);
+    let ot_note = gtk::Entry::builder().placeholder_text(tr(lang, "notă (opțional)", "note (optional)")).build();
+    menu.append(&ot_note);
     let submit = {
-        let (weak, p, from, to) = (Rc::downgrade(app), pop.clone(), from.clone(), to.clone());
+        let (weak, p, from, to, on) = (Rc::downgrade(app), pop.clone(), from.clone(), to.clone(), ot_note.clone());
         move || {
+            let note = on.text().trim().to_string();
             let Some(span) = Span::parse(&format!("{}-{}", from.text(), to.text())) else {
                 from.add_css_class("error");
                 to.add_css_class("error");
@@ -678,7 +853,7 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
             };
             p.popdown();
             if let Some(app) = weak.upgrade() {
-                app.change_tracking(y, m, Some(d), move |t| t.overtime.entry(day).or_default().push(span));
+                app.change_tracking(y, m, Some(d), move |t| t.overtime.entry(day).or_default().push(Overtime { span, note }));
             }
         }
     };
@@ -686,6 +861,8 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
     add.connect_clicked(move |_| s1());
     let s2 = submit.clone();
     to.connect_activate(move |_| s2());
+    let s3 = submit.clone();
+    ot_note.connect_activate(move |_| s3());
     let t2 = to.clone();
     from.connect_activate(move |_| {
         t2.grab_focus();
@@ -704,8 +881,12 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
         if mods.intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK) {
             return glib::Propagation::Proceed;
         }
+        let en = lang == Lang::En;
         match key.to_unicode().map(|c| c.to_ascii_lowercase()) {
-            Some('t') => set(Some(Shift::Shift)),
+            Some('s') if !en => set(Some(Shift::Service)),
+            Some('d') if en => set(Some(Shift::Service)),
+            Some('r') if !en => set(Some(Shift::Reserve)),
+            Some('s') if en => set(Some(Shift::Reserve)),
             Some('c') | Some('l') => set(Some(Shift::Leave)),
             Some('o') => {
                 p.popup();
@@ -718,4 +899,17 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, ot: &[Span], tod
     });
     b.add_controller(keys);
     b
+}
+
+/// Pentru calendarul lunii: „▸ Serviciu”, „▸ Rezervă”, „▸ CO”, „▸ +4 h”.
+pub fn work_short(lang: Lang, items: &[WorkOnDay]) -> Vec<String> {
+    items
+        .iter()
+        .map(|it| match it {
+            WorkOnDay::Day(Shift::Service, _) => format!("▸ {}", tr(lang, "Serviciu", "Duty")),
+            WorkOnDay::Day(Shift::Reserve, _) => format!("▸ {}", tr(lang, "Rezervă", "Standby")),
+            WorkOnDay::Day(Shift::Leave, _) => format!("▸ {}", tr(lang, "Concediu", "Leave")),
+            WorkOnDay::Overtime(span, _) => format!("▸ +{} ({})", hours_text(span.minutes()), span.text()),
+        })
+        .collect()
 }
