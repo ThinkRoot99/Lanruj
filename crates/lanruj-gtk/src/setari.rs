@@ -44,11 +44,60 @@ pub struct Settings {
     pub tray: bool,
     /// Bara laterală strânsă (doar iconițe).
     pub sidebar_compact: bool,
+    /// Mărimea textului, în procente (90, 100, 115, 130).
+    pub text: u32,
+    /// Pagina arătată la pornire.
+    pub start: Start,
+    /// O singură pagină (ca pe o fereastră îngustă) în loc de două alăturate.
+    pub one_page: bool,
+    /// De la a câta mutare apare „mai merită?”.
+    pub worth: u32,
+    /// Copiile de siguranță: cât de des, unde și câte se păstrează.
+    pub backup: Backup,
+    pub backup_dir: Option<PathBuf>,
+    pub backup_keep: u32,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    Day,
+    Week,
+    Month,
+    Plans,
+    Index,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Backup {
+    Off,
+    Daily,
+    Weekly,
+}
+
+pub const TEXT_SIZES: [(u32, &str, &str, &str); 4] = [
+    (90, "mic", "Mic", "Small"),
+    (100, "normal", "Normal", "Normal"),
+    (115, "mare", "Mare", "Large"),
+    (130, "foarte-mare", "Foarte mare", "Larger"),
+];
+
+pub const STARTS: [(Start, &str, &str, &str); 5] = [
+    (Start::Day, "zi", "Pagina zilei", "Day page"),
+    (Start::Week, "saptamana", "Pagina săptămânii", "Week page"),
+    (Start::Month, "luna", "Pagina lunii", "Month page"),
+    (Start::Plans, "planuri", "Planuri", "Plans"),
+    (Start::Index, "index", "Index", "Index"),
+];
+
+pub const BACKUPS: [(Backup, &str, &str, &str); 3] = [
+    (Backup::Off, "nu", "Nu", "Off"),
+    (Backup::Daily, "zilnic", "O dată pe zi", "Once a day"),
+    (Backup::Weekly, "saptamanal", "O dată pe săptămână", "Once a week"),
+];
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false }
+        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10 }
     }
 }
 
@@ -129,6 +178,31 @@ impl Settings {
         if let Ok(b) = kf.boolean("lanruj", "bara-stransa") {
             s.sidebar_compact = b;
         }
+        if let Some(v) = get("text") {
+            s.text = find(&TEXT_SIZES, &v, s.text);
+        }
+        if let Some(v) = get("pornire") {
+            s.start = find(&STARTS, &v, s.start);
+        }
+        if let Ok(b) = kf.boolean("lanruj", "o-pagina") {
+            s.one_page = b;
+        }
+        if let Ok(n) = kf.integer("lanruj", "mai-merita")
+            && (2..=10).contains(&n)
+        {
+            s.worth = n as u32;
+        }
+        if let Some(v) = get("copii") {
+            s.backup = find(&BACKUPS, &v, s.backup);
+        }
+        if let Some(v) = get("copii-dosar").filter(|v| !v.is_empty()) {
+            s.backup_dir = Some(PathBuf::from(v));
+        }
+        if let Ok(n) = kf.integer("lanruj", "copii-pastrate")
+            && (1..=100).contains(&n)
+        {
+            s.backup_keep = n as u32;
+        }
         s
     }
 
@@ -142,11 +216,30 @@ impl Settings {
         kf.set_boolean("lanruj", "migrare-automata", self.auto_migrate);
         kf.set_boolean("lanruj", "systray", self.tray);
         kf.set_boolean("lanruj", "bara-stransa", self.sidebar_compact);
+        kf.set_string("lanruj", "text", key_of(&TEXT_SIZES, self.text));
+        kf.set_string("lanruj", "pornire", key_of(&STARTS, self.start));
+        kf.set_boolean("lanruj", "o-pagina", self.one_page);
+        kf.set_integer("lanruj", "mai-merita", self.worth as i32);
+        kf.set_string("lanruj", "copii", key_of(&BACKUPS, self.backup));
+        kf.set_string("lanruj", "copii-dosar", &self.backup_dir.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default());
+        kf.set_integer("lanruj", "copii-pastrate", self.backup_keep as i32);
         let p = path();
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir)?;
         }
         kf.save_to_file(&p).map_err(std::io::Error::other)
+    }
+
+    /// Dosarul copiilor de siguranță: cel ales sau „Documente/Lanruj - copii”.
+    pub fn backup_folder(&self) -> PathBuf {
+        if let Some(d) = &self.backup_dir {
+            return d.clone();
+        }
+        if let Some(d) = std::env::var_os("LANRUJ_DIR").filter(|d| !d.is_empty()) {
+            return PathBuf::from(d).join(".copii");
+        }
+        let docs = glib::user_special_dir(glib::UserDirectory::Documents).unwrap_or_else(glib::home_dir);
+        docs.join("Lanruj - copii")
     }
 
     pub fn lang(&self) -> Lang {

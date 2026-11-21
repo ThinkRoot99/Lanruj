@@ -64,12 +64,12 @@ const CAPITOLE: [(&str, &str, &str, &str); 18] = [
          &gt; mutată pe pagina următoare   &lt; programată în altă parte   <s>tăiată</s> renunțată\n\
          ★ importantă   ! idee\n\n\
          Un clic pe semnul unei sarcini o bifează. <b>↻2</b> arată de câte ori a fost mutată; de la a treia \
-         mutare apare <b>„mai merită?”</b>, ca să nu amâni la nesfârșit.",
+         mutare (se poate schimba în Setări) apare <b>„mai merită?”</b>, ca să nu amâni la nesfârșit.",
         "Signs",
         "• task to do   × done   ○ event   – note\n\
          &gt; moved to the next page   &lt; scheduled elsewhere   <s>crossed out</s> dropped\n\
          ★ important   ! idea\n\n\
-         Click a task's sign to check it. <b>↻2</b> shows how many times it was moved; from the third move on, \
+         Click a task's sign to check it. <b>↻2</b> shows how many times it was moved; from the third move on (changeable in Preferences), \
          <b>\"still worth it?\"</b> appears, so you don't postpone forever.",
     ),
     (
@@ -255,14 +255,14 @@ const CAPITOLE: [(&str, &str, &str, &str); 18] = [
          <tt>pagini/</tt>, iar pozele lângă ziua lor.\n\n\
          <b>Pe mai multe calculatoare</b>: instalează Syncthing pe fiecare, leagă calculatoarele între ele (Adaugă dispozitiv, cu codul lui) \
          și partajează dosarul <tt>~/.lanruj</tt>. Se trimite doar ce e nou.\n\n\
-         <b>Copii de siguranță</b>: copiază dosarul <tt>~/.lanruj</tt> pe alt disc sau stick.",
+         <b>Copii de siguranță</b>: Lanruj face singur copii zip (vezi Setările); pentru siguranță deplină, ține dosarul copiilor pe alt disc sau stick.",
         "Where the journal lives",
         "Everything lives in the hidden folder <tt>~/.lanruj</tt>, in Markdown files you can read without the app: \
          <tt>2026/11/2026-11-21.md</tt> (a day), <tt>2026/11/luna.md</tt>, <tt>viitor.md</tt>, <tt>index.md</tt>, \
          <tt>pagini/</tt>, with pictures next to their day.\n\n\
          <b>On several computers</b>: install Syncthing on each, link the computers (Add device, with its ID) \
          and share the folder <tt>~/.lanruj</tt>. Only what's new is sent.\n\n\
-         <b>Backups</b>: copy the <tt>~/.lanruj</tt> folder to another disk or a USB stick.",
+         <b>Backups</b>: Lanruj makes zip backups by itself (see Preferences); to be really safe, keep the backup folder on another disk or USB stick.",
     ),
     (
         "Fișierele",
@@ -288,18 +288,32 @@ const CAPITOLE: [(&str, &str, &str, &str); 18] = [
     ),
     (
         "Setările",
-        "<b>☰ → Setări</b> (Ctrl+,): modelul și culoarea hârtiei, noaptea, migrarea (singură sau doar cu butonul, ora de seară), \
-         limba (fereastra se redeschide) și systray-ul (la închidere, Lanruj rămâne în bara de sus; Ctrl+Q îl oprește).",
+        "<b>☰ → Setări</b> (Ctrl+,):\n\n\
+         • <b>Hârtia</b>: modelul, culoarea și noaptea.\n\
+         • <b>Migrarea</b>: singură sau doar cu butonul, ora de seară și după câte mutări apare „mai merită?” (3 la început).\n\
+         • <b>Fereastra</b>: systray-ul (la închidere, Lanruj rămâne în bara de sus; Ctrl+Q îl oprește).\n\
+         • <b>Caietul</b>: mărimea textului (mic, normal, mare, foarte mare), pagina arătată la pornire \
+         și <b>o singură pagină</b> (doar ziua arătată, fără ziua dinainte alături).\n\
+         • <b>Copii de siguranță</b>: o dată pe zi sau pe săptămână (la început: pe săptămână), Lanruj pune tot jurnalul într-o arhivă zip \
+         în dosarul <tt>Documente/Lanruj - copii</tt> sau în altul ales de tine, și păstrează ultimele 10. <b>Fă o copie acum</b> o face pe loc.\n\
+         • <b>Limba</b>: fereastra se redeschide în limba aleasă.",
         "Preferences",
-        "<b>☰ → Preferences</b> (Ctrl+,): paper pattern and color, dark mode, migration (automatic or only with the button, evening hour), \
-         language (the window reopens) and the system tray (when closed, Lanruj stays in the top bar; Ctrl+Q quits).",
+        "<b>☰ → Preferences</b> (Ctrl+,):\n\n\
+         • <b>Paper</b>: pattern, color and dark mode.\n\
+         • <b>Migration</b>: automatic or only with the button, the evening hour, and after how many moves \"still worth it?\" appears (3 at first).\n\
+         • <b>Window</b>: the system tray (when closed, Lanruj stays in the top bar; Ctrl+Q quits).\n\
+         • <b>Notebook</b>: text size (small, normal, large, larger), the page shown at startup \
+         and <b>a single page</b> (only the shown day, without the day before next to it).\n\
+         • <b>Backups</b>: once a day or once a week (weekly at first), Lanruj puts the whole journal in a zip archive \
+         in the folder <tt>Documents/Lanruj - copii</tt> or another one you choose, and keeps the last 10. <b>Back up now</b> makes one right away.\n\
+         • <b>Language</b>: the window reopens in the chosen language.",
     ),
     (
         "Sfaturi utile",
         "• <b>Nu trebuie să salvezi nimic</b>: fiecare schimbare se scrie pe loc. Dacă ai șters ceva din greșeală, apasă Anulează în notificarea de jos.\n\
          • <b>Mergi la data…</b> (Ctrl+G) te duce la orice zi; <b>Azi</b> (Alt+Home) te aduce înapoi.\n\
          • <b>F9</b> strânge bara laterală la iconițe (și o deschide); pe o fereastră mică se strânge singură. <b>F11</b> mărește fereastra.\n\
-         • Sarcinile mutate de mai multe ori primesc <b>↻</b>; de la a treia mutare, gândește-te dacă mai merită.\n\
+         • Sarcinile mutate de mai multe ori primesc <b>↻</b>; când apare „mai merită?”, gândește-te dacă mai merită.\n\
          • Lucrurile mari (un concediu, un proiect) pune-le în <b>Index</b>: au o pagină a lor, iar rândurile cu dată apar și în zilele lor.\n\
          • Rândurile din fișiere sunt Markdown obișnuit: le poți deschide și cu Obsidian, Typora sau orice editor de text.\n\
          • Cu <b>systray</b> pornit (Setări → Fereastra), închiderea doar ascunde fereastra; Ctrl+Q oprește aplicația.\n\
@@ -308,7 +322,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 18] = [
         "• <b>No need to save</b>: every change is written at once. If you deleted something by mistake, press Undo in the notification at the bottom.\n\
          • <b>Go to date…</b> (Ctrl+G) takes you to any day; <b>Today</b> (Alt+Home) brings you back.\n\
          • <b>F9</b> collapses the sidebar to icons (and back); on a small window it collapses by itself. <b>F11</b> maximizes the window.\n\
-         • Tasks moved several times get <b>↻</b>; from the third move on, think whether it's still worth it.\n\
+         • Tasks moved several times get <b>↻</b>; when \"still worth it?\" appears, think it over.\n\
          • Put big things (a holiday, a project) in the <b>Index</b>: they get a page of their own, and dated lines show on their days.\n\
          • The lines in the files are plain Markdown: you can open them with Obsidian, Typora or any text editor.\n\
          • With the <b>system tray</b> on (Preferences → Window), closing only hides the window; Ctrl+Q quits the app.\n\

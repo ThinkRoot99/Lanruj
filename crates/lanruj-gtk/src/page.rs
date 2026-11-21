@@ -1686,7 +1686,7 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
             if n > 0 {
                 let m = gtk::Label::builder().label(format!("↻{n}")).css_classes(["migrari"]).valign(gtk::Align::Start).build();
                 m.set_margin_top(3);
-                if n >= 3 {
+                if n >= app.settings.borrow().worth as usize {
                     m.add_css_class("mult");
                     m.set_label(&format!("↻{n} {}", tr(lang, "mai merită?", "still worth it?")));
                 }

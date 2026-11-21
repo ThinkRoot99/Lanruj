@@ -3,6 +3,7 @@
 
 mod bara;
 mod cautare;
+mod copii;
 mod export;
 mod ghid;
 mod migrare;
@@ -148,7 +149,8 @@ impl App {
     /// (în migrare, cea cu sarcinile de triat).
     fn layout(&self) {
         // Luna pe fereastră îngustă: calendarul și sarcinile una sub alta.
-        let month_stacked = self.narrow.get() && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index | View::Topic(..)) && !self.migrating();
+        let narrow = self.narrow.get() || self.settings.borrow().one_page;
+        let month_stacked = narrow && matches!(self.view.get(), View::Month(..) | View::Future(..) | View::Week(..) | View::Index | View::Topic(..)) && !self.migrating();
         self.caiet.set_orientation(if month_stacked { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
         if month_stacked {
             self.left.root.set_visible(true);
@@ -159,7 +161,7 @@ impl App {
             }
             return;
         }
-        let (show_left, show_right) = match (self.narrow.get(), self.migrating()) {
+        let (show_left, show_right) = match (narrow, self.migrating()) {
             (false, _) => (true, true),
             (true, true) => (true, false),
             (true, false) => (false, true),
@@ -1188,6 +1190,8 @@ impl App {
         for c in s.css_classes() {
             self.window.add_css_class(&c);
         }
+        set_text_size(s.text);
+        self.layout();
         adw::StyleManager::default().set_color_scheme(match s.scheme {
             setari::Scheme::System => adw::ColorScheme::Default,
             setari::Scheme::Light => adw::ColorScheme::ForceLight,
@@ -1196,6 +1200,35 @@ impl App {
         if let Err(e) = s.save() {
             self.error(&e);
         }
+    }
+
+    /// Copia de siguranță: la pornire doar dacă e vremea ei; `now` = cerută din setări.
+    /// Arhiva se face pe alt fir, ca fereastra să nu aștepte.
+    pub fn backup(self: &Rc<Self>, now: bool) {
+        let s = self.settings.borrow().clone();
+        let (dir, today) = (s.backup_folder(), self.today.get());
+        if !now && !copii::due(&dir, s.backup, today) {
+            return;
+        }
+        let root = self.journal.root().to_path_buf();
+        let keep = s.backup_keep;
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let res = gio::spawn_blocking(move || copii::make(&root, &dir, today, keep)).await;
+            let Some(app) = weak.upgrade() else { return };
+            match res {
+                Ok(Ok(p)) if now => {
+                    let msg = match app.lang {
+                        Lang::Ro => format!("Copia e gata: {}", p.display()),
+                        Lang::En => format!("Backup done: {}", p.display()),
+                    };
+                    app.toast(&msg);
+                }
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => app.error(&e),
+                Err(_) => app.error(&std::io::Error::other("copia de siguranță s-a oprit")),
+            }
+        });
     }
 
     fn show_preferences(self: &Rc<Self>) {
@@ -1302,6 +1335,103 @@ impl App {
         win.add(&tray);
         page.add(&win);
 
+        // Pagina și textul.
+        let pages = adw::PreferencesGroup::builder().title(tr(lang, "Caietul", "Notebook")).build();
+        pages.add(&combo(self, tr(lang, "Mărimea textului", "Text size"), &setari::TEXT_SIZES, s.text, |st, v| st.text = v, |_| {}));
+        pages.add(&combo(self, tr(lang, "La pornire arată", "Show at startup"), &setari::STARTS, s.start, |st, v| st.start = v, |_| {}));
+        let one = adw::SwitchRow::builder()
+            .title(tr(lang, "O singură pagină", "A single page"))
+            .subtitle(tr(lang, "Doar ziua arătată, fără ziua dinainte alături; luna și săptămâna una sub alta", "Only the shown day, without the day before; month and week stacked"))
+            .active(s.one_page)
+            .build();
+        let weak = Rc::downgrade(self);
+        one.connect_active_notify(move |r| {
+            if let Some(app) = weak.upgrade() {
+                app.settings.borrow_mut().one_page = r.is_active();
+                app.apply_settings();
+                app.refresh();
+            }
+        });
+        pages.add(&one);
+        page.add(&pages);
+
+        let worth = adw::SpinRow::with_range(2.0, 10.0, 1.0);
+        worth.set_title(tr(lang, "„Mai merită?” după", "\"Still worth it?\" after"));
+        worth.set_subtitle(tr(lang, "Câte mutări ale aceleiași sarcini", "How many moves of the same task"));
+        worth.set_value(s.worth as f64);
+        let weak = Rc::downgrade(self);
+        worth.connect_value_notify(move |r| {
+            if let Some(app) = weak.upgrade() {
+                app.settings.borrow_mut().worth = r.value() as u32;
+                app.apply_settings();
+                app.refresh();
+            }
+        });
+        mig.add(&worth);
+
+        // Copiile de siguranță.
+        let bk = adw::PreferencesGroup::builder()
+            .title(tr(lang, "Copii de siguranță", "Backups"))
+            .description(tr(
+                lang,
+                "Tot jurnalul ca arhivă zip, făcută la pornire când e vremea ei. Pune dosarul pe alt disc sau într-unul sincronizat.",
+                "The whole journal as a zip archive, made at startup when it's due. Put the folder on another disk or a synced one.",
+            ))
+            .build();
+        let how = combo(self, tr(lang, "Cât de des", "How often"), &setari::BACKUPS, s.backup, |st, v| st.backup = v, |_| {});
+        bk.add(&how);
+        let folder = adw::ActionRow::builder()
+            .title(tr(lang, "Dosarul", "Folder"))
+            .subtitle(s.backup_folder().display().to_string())
+            .subtitle_selectable(true)
+            .build();
+        let pick = gtk::Button::builder().label(tr(lang, "Alege…", "Choose…")).valign(gtk::Align::Center).build();
+        folder.add_suffix(&pick);
+        let (weak, row, dl) = (Rc::downgrade(self), folder.clone(), dialog.clone());
+        pick.connect_clicked(move |_| {
+            let Some(app) = weak.upgrade() else { return };
+            let fd = gtk::FileDialog::builder().title(tr(app.lang, "Dosarul copiilor", "Backup folder")).modal(true).build();
+            let (weak, row) = (Rc::downgrade(&app), row.clone());
+            let parent = dl.root().and_downcast::<gtk::Window>();
+            fd.select_folder(parent.as_ref(), gio::Cancellable::NONE, move |res| {
+                let (Some(app), Ok(f)) = (weak.upgrade(), res) else { return };
+                if let Some(p) = f.path() {
+                    row.set_subtitle(&p.display().to_string());
+                    app.settings.borrow_mut().backup_dir = Some(p);
+                    app.apply_settings();
+                }
+            });
+        });
+        bk.add(&folder);
+        let keep = adw::SpinRow::with_range(1.0, 100.0, 1.0);
+        keep.set_title(tr(lang, "Câte copii se păstrează", "How many backups to keep"));
+        keep.set_subtitle(tr(lang, "Cele mai vechi se șterg", "The oldest are deleted"));
+        keep.set_value(s.backup_keep as f64);
+        let weak = Rc::downgrade(self);
+        keep.connect_value_notify(move |r| {
+            if let Some(app) = weak.upgrade() {
+                app.settings.borrow_mut().backup_keep = r.value() as u32;
+                app.apply_settings();
+            }
+        });
+        bk.add(&keep);
+        let last = copii::list(&s.backup_folder()).last().map(|(d, _)| self.lang.day_title(*d));
+        let now = adw::ActionRow::builder()
+            .title(tr(lang, "Ultima copie", "Last backup"))
+            .subtitle(last.unwrap_or_else(|| tr(lang, "niciuna încă", "none yet").to_string()))
+            .build();
+        let make = gtk::Button::builder().label(tr(lang, "Fă o copie acum", "Back up now")).valign(gtk::Align::Center).build();
+        now.add_suffix(&make);
+        let (weak, row) = (Rc::downgrade(self), now.clone());
+        make.connect_clicked(move |_| {
+            if let Some(app) = weak.upgrade() {
+                app.backup(true);
+                row.set_subtitle(&app.lang.day_title(app.today.get()));
+            }
+        });
+        bk.add(&now);
+        page.add(&bk);
+
         let lg = adw::PreferencesGroup::builder()
             .title(tr(lang, "Limba", "Language"))
             .description(tr(lang, "Aplicația se redeschide în limba aleasă.", "The app reopens in the chosen language."))
@@ -1348,6 +1478,48 @@ fn copy_image_resized(src: &std::path::Path, dst: &std::path::Path) -> Option<()
     let small = pb.scale_simple((w as f64 * scale) as i32, (h as f64 * scale) as i32, gtk::gdk_pixbuf::InterpType::Bilinear)?;
     let opts: &[(&str, &str)] = if format == "jpeg" { &[("quality", "90")] } else { &[] };
     small.savev(dst, format, opts).ok()
+}
+
+thread_local! {
+    /// Mărimile textului, mărite sau micșorate după setare (peste style.css).
+    static TEXT_CSS: gtk::CssProvider = {
+        let p = gtk::CssProvider::new();
+        if let Some(display) = gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(&display, &p, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+        }
+        p
+    };
+}
+
+/// Regulile din style.css cu mărimea textului înmulțită cu `pct`/100,
+/// plus textul obișnuit al ferestrei.
+fn text_css(pct: u32) -> String {
+    if pct == 100 {
+        return String::new();
+    }
+    let f = pct as f64 / 100.0;
+    let mut css = include_str!("style.css").to_string();
+    while let Some(a) = css.find("/*") {
+        let Some(b) = css[a..].find("*/") else { break };
+        css.replace_range(a..a + b + 2, "");
+    }
+    let mut out = format!("window {{ font-size: {pct}%; }}\n");
+    for block in css.split('}') {
+        let Some((sel, body)) = block.split_once('{') else { continue };
+        for decl in body.split(';') {
+            if let Some((k, v)) = decl.split_once(':')
+                && k.trim() == "font-size"
+                && let Some(px) = v.trim().strip_suffix("px").and_then(|n| n.trim().parse::<f64>().ok())
+            {
+                out.push_str(&format!("{} {{ font-size: {:.1}px; }}\n", sel.trim(), px * f));
+            }
+        }
+    }
+    out
+}
+
+pub fn set_text_size(pct: u32) {
+    TEXT_CSS.with(|p| p.load_from_string(&text_css(pct)));
 }
 
 fn load_css() {
@@ -1406,6 +1578,7 @@ fn build_ui(app: &adw::Application) {
     for c in settings.css_classes() {
         window.add_css_class(&c);
     }
+    set_text_size(settings.text);
     let set_night = {
         let w = window.clone();
         move |s: &adw::StyleManager| {
@@ -2055,12 +2228,27 @@ fn build_ui(app: &adw::Application) {
         glib::Propagation::Proceed
     });
 
+    // Pagina de pornire aleasă în setări (migrarea de dimineață, dacă vine, are întâietate).
+    if std::env::var_os("LANRUJ_START").is_none() {
+        let t = state.today.get();
+        match state.settings.borrow().start {
+            setari::Start::Day => {}
+            setari::Start::Week => state.view.set(View::Week(t.iso_week().year(), t.iso_week().week())),
+            setari::Start::Month => state.view.set(View::Month(t.year(), t.month())),
+            setari::Start::Plans => {
+                let (y, m) = state.future_start();
+                state.view.set(View::Future(y, m));
+            }
+            setari::Start::Index => state.view.set(View::Index),
+        }
+    }
     state.refresh();
     window.present();
     let weak = Rc::downgrade(&state);
     glib::idle_add_local_once(move || {
         if let Some(s) = weak.upgrade() {
             s.auto_migration();
+            s.backup(false);
         }
     });
     // Doar la dezvoltare: pornește direct în ecranul lunii, pentru capturi.
@@ -2581,6 +2769,37 @@ fn build_ui(app: &adw::Application) {
             let w = state.window.clone();
             glib::idle_add_local_once(move || {
                 gtk::prelude::WidgetExt::activate_action(&w, "win.preferences", None).ok();
+                if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                    let w = w.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
+                        // LANRUJ_JOS=1: derulează setările până jos înainte de captură.
+                        if std::env::var_os("LANRUJ_JOS").is_some() {
+                            fn scrolls(w: &gtk::Widget, out: &mut Vec<gtk::ScrolledWindow>) {
+                                if let Some(s) = w.downcast_ref::<gtk::ScrolledWindow>() {
+                                    out.push(s.clone());
+                                }
+                                let mut c = w.first_child();
+                                while let Some(ch) = c {
+                                    scrolls(&ch, out);
+                                    c = ch.next_sibling();
+                                }
+                            }
+                            let mut all = Vec::new();
+                            scrolls(w.upcast_ref(), &mut all);
+                            for s in all {
+                                let a = s.vadjustment();
+                                a.set_value(a.upper());
+                            }
+                        }
+                        let w = w.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                            save_png(&w, &p);
+                            if let Some(app) = w.application() {
+                                app.quit();
+                            }
+                        });
+                    });
+                }
             });
         }
         Ok("test-setari") => {
