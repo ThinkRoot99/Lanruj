@@ -20,6 +20,7 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 - A guide chapter about tracking.
 
 #### Changed
+- Preferences are arranged in four tabs: Appearance, Journal, Security and General.
 - The two pages of the notebook always have the same width, however much text they hold.
 
 ### 2026-11-21

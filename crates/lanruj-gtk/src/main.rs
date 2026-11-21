@@ -1350,7 +1350,12 @@ impl App {
         let s = self.settings.borrow().clone();
         let dialog = adw::PreferencesDialog::new();
         dialog.set_title(tr(lang, "Setări", "Preferences"));
-        let page = adw::PreferencesPage::new();
+        // Patru file, cu iconițe: Aspect, Jurnal, Siguranță, General.
+        let mk = |title: &str, icon: &str| adw::PreferencesPage::builder().title(title).icon_name(icon).build();
+        let look = mk(tr(lang, "Aspect", "Appearance"), "applications-graphics-symbolic");
+        let journal_page = mk(tr(lang, "Jurnal", "Journal"), "x-office-calendar-symbolic");
+        let safety = mk(tr(lang, "Siguranță", "Security"), "channel-secure-symbolic");
+        let general = mk(tr(lang, "General", "General"), "preferences-system-symbolic");
 
         // Un rând cu variante, legat de o setare.
         fn combo<T: Copy + PartialEq + 'static, const N: usize>(
@@ -1387,7 +1392,7 @@ impl App {
             |st, v| st.scheme = v,
             |_| {},
         ));
-        page.add(&paper);
+        look.add(&paper);
 
         let mig = adw::PreferencesGroup::builder()
             .title(tr(lang, "Migrarea", "Migration"))
@@ -1423,7 +1428,7 @@ impl App {
             }
         });
         mig.add(&hour);
-        page.add(&mig);
+        journal_page.add(&mig);
 
         let win = adw::PreferencesGroup::builder().title(tr(lang, "Fereastra", "Window")).build();
         let tray = adw::SwitchRow::builder()
@@ -1447,7 +1452,7 @@ impl App {
             app.apply_settings();
         });
         win.add(&tray);
-        page.add(&win);
+        general.add(&win);
 
         // Pagina și textul.
         let pages = adw::PreferencesGroup::builder().title(tr(lang, "Caietul", "Notebook")).build();
@@ -1504,7 +1509,7 @@ impl App {
             }
         });
         pages.add(&vim);
-        page.add(&pages);
+        look.add(&pages);
 
         let worth = adw::SpinRow::with_range(2.0, 10.0, 1.0);
         worth.set_title(tr(lang, "„Mai merită?” după", "\"Still worth it?\" after"));
@@ -1581,7 +1586,7 @@ impl App {
             }
         });
         bk.add(&now);
-        page.add(&bk);
+        journal_page.add(&bk);
 
         // Încuierea.
         let enc = self.journal.key().is_some();
@@ -1705,8 +1710,8 @@ impl App {
                 app.error(&e);
             }
         });
-        lk.add(&auto);
-        page.add(&lk);
+        win.add(&auto);
+        safety.add(&lk);
 
         // Criptarea.
         let cr = adw::PreferencesGroup::builder()
@@ -1764,7 +1769,7 @@ impl App {
             });
         }
         cr.add(&state_row);
-        page.add(&cr);
+        safety.add(&cr);
 
         let lg = adw::PreferencesGroup::builder()
             .title(tr(lang, "Limba", "Language"))
@@ -1786,9 +1791,18 @@ impl App {
                 build_main(&gapp, key);
             });
         }));
-        page.add(&lg);
+        general.add(&lg);
 
-        dialog.add(&page);
+        for p in [&look, &journal_page, &safety, &general] {
+            dialog.add(p);
+        }
+        // Doar la probe: LANRUJ_FILA_SETARI=0..3 deschide direct o filă.
+        #[cfg(debug_assertions)]
+        if let Some(n) = std::env::var("LANRUJ_FILA_SETARI").ok().and_then(|n| n.parse::<usize>().ok()) {
+            if let Some(p) = [&look, &journal_page, &safety, &general].get(n) {
+                dialog.set_visible_page(*p);
+            }
+        }
         dialog.present(Some(&self.window));
     }
 }

@@ -326,7 +326,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
     ),
     (
         "Setările",
-        "<b>☰ → Setări</b> (Ctrl+,):\n\n\
+        "<b>☰ → Setări</b> (Ctrl+,) are patru file: <b>Aspect</b>, <b>Jurnal</b>, <b>Siguranță</b> și <b>General</b>.\n\n\
          • <b>Hârtia și scrisul</b>: modelul, culoarea, noaptea, mărimea textului și <b>fontul scrisului</b> (al sistemului sau unul dintre cele șapte care vin cu aplicația: Inter, Noto Sans, Caveat și Patrick Hand de mână, Lora de carte, Courier Prime de mașină de scris, Nunito rotunjit).\n\
          • <b>Migrarea</b>: singură sau doar cu butonul, ora de seară și după câte mutări apare „mai merită?” (3 la început).\n\
          • <b>Fereastra</b>: systray-ul (la închidere, Lanruj rămâne în bara de sus; Ctrl+Q îl oprește).\n\
@@ -336,7 +336,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          în dosarul <tt>Documente/Lanruj - copii</tt> sau în altul ales de tine, și păstrează ultimele 10. <b>Fă o copie acum</b> o face pe loc.\n\
          • <b>Limba</b>: fereastra se redeschide în limba aleasă.",
         "Preferences",
-        "<b>☰ → Preferences</b> (Ctrl+,):\n\n\
+        "<b>☰ → Preferences</b> (Ctrl+,) has four tabs: <b>Appearance</b>, <b>Journal</b>, <b>Security</b> and <b>General</b>.\n\n\
          • <b>Paper and writing</b>: pattern, colour, dark mode, text size and the <b>writing font</b> (the system one or one of the seven that come with the app: Inter, Noto Sans, Caveat and Patrick Hand for handwriting, Lora for books, Courier Prime for a typewriter look, Nunito rounded).\n\
          • <b>Migration</b>: automatic or only with the button, the evening hour, and after how many moves \"still worth it?\" appears (3 at first).\n\
          • <b>Window</b>: the system tray (when closed, Lanruj stays in the top bar; Ctrl+Q quits).\n\
