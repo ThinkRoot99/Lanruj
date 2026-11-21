@@ -136,17 +136,55 @@ pub struct Overtime {
     pub note: String,
 }
 
-/// O activitate urmărită: cu bifă sau cu număr (și unitate, de exemplu „pahare”).
+/// O activitate urmărită: cu bifă, cu număr (și unitate, de exemplu „pahare”) sau cu timp (plank).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Activity {
     pub name: String,
     pub counted: bool,
     pub unit: Option<String>,
+    /// Cu timp: valorile sunt secunde, scrise „1:30” (minute:secunde).
+    pub timed: bool,
+}
+
+/// „1:30” (minute:secunde), „1:02:00”, „90s”, „2m”, „1h”, „1h30” → secunde.
+pub fn parse_seconds(s: &str) -> Option<u32> {
+    let s = s.trim().to_lowercase().replace(' ', "");
+    if s.is_empty() {
+        return None;
+    }
+    if let Some(v) = s.strip_suffix('s') {
+        return v.parse().ok();
+    }
+    if let Some(v) = s.strip_suffix("min").or_else(|| s.strip_suffix('m')) {
+        return v.parse::<u32>().ok().map(|m| m * 60);
+    }
+    if let Some((h, m)) = s.split_once('h') {
+        let h: u32 = h.parse().ok()?;
+        let m: u32 = if m.is_empty() { 0 } else { m.parse().ok()? };
+        return Some(h * 3600 + m * 60);
+    }
+    let parts: Vec<u32> = s.split(':').map(|p| p.parse().ok()).collect::<Option<_>>()?;
+    match parts.as_slice() {
+        [m, sec] if *sec < 60 => Some(m * 60 + sec),
+        [h, m, sec] if *m < 60 && *sec < 60 => Some(h * 3600 + m * 60 + sec),
+        [sec] => Some(*sec),
+        _ => None,
+    }
+}
+
+/// Secunde → „1:30” sau „1:02:00”.
+pub fn seconds_text(s: u32) -> String {
+    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
 }
 
 impl Activity {
     pub fn check(name: &str) -> Activity {
-        Activity { name: name.to_string(), counted: false, unit: None }
+        Activity { name: name.to_string(), counted: false, unit: None, timed: false }
+    }
+
+    /// Valoarea unei zile, ca text: „30”, „1:30”, sau nimic pentru bifă.
+    pub fn value_text(&self, v: u32) -> String {
+        if self.timed { seconds_text(v) } else { v.to_string() }
     }
 
     /// „cafea”, „flotări (număr)”, „apă (pahare)”.
@@ -157,13 +195,20 @@ impl Activity {
         }
         if let Some((name, rest)) = s.split_once('(') {
             let unit = rest.trim_end_matches(')').trim();
-            let plain = matches!(fold(unit).as_str(), "numar" | "number" | "");
-            return Some(Activity { name: name.trim().to_string(), counted: true, unit: (!plain).then(|| unit.to_string()) });
+            let f = fold(unit);
+            if matches!(f.as_str(), "timp" | "time") {
+                return Some(Activity { name: name.trim().to_string(), counted: true, unit: None, timed: true });
+            }
+            let plain = matches!(f.as_str(), "numar" | "number" | "");
+            return Some(Activity { name: name.trim().to_string(), counted: true, unit: (!plain).then(|| unit.to_string()), timed: false });
         }
         Some(Activity::check(s))
     }
 
     fn text(&self, lang: Lang) -> String {
+        if self.timed {
+            return format!("{} ({})", self.name, if lang == Lang::Ro { "timp" } else { "time" });
+        }
         match (&self.unit, self.counted) {
             (Some(u), _) => format!("{} ({u})", self.name),
             (None, true) => format!("{} ({})", self.name, if lang == Lang::Ro { "număr" } else { "number" }),
@@ -301,9 +346,10 @@ impl Tracking {
                         let Ok(d) = d.parse::<u32>() else { continue };
                         let set = t.done.entry(d).or_default();
                         for a in names.split(',').map(str::trim).filter(|a| !a.is_empty()) {
-                            // „flotări 30” = 30; „cafea” = 1.
+                            // „flotări 30” = 30; „plank 1:30” = 90 de secunde; „cafea” = 1.
                             let (name, n) = match a.rsplit_once(' ') {
                                 Some((name, n)) if n.parse::<u32>().is_ok() => (name.trim(), n.parse::<u32>().unwrap_or(1)),
+                                Some((name, n)) if n.contains(':') && parse_seconds(n).is_some() => (name.trim(), parse_seconds(n).unwrap_or(0)),
                                 _ => (a, 1),
                             };
                             set.insert(name.to_string(), n);
@@ -381,7 +427,7 @@ impl Tracking {
                     let names: Vec<String> = self
                         .activities
                         .iter()
-                        .filter_map(|a| s.get(&a.name).filter(|n| **n > 0).map(|n| if a.counted { format!("{} {n}", a.name) } else { a.name.clone() }))
+                        .filter_map(|a| s.get(&a.name).filter(|n| **n > 0).map(|n| if a.counted { format!("{} {}", a.name, a.value_text(*n)) } else { a.name.clone() }))
                         .collect();
                     format!("- {d} {}\n", names.join(", "))
                 })
@@ -427,6 +473,23 @@ impl Tracking {
                 (a.clone(), vals.len() as u32, vals.iter().sum())
             })
             .collect()
+    }
+
+    /// Toate notele lunii, pe zile: (ziua, ce a fost, nota).
+    pub fn work_notes_list(&self) -> Vec<(u32, WorkOnDay)> {
+        let mut out: Vec<(u32, WorkOnDay)> = Vec::new();
+        for (d, n) in &self.work_notes {
+            if let Some(k) = self.work.get(d) {
+                out.push((*d, WorkOnDay::Day(*k, n.clone())));
+            }
+        }
+        for (d, list) in &self.overtime {
+            for o in list.iter().filter(|o| !o.note.is_empty()) {
+                out.push((*d, WorkOnDay::Overtime(o.span, o.note.clone())));
+            }
+        }
+        out.sort_by_key(|(d, _)| *d);
+        out
     }
 
     /// Ce s-a întâmplat la serviciu în ziua `day`: ziua (cu nota) și orele suplimentare.
@@ -539,6 +602,12 @@ mod tests {
         assert_eq!(en.totals(), Totals { shifts: 1, reserve: 1, leave: 0, overtime: 240 });
         assert_eq!(en.sleep[&1].night, Some(450));
         assert_eq!(en.activity_counts()[1].2, 20);
+        // Activitate cu timp: plank.
+        let pl = Tracking::parse("## Activități\n\nListă: plank (timp)\n\n- 1 plank 1:30\n- 2 plank 2:00\n");
+        assert!(pl.activities[0].timed);
+        assert_eq!(pl.activity_counts()[0].2, 210);
+        assert!(pl.to_markdown(2026, 11, Lang::Ro).contains("Listă: plank (timp)\n\n- 1 plank 1:30\n- 2 plank 2:00\n"));
+        assert_eq!(t.work_notes_list().len(), 2, "nota serviciului din 2 și a orelor din 3");
     }
 
     #[test]
@@ -549,6 +618,10 @@ mod tests {
         assert_eq!(parse_duration("abc"), None);
         assert_eq!(Span::parse("08:00-12:00").unwrap().minutes(), 240);
         assert_eq!(Span::parse("22-2").unwrap().minutes(), 240);
+        for (s, sec) in [("1:30", 90), ("90s", 90), ("2m", 120), ("1h", 3600), ("1h30", 5400), ("1:02:00", 3720), ("45", 45)] {
+            assert_eq!(parse_seconds(s), Some(sec), "{s}");
+        }
+        assert_eq!((seconds_text(90), seconds_text(3720)), ("1:30".into(), "1:02:00".into()));
     }
 
     #[test]
@@ -556,7 +629,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lanruj-monitor-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let j = Journal::new(&root);
-        j.update_tracking(2026, 11, Lang::Ro, |t| t.activities = vec![Activity::check("cafea"), Activity { name: "apă".into(), counted: true, unit: Some("pahare".into()) }]).unwrap();
+        j.update_tracking(2026, 11, Lang::Ro, |t| t.activities = vec![Activity::check("cafea"), Activity { name: "apă".into(), counted: true, unit: Some("pahare".into()), timed: false }]).unwrap();
         let dec = j.load_tracking(2026, 12).unwrap().activities;
         assert_eq!(dec.len(), 2, "decembrie primește lista din noiembrie");
         assert_eq!(dec[1].unit.as_deref(), Some("pahare"));

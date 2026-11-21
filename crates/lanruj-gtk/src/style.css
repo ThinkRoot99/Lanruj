@@ -515,3 +515,6 @@ button.zi-serviciu.rezerva .eticheta-zi { background: #7a4fa0; }
 entry.numar-activitate { min-height: 24px; min-width: 0; padding: 0 4px; font-size: 13px; background: alpha(white, 0.55); }
 window.noapte entry.numar-activitate { background: alpha(white, 0.06); }
 .serviciu-zi { border-left-color: #2e8b57; }
+.note-luna-titlu { margin-top: 18px; }
+.nota-luna { padding: 6px 0; border-bottom: 1px dashed var(--hartie-margine); }
+.nota-luna .text { font-size: 14px; }

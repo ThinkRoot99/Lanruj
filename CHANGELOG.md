@@ -10,9 +10,9 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 
 #### Added
 - **Tracking**, with three tabs, month by month:
-  - **Activities**: your own list, either ticked (coffee, making the bed) or counted (push-ups; water in glasses), day by day, with how many days you did each one and, for counted ones, the total and daily average. The list carries over to the following months.
+  - **Activities**: your own list, ticked (coffee, making the bed), counted (push-ups; water in glasses) or timed (plank), day by day, with how many days you did each one and, for counted ones, the total and daily average. The list carries over to the following months.
   - **Sleep**: how long you slept at night and during the day, with an automatic chart of the month and the averages.
-  - **Work**: duty (24 hours), standby, leave and overtime (from-to, for example 08:00-12:00), each with an optional note, and the month's totals. Duty, standby, leave and overtime also appear on the day page, the week's days and the month calendar.
+  - **Work**: duty (24 hours), standby, leave and overtime (from-to, for example 08:00-12:00), each with an optional note, the month's totals and a list of all the month's notes. Duty, standby, leave and overtime also appear on the day page, the week's days and the month calendar.
   Each month is saved as `monitorizare/YYYY-MM.md`, encrypted when the journal is.
 - A guide chapter about tracking.
 

@@ -207,7 +207,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
     (
         "Monitorizarea",
         "<b>Monitorizare</b>, din bara laterală, are trei file, lună de lună. Săgețile din antet (sau Alt+← →) schimbă luna.\n\n\
-         <b>Activități</b>: scrii sus ce vrei să urmărești și alegi felul: <b>cu bifă</b> (cafea, făcut patul) sau <b>cu număr</b> (flotări; apă, cu unitatea „pahare”), apoi Enter. \
+         <b>Activități</b>: scrii sus ce vrei să urmărești și alegi felul: <b>cu bifă</b> (cafea, făcut patul) sau <b>cu număr</b> (flotări; apă, cu unitatea „pahare”) sau <b>cu timp</b> (plank: 1:30 înseamnă un minut și 30 de secunde), apoi Enter. \
          În fiecare zi bifezi sau scrii câte ai făcut. În dreapta vezi în câte zile ai făcut fiecare și, la cele cu număr, totalul și media pe zi. \
          Lista trece singură în lunile următoare; clic dreapta pe un nume îl scoate.\n\n\
          <b>Somn</b>: pentru fiecare zi scrii cât ai dormit noaptea și cât ziua (7:30, 7,5 sau 45m), apoi Enter. \
@@ -215,11 +215,11 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          <b>Serviciu</b>: clic pe o zi pentru <b>Serviciu</b> (24 de ore), <b>Rezervă</b>, <b>Concediu</b> sau <b>Liber</b>; tot în meniu scrii o <b>notă</b> pentru zi \
          și adaugi <b>ore suplimentare</b> (de exemplu 08:00-12:00), cu notă dacă vrei. Cu tastatura, pe ziua aleasă: S, R, C, O, Delete. \
          În dreapta: serviciile, rezervele, orele suplimentare, zilele de concediu și totalul orelor lucrate. \
-         Ce ai trecut aici apare și în pagina zilei, în zilele săptămânii și în calendarul lunii; un clic pe casetă te aduce înapoi aici.\n\n\
+         Notele lunii apar toate sub totaluri. Ce ai trecut aici, cu notele, apare și în pagina zilei, în zilele săptămânii și în calendarul lunii; un clic pe casetă te aduce înapoi aici.\n\n\
          Luna stă în <tt>monitorizare/2026-11.md</tt>, ca text simplu.",
         "Tracking",
         "<b>Tracking</b>, in the sidebar, has three tabs, month by month. The arrows in the header (or Alt+← →) change the month.\n\n\
-         <b>Activities</b>: type at the top what you want to follow and choose its kind: <b>tick</b> (coffee, making the bed) or <b>count</b> (push-ups; water, with the unit \"glasses\"), then Enter. \
+         <b>Activities</b>: type at the top what you want to follow and choose its kind: <b>tick</b> (coffee, making the bed) or <b>count</b> (push-ups; water, with the unit \"glasses\") or <b>time</b> (plank: 1:30 means one minute and 30 seconds), then Enter. \
          Each day, tick it or type how many. On the right you see on how many days you did each one and, for counted ones, the total and the daily average. \
          The list carries over to the next months; right-click a name to remove it.\n\n\
          <b>Sleep</b>: for each day, type how long you slept at night and during the day (7:30, 7.5 or 45m), then Enter. \
@@ -227,7 +227,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 21] = [
          <b>Work</b>: click a day for <b>Duty</b> (24 hours), <b>Standby</b>, <b>Leave</b> or <b>Free</b>; in the same menu write a <b>note</b> for the day \
          and add <b>overtime</b> (for example 08:00-12:00), with a note if you like. With the keyboard, on the chosen day: D, S, L, O, Delete. \
          On the right: duties, standbys, overtime, days of leave and total hours worked. \
-         What you enter here also appears on the day page, on the week's days and in the month calendar; clicking it brings you back here.\n\n\
+         All of the month's notes are listed under the totals. What you enter here, notes included, also appears on the day page, on the week's days and in the month calendar; clicking it brings you back here.\n\n\
          The month is stored in <tt>monitorizare/2026-11.md</tt> as plain text.",
     ),
     (

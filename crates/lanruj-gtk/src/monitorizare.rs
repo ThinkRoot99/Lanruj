@@ -10,7 +10,7 @@ use adw::prelude::*;
 use chrono::{Datelike, Duration, NaiveDate};
 use gtk::glib;
 use lanruj_core::Lang;
-use lanruj_core::monitor::{Activity, Overtime, Shift, Span, Totals, Tracking, WorkOnDay, duration, parse_duration};
+use lanruj_core::monitor::{Activity, Overtime, Shift, Span, Totals, Tracking, WorkOnDay, duration, parse_duration, parse_seconds, seconds_text};
 use std::rc::Rc;
 
 /// Fila aleasă.
@@ -197,7 +197,7 @@ impl Page {
             .placeholder_text(tr(lang, "Activitate nouă (cafea, flotări, apă…)", "New activity (coffee, push-ups, water…)"))
             .hexpand(true)
             .build();
-        let kinds = gtk::StringList::new(&[tr(lang, "cu bifă", "tick"), tr(lang, "cu număr", "count")]);
+        let kinds = gtk::StringList::new(&[tr(lang, "cu bifă", "tick"), tr(lang, "cu număr", "count"), tr(lang, "cu timp", "time")]);
         let kind = gtk::DropDown::builder().model(&kinds).build();
         let unit = gtk::Entry::builder().placeholder_text(tr(lang, "unitate: pahare", "unit: glasses")).width_chars(12).visible(false).build();
         let u2 = unit.clone();
@@ -213,9 +213,9 @@ impl Page {
                 if name.is_empty() {
                     return;
                 }
-                let counted = kind.selected() == 1;
+                let (counted, timed) = (kind.selected() >= 1, kind.selected() == 2);
                 let u = unit.text().trim().replace([',', '(', ')'], " ").trim().to_string();
-                let a = Activity { name: name.clone(), counted, unit: (counted && !u.is_empty()).then_some(u) };
+                let a = Activity { name: name.clone(), counted, unit: (counted && !timed && !u.is_empty()).then_some(u), timed };
                 app.change_tracking(y, m, None, move |t| {
                     if !t.activities.iter().any(|x| x.name.to_lowercase() == name.to_lowercase()) {
                         t.activities.push(a);
@@ -232,8 +232,8 @@ impl Page {
                 &gtk::Label::builder()
                     .label(tr(
                         lang,
-                        "Scrie mai sus ce vrei să urmărești în fiecare zi. „Cu bifă” e pentru lucruri făcute sau nu (cafea, făcut patul); „cu număr” e pentru cantități (flotări, apă în pahare).",
-                        "Type above what you want to follow every day. \"Tick\" is for things done or not (coffee, making the bed); \"count\" is for amounts (push-ups, water in glasses).",
+                        "Scrie mai sus ce vrei să urmărești în fiecare zi. „Cu bifă” e pentru lucruri făcute sau nu (cafea, făcut patul); „cu număr” e pentru cantități (flotări, apă în pahare); „cu timp” e pentru durate (plank: 1:30).",
+                        "Type above what you want to follow every day. \"Tick\" is for things done or not (coffee, making the bed); \"count\" is for amounts (push-ups, water in glasses); \"time\" is for durations (plank: 1:30).",
                     ))
                     .wrap(true)
                     .xalign(0.0)
@@ -245,16 +245,18 @@ impl Page {
         let grid = gtk::Grid::builder().row_spacing(2).column_spacing(6).css_classes(["grila-activitati"]).build();
         // Capul de tabel: numele activităților (și unitatea); clic dreapta: scoate.
         for (c, a) in t.activities.iter().enumerate() {
-            let head = match &a.unit {
-                Some(u) => format!("{}\n({u})", a.name),
-                None => a.name.clone(),
+            let head = match (&a.unit, a.timed) {
+                (_, true) => format!("{}\n({})", a.name, tr(lang, "min:s", "min:s")),
+                (Some(u), _) => format!("{}\n({u})", a.name),
+                (None, _) => a.name.clone(),
             };
             let l = gtk::Label::builder()
                 .label(head)
                 .justify(gtk::Justification::Center)
                 .css_classes(["activitate-nume"])
-                .ellipsize(gtk::pango::EllipsizeMode::End)
-                .max_width_chars(9)
+                .wrap(true)
+                .wrap_mode(gtk::pango::WrapMode::WordChar)
+                .max_width_chars(7)
                 .valign(gtk::Align::End)
                 .build();
             l.set_tooltip_text(Some(&format!("{}\n{}", a.name, tr(lang, "Clic dreapta: scoate din listă", "Right-click: remove from the list"))));
@@ -309,18 +311,21 @@ impl Page {
                     }
                 };
                 let w: gtk::Widget = if a.counted {
-                    let e = gtk::Entry::builder().width_chars(3).max_width_chars(4).xalign(0.5).css_classes(["numar-activitate"]).build();
+                    let timed = a.timed;
+                    let e = gtk::Entry::builder().width_chars(if timed { 4 } else { 3 }).max_width_chars(5).xalign(0.5).css_classes(["numar-activitate"]).build();
                     if n > 0 {
-                        e.set_text(&n.to_string());
+                        e.set_text(&a.value_text(n));
                     }
-                    e.set_input_purpose(gtk::InputPurpose::Digits);
+                    if !timed {
+                        e.set_input_purpose(gtk::InputPurpose::Digits);
+                    }
                     e.set_sensitive(d <= today);
                     let last = Rc::new(std::cell::Cell::new(n));
                     let save = {
                         let last = last.clone();
                         move |e: &gtk::Entry| {
                             let text = e.text().trim().to_string();
-                            let v = if text.is_empty() { Some(0) } else { text.parse::<u32>().ok() };
+                            let v = if text.is_empty() { Some(0) } else if timed { parse_seconds(&text) } else { text.parse::<u32>().ok() };
                             let Some(v) = v else {
                                 e.add_css_class("error");
                                 return;
@@ -370,7 +375,14 @@ impl Page {
                 Lang::Ro => format!("{days} din {passed} zile"),
                 Lang::En => format!("{days} of {passed} days"),
             };
-            if a.counted {
+            if a.timed {
+                let avg = if days > 0 { sum / days } else { 0 };
+                let total = match lang {
+                    Lang::Ro => format!("{} în total · {} pe zi · {of}", seconds_text(sum), seconds_text(avg)),
+                    Lang::En => format!("{} in total · {} a day · {of}", seconds_text(sum), seconds_text(avg)),
+                };
+                top.append(&gtk::Label::builder().label(total).css_classes(["total-ore"]).build());
+            } else if a.counted {
                 let unit = a.unit.clone().unwrap_or_default();
                 let avg = if days > 0 { sum as f64 / days as f64 } else { 0.0 };
                 let avg = format!("{avg:.1}");
@@ -637,6 +649,29 @@ impl Page {
             leg.append(&b);
         }
         self.list.append(&leg);
+        // Notele lunii, pe zile, ca să se citească ușor.
+        let notes = t.work_notes_list();
+        if !notes.is_empty() {
+            self.list.append(&gtk::Label::builder().label(tr(lang, "Notele lunii", "This month's notes")).xalign(0.0).css_classes(["index-sectiune", "note-luna-titlu"]).build());
+            for (d, it) in notes {
+                let (what, note) = work_label(lang, &it);
+                let row = gtk::Box::new(gtk::Orientation::Vertical, 1);
+                row.add_css_class("nota-luna");
+                row.append(&gtk::Label::builder().label(format!("{d} · {what}")).xalign(0.0).css_classes(["tema-titlu"]).build());
+                row.append(&gtk::Label::builder().label(note).xalign(0.0).wrap(true).css_classes(["text"]).build());
+                self.list.append(&row);
+            }
+        }
+    }
+}
+
+/// („Serviciu · 24 h”, nota) pentru o intrare de serviciu.
+fn work_label(lang: Lang, it: &WorkOnDay) -> (String, String) {
+    match it {
+        WorkOnDay::Day(Shift::Service, n) => (format!("{} · 24 h", tr(lang, "Serviciu", "Duty")), n.clone()),
+        WorkOnDay::Day(Shift::Reserve, n) => (tr(lang, "Rezervă", "Standby").to_string(), n.clone()),
+        WorkOnDay::Day(Shift::Leave, n) => (tr(lang, "Concediu", "Leave").to_string(), n.clone()),
+        WorkOnDay::Overtime(span, n) => (format!("{} {}", tr(lang, "Ore suplimentare", "Overtime"), span.text()), n.clone()),
     }
 }
 
@@ -905,11 +940,15 @@ fn day_button(app: &Rc<App>, d: NaiveDate, kind: Option<Shift>, note: &str, ot: 
 pub fn work_short(lang: Lang, items: &[WorkOnDay]) -> Vec<String> {
     items
         .iter()
-        .map(|it| match it {
-            WorkOnDay::Day(Shift::Service, _) => format!("▸ {}", tr(lang, "Serviciu", "Duty")),
-            WorkOnDay::Day(Shift::Reserve, _) => format!("▸ {}", tr(lang, "Rezervă", "Standby")),
-            WorkOnDay::Day(Shift::Leave, _) => format!("▸ {}", tr(lang, "Concediu", "Leave")),
-            WorkOnDay::Overtime(span, _) => format!("▸ +{} ({})", hours_text(span.minutes()), span.text()),
+        .map(|it| {
+            let (head, note) = match it {
+                WorkOnDay::Day(Shift::Service, n) => (format!("▸ {}", tr(lang, "Serviciu", "Duty")), n),
+                WorkOnDay::Day(Shift::Reserve, n) => (format!("▸ {}", tr(lang, "Rezervă", "Standby")), n),
+                WorkOnDay::Day(Shift::Leave, n) => (format!("▸ {}", tr(lang, "Concediu", "Leave")), n),
+                WorkOnDay::Overtime(span, n) => (format!("▸ +{} ({})", hours_text(span.minutes()), span.text()), n),
+            };
+            // Nota, direct în calendar, ca să se citească fără alt clic.
+            if note.is_empty() { head } else { format!("{head}: {note}") }
         })
         .collect()
 }
