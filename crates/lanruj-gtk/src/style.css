@@ -570,3 +570,4 @@ button.unealta-jurnal.aprins { background-color: alpha(var(--cerneala), 0.14); }
 button.pomenire { padding: 2px 6px; font-size: 13px; }
 button.pomenit { min-width: 22px; min-height: 22px; padding: 0 2px; opacity: 0.7; }
 button.rand-legatura { padding: 4px 8px; }
+.grupa-jurnal { border-left: 1px solid alpha(var(--cerneala), 0.15); padding-left: 6px; margin-left: 4px; }

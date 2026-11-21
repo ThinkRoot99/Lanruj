@@ -260,6 +260,10 @@ impl App {
             self.toast(tr(self.lang, "Termină întâi migrarea sau căutarea.", "Finish the migration or the search first."));
             return false;
         }
+        if matches!(self.view.get(), View::Diary(_)) {
+            self.toast(tr(self.lang, "Jurnalul nu se poate încă tipări sau salva ca PDF.", "The journal can't be printed or saved as PDF yet."));
+            return false;
+        }
         true
     }
 

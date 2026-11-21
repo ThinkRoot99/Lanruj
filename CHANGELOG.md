@@ -9,6 +9,7 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 ### 2026-11-21 (afternoon)
 
 #### Added
+- **Journal toolbar in groups**: text style, colors, lines, lists, then time and links; each group wraps as a whole on narrow windows. Clearing the formatting keeps the links. The keyboard shortcuts window describes every key exactly, with its own sections for pages and the journal. Printing and PDF say plainly that the journal can't be exported yet.
 - **Journal writing**: typed or pasted web addresses, `www.` addresses and e-mails become links by themselves; the link button (Ctrl+K) asks for the text and the address, or changes and removes a link; lists change level with Tab and Shift+Tab, Enter on an empty line and Backspace after the sign go up one level, and numbered lists follow the levels (2, 2.1, 2.1.1); keyboard shortcuts for everything (headings, quotes, lists, colors, markers, clearing).
 - **Search everywhere**: the journal, the notes, Tracking notes and Index titles, besides the pages; exact phrases in quotes and `-word` to leave words out; Enter opens the first result, ↓ moves into the list, and journal results open at the line found.
 - **Journal**: a page for writing at length, as in a notebook, one file per day (`jurnal/YYYY/YYYY-MM-DD.md`, plain Markdown, encrypted when the journal is), saved automatically. Bold, italic, underline, strikethrough, text colors and markers, headings, quotes, bulleted, numbered and check lists, the time for each entry of the day, web links.

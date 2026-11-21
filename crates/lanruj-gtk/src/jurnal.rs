@@ -35,7 +35,8 @@ pub struct Diary {
     night: Cell<bool>,
     lang: lanruj_core::Lang,
     buttons: Vec<(&'static str, gtk::Button)>,
-    bar: adw::WrapBox,
+    /// Locul culorilor și markerelor în bară.
+    colors_slot: gtk::Box,
 }
 
 const INLINE: [(&str, &str); 4] = [("s:bold", "bold"), ("s:italic", "italic"), ("s:strike", "strike"), ("s:underline", "underline")];
@@ -430,16 +431,22 @@ impl Diary {
             }
             (id, b)
         };
+        // Uneltele, pe grupe (fără nume): scrisul, culorile, rândurile, listele, ce se adaugă.
+        // Culorile își iau locul abia în `wire_diary`, în cutia `colors_slot`.
         let groups: Vec<Vec<(&'static str, gtk::Button)>> = vec![
             vec![
                 mk("bold", Some("format-text-bold-symbolic"), None, tr(lang, "Îngroșat (Ctrl+B)", "Bold (Ctrl+B)")),
                 mk("italic", Some("format-text-italic-symbolic"), None, tr(lang, "Cursiv (Ctrl+I)", "Italic (Ctrl+I)")),
                 mk("underline", Some("format-text-underline-symbolic"), None, tr(lang, "Subliniat (Ctrl+U)", "Underline (Ctrl+U)")),
                 mk("strike", Some("format-text-strikethrough-symbolic"), None, tr(lang, "Tăiat (Ctrl+D)", "Strikethrough (Ctrl+D)")),
+                mk("curata", Some("edit-clear-all-symbolic"), None, tr(lang, "Fără formatare (Ctrl+Space)", "Clear formatting (Ctrl+Space)")),
             ],
+            vec![],
             vec![
                 mk("titlu", None, Some("T"), tr(lang, "Titlu (Ctrl+Shift+T)", "Heading (Ctrl+Shift+T)")),
                 mk("citat", None, Some("„“"), tr(lang, "Citat (Ctrl+Shift+Q)", "Quote (Ctrl+Shift+Q)")),
+            ],
+            vec![
                 mk("lista", Some("view-list-bullet-symbolic"), None, tr(lang, "Listă (Ctrl+Shift+8); Tab și Shift+Tab schimbă nivelul", "List (Ctrl+Shift+8); Tab and Shift+Tab change the level")),
                 mk("numere", Some("view-list-ordered-symbolic"), None, tr(lang, "Listă numerotată (Ctrl+Shift+7): 1, 1.1, 1.1.1", "Numbered list (Ctrl+Shift+7): 1, 1.1, 1.1.1")),
                 mk("casute", None, Some("☐"), tr(lang, "Listă cu căsuțe (Ctrl+Shift+9); Ctrl+Enter bifează", "Checklist (Ctrl+Shift+9); Ctrl+Enter ticks")),
@@ -449,20 +456,19 @@ impl Diary {
                 mk("web", Some("insert-link-symbolic"), None, tr(lang, "Legătură web pe text (Ctrl+K); adresele scrise devin legături singure", "Web link on text (Ctrl+K); typed addresses become links by themselves")),
                 mk("leaga", Some("x-office-calendar-symbolic"), None, tr(lang, "Leagă de o zi, un rând, o pagină sau Monitorizare (Ctrl+L)", "Link to a day, an entry, a page or Tracking (Ctrl+L)")),
             ],
-            vec![mk("curata", Some("edit-clear-all-symbolic"), None, tr(lang, "Fără formatare (Ctrl+Space)", "Clear formatting (Ctrl+Space)"))],
         ];
+        let colors_slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        // Fiecare grupă e o cutie: pe fereastră îngustă, trece întreagă pe rândul următor.
         for (k, g) in groups.into_iter().enumerate() {
+            let group = if k == 1 { colors_slot.clone() } else { gtk::Box::new(gtk::Orientation::Horizontal, 2) };
             if k > 0 {
-                bar.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+                group.add_css_class("grupa-jurnal");
             }
             for (id, b) in g {
-                bar.append(&b);
+                group.append(&b);
                 buttons.push((id, b));
             }
-            if k == 0 {
-                // Culorile și markerul, ca în pagini (același meniu).
-                bar.append(&gtk::Separator::new(gtk::Orientation::Vertical));
-            }
+            bar.append(&group);
         }
         let paper = gtk::Box::new(gtk::Orientation::Vertical, 0);
         paper.add_css_class("pagina");
@@ -496,7 +502,7 @@ impl Diary {
             night: Cell::new(false),
             lang,
             buttons,
-            bar,
+            colors_slot,
         })
     }
 
@@ -1036,13 +1042,11 @@ impl App {
         let colors = crate::page::color_bar(lang, crate::page::ColorTarget::Field(dy.view.clone(), self.window_night()));
         // Fără selecție, culoarea se pune pe ce urmează să scrii (nu pe tot textul).
         colors.add_css_class("bara-jurnal-culori");
-        let pos = dy.buttons.iter().position(|(id, _)| *id == "strike").expect("buton");
-        let after = dy.buttons[pos].1.next_sibling().expect("separator");
-        dy.bar.insert_child_after(&colors, Some(&after));
-        // Legătura web are în jurnal butonul ei (text și adresă).
+        dy.colors_slot.append(&colors);
+        // Legătura web are în jurnal butonul ei (text și adresă), iar „Fără formatare” scoate și culorile.
         let mut c = colors.first_child();
         while let Some(ch) = c {
-            if ch.has_css_class("buton-legatura") {
+            if ch.has_css_class("buton-legatura") || ch.has_css_class("fara-culoare") || ch.is::<gtk::Separator>() && ch.next_sibling().is_some_and(|n| n.has_css_class("buton-legatura")) {
                 ch.set_visible(false);
             }
             c = ch.next_sibling();
@@ -1173,18 +1177,7 @@ impl App {
         let weak = Rc::downgrade(self);
         dy.button("curata").connect_clicked(move |_| {
             if let Some(app) = weak.upgrade() {
-                let buf = app.diary.buf();
-                match buf.selection_bounds() {
-                    Some((a, b)) => {
-                        set_style(&buf, &a, &b, &Style::default(), false);
-                    }
-                    None => {
-                        let at = buf.iter_at_mark(&buf.get_insert()).offset();
-                        app.diary.typing.replace(Some((at, Style::default())));
-                        app.diary.show_state();
-                    }
-                }
-                app.diary.view.grab_focus();
+                app.diary_clear();
             }
         });
 
@@ -1446,10 +1439,22 @@ impl App {
     fn diary_clear(self: &Rc<Self>) {
         let buf = self.diary.buf();
         match buf.selection_bounds() {
-            Some((a, b)) => set_style(&buf, &a, &b, &Style::default(), false),
+            // Legăturile rămân; pleacă îngroșatul, cursivul, sublinierea, tăierea, culorile și markerele.
+            Some((a, b)) => {
+                let mut tags = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with("s:") || n.starts_with("f#") || n.starts_with("b#")) {
+                        tags.push(t.clone());
+                    }
+                });
+                for t in &tags {
+                    buf.remove_tag(t, &a, &b);
+                }
+            }
             None => {
                 let at = buf.iter_at_mark(&buf.get_insert()).offset();
-                self.diary.typing.replace(Some((at, Style::default())));
+                let link = self.diary.style_here().link;
+                self.diary.typing.replace(Some((at, Style { link, ..Style::default() })));
             }
         }
         self.diary.show_state();
