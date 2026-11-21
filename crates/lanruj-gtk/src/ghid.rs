@@ -243,10 +243,18 @@ const CAPITOLE: [(&str, &str, &str, &str); 18] = [
     (
         "Tastele",
         "Toate tastele sunt în <b>☰ → Scurtături de taste</b> (Ctrl+?). Cele mai folosite: Ctrl+F căutare, Ctrl+M migrare, Ctrl+I în index, Ctrl+G mergi la data, Ctrl+P tipărește, \
-         Tab sub intrarea de deasupra, Ctrl+K legătură (la editare), Alt+← → zile, Alt+Home azi, F9 bara laterală, F11 fereastra mare, F10 meniul, Ctrl+Q ieșire, F1 ghidul acesta.",
+         Tab sub intrarea de deasupra, Ctrl+K legătură (la editare), Alt+← → zile, Alt+Home azi, F9 bara laterală, F11 fereastra mare, F10 meniul, Ctrl+Q ieșire, F1 ghidul acesta.\n\n\
+         <b>Taste ca în Vim</b> (se pornesc din Setări → Caietul): în afara câmpului de scris, <b>j</b> / <b>k</b> aleg intrarea de dedesubt / de deasupra, \
+         <b>gg</b> / <b>G</b> prima / ultima, <b>h</b> / <b>l</b> pagina de dinainte / de după, <b>t</b> azi, <b>x</b> bifează, <b>i</b> editează, \
+         <b>o</b> scrie o intrare nouă, <b>dd</b> șterge, <b>&gt;&gt;</b> / <b>&lt;&lt;</b> pune sub cea de deasupra / scoate, <b>/</b> caută. \
+         <b>Esc</b> te scoate din câmpul de scris înapoi la intrări.",
         "Keys",
         "All keys are in <b>☰ → Keyboard Shortcuts</b> (Ctrl+?). The most used: Ctrl+F search, Ctrl+M migrate, Ctrl+I index, Ctrl+G go to date, Ctrl+P print, \
-         Tab under the entry above, Ctrl+K link (while editing), Alt+← → days, Alt+Home today, F9 sidebar, F11 maximize, F10 menu, Ctrl+Q quit, F1 this guide.",
+         Tab under the entry above, Ctrl+K link (while editing), Alt+← → days, Alt+Home today, F9 sidebar, F11 maximize, F10 menu, Ctrl+Q quit, F1 this guide.\n\n\
+         <b>Vim keys</b> (turned on in Preferences → Notebook): outside the writing field, <b>j</b> / <b>k</b> select the entry below / above, \
+         <b>gg</b> / <b>G</b> the first / last, <b>h</b> / <b>l</b> the previous / next page, <b>t</b> today, <b>x</b> check, <b>i</b> edit, \
+         <b>o</b> write a new entry, <b>dd</b> delete, <b>&gt;&gt;</b> / <b>&lt;&lt;</b> indent / outdent, <b>/</b> search. \
+         <b>Esc</b> takes you out of the writing field back to the entries.",
     ),
     (
         "Unde stă jurnalul",

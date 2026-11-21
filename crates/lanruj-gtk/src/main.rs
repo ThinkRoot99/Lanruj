@@ -63,6 +63,8 @@ pub struct App {
     pub editing: Cell<Option<(PageRef, usize)>>,
     /// În timpul exportului: fără selecție, câmpuri de scris și butoane de adăugat.
     pub exporting: Cell<bool>,
+    /// Schema Vim: prima tastă dintr-o pereche (dd, gg, >>, <<).
+    vim_pending: Cell<Option<char>>,
     /// Ziua din calendarul lunii care se editează acum.
     pub cal_editing: Cell<Option<u32>>,
     pub view: Cell<View>,
@@ -1041,6 +1043,13 @@ impl App {
                 q.grab_focus();
             }
         };
+        if self.settings.borrow().vim
+            && !ctrl
+            && !mods.contains(gdk::ModifierType::ALT_MASK)
+            && let Some(p) = self.vim_key(key, r, in_quick, &entries, sel, pos)
+        {
+            return p;
+        }
         match key {
             gdk::Key::Up if !ctrl => {
                 let next = match pos {
@@ -1098,6 +1107,69 @@ impl App {
             }
             _ => glib::Propagation::Proceed,
         }
+    }
+
+    /// Schema Vim, în afara câmpurilor de scris („modul normal”).
+    /// `None` = tasta nu e a ei și merge mai departe la tastele obișnuite.
+    fn vim_key(self: &Rc<Self>, key: gdk::Key, r: PageRef, in_quick: bool, entries: &[usize], sel: Option<usize>, pos: Option<usize>) -> Option<glib::Propagation> {
+        let stop = Some(glib::Propagation::Stop);
+        let select = |i: Option<usize>| {
+            if let Some(i) = i {
+                self.selected.set(Some((r, i)));
+                gtk::prelude::GtkWindowExt::set_focus(&self.window, None::<&gtk::Widget>);
+                self.refresh();
+            }
+        };
+        // Esc în câmpul de scris: înapoi în modul normal, pe ultima intrare.
+        if in_quick {
+            if key == gdk::Key::Escape {
+                self.vim_pending.set(None);
+                gtk::prelude::GtkWindowExt::set_focus(&self.window, None::<&gtk::Widget>);
+                select(entries.last().copied());
+                return stop;
+            }
+            return None;
+        }
+        let c = key.to_unicode()?;
+        let prev = self.vim_pending.take();
+        let action = |name: &str| {
+            gtk::prelude::WidgetExt::activate_action(&self.window, name, None).ok();
+        };
+        match (prev, c) {
+            (_, 'j') => select(match pos {
+                Some(p) => entries.get(p + 1).or(entries.get(p)).copied(),
+                None => entries.first().copied(),
+            }),
+            (_, 'k') => select(match pos {
+                Some(p) => entries.get(p.saturating_sub(1)).copied(),
+                None => entries.last().copied(),
+            }),
+            (Some('g'), 'g') => select(entries.first().copied()),
+            (_, 'G') => select(entries.last().copied()),
+            (_, 'h') => action("win.prev"),
+            (_, 'l') => action("win.next"),
+            (_, 't') => self.go(self.today.get()),
+            (_, '/') => action("win.search"),
+            (_, 'x') if sel.is_some() => self.toggle(r, sel.expect("verificat")),
+            (_, 'i' | 'a' | 'c') if sel.is_some() => self.start_edit(r, sel.expect("verificat")),
+            (_, 'i' | 'a' | 'o') => {
+                self.selected.set(None);
+                self.refresh();
+                if let Some((_, page)) = self.key_page()
+                    && let Some(q) = &page.quick
+                {
+                    q.grab_focus();
+                }
+            }
+            (Some('d'), 'd') if sel.is_some() => {
+                return Some(self.entry_key(gdk::Key::Delete, gdk::ModifierType::empty()));
+            }
+            (Some('>'), '>') if sel.is_some() => self.indent_entry(r, sel.expect("verificat"), true),
+            (Some('<'), '<') if sel.is_some() => self.indent_entry(r, sel.expect("verificat"), false),
+            (_, 'g' | 'd' | '>' | '<') => self.vim_pending.set(Some(c)),
+            _ => return None,
+        }
+        stop
     }
 
     fn show_shortcuts(&self) {
@@ -1164,6 +1236,25 @@ impl App {
             }
             dialog.add(sec);
         }
+        // Schema Vim, când e pornită în setări.
+        let title = if self.settings.borrow().vim { tr(l, "Vim (pornit)", "Vim (on)") } else { tr(l, "Vim (se pornește din Setări)", "Vim (turn it on in Preferences)") };
+        let sec = adw::ShortcutsSection::new(Some(title));
+        for (what, accel) in [
+            (tr(l, "Intrarea de dedesubt / de deasupra", "Entry below / above"), "j k"),
+            (tr(l, "Prima / ultima intrare", "First / last entry"), "g&g <Shift>g"),
+            (tr(l, "Pagina de dinainte / de după", "Previous / next page"), "h l"),
+            (tr(l, "Azi", "Today"), "t"),
+            (tr(l, "Bifează sau debifează", "Check or uncheck"), "x"),
+            (tr(l, "Editează intrarea aleasă", "Edit the selected entry"), "i"),
+            (tr(l, "Scrie o intrare nouă", "Write a new entry"), "o"),
+            (tr(l, "Șterge intrarea aleasă", "Delete the selected entry"), "d&d"),
+            (tr(l, "Sub cea de deasupra / scoate-o", "Indent / outdent"), "greater&greater less&less"),
+            (tr(l, "Caută", "Search"), "slash"),
+            (tr(l, "Ieși din câmpul de scris", "Leave the writing field"), "Escape"),
+        ] {
+            sec.add(adw::ShortcutsItem::new(what, accel));
+        }
+        dialog.add(sec);
         // Prefixele scrierii rapide nu sunt scurtături, dar e bine să fie la îndemână.
         let sec = adw::ShortcutsSection::new(Some(tr(l, "Semnele de la începutul rândului", "Signs at the start of a line")));
         for (what, accel) in [
@@ -1353,6 +1444,23 @@ impl App {
             }
         });
         pages.add(&one);
+        let vim = adw::SwitchRow::builder()
+            .title(tr(lang, "Taste ca în Vim", "Vim keys"))
+            .subtitle(tr(
+                lang,
+                "În afara câmpului de scris: j k alege, h l pagina, x bifează, i editează, o scrie, dd șterge, >> << mută, / caută; Esc iese din câmp",
+                "Outside the writing field: j k select, h l page, x check, i edit, o write, dd delete, >> << indent, / search; Esc leaves the field",
+            ))
+            .active(s.vim)
+            .build();
+        let weak = Rc::downgrade(self);
+        vim.connect_active_notify(move |r| {
+            if let Some(app) = weak.upgrade() {
+                app.settings.borrow_mut().vim = r.is_active();
+                app.apply_settings();
+            }
+        });
+        pages.add(&vim);
         page.add(&pages);
 
         let worth = adw::SpinRow::with_range(2.0, 10.0, 1.0);
@@ -1520,6 +1628,39 @@ fn text_css(pct: u32) -> String {
 
 pub fn set_text_size(pct: u32) {
     TEXT_CSS.with(|p| p.load_from_string(&text_css(pct)));
+}
+
+/// Pentru probe: după o clipă (LANRUJ_JOS=1: derulat până jos), captura ferestrei în LANRUJ_PNG, apoi ieșire.
+#[cfg(debug_assertions)]
+fn capture_and_quit(w: &adw::ApplicationWindow) {
+    let Ok(p) = std::env::var("LANRUJ_PNG") else { return };
+    let w = w.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
+        if std::env::var_os("LANRUJ_JOS").is_some() {
+            fn scrolls(w: &gtk::Widget, out: &mut Vec<gtk::ScrolledWindow>) {
+                if let Some(s) = w.downcast_ref::<gtk::ScrolledWindow>() {
+                    out.push(s.clone());
+                }
+                let mut c = w.first_child();
+                while let Some(ch) = c {
+                    scrolls(&ch, out);
+                    c = ch.next_sibling();
+                }
+            }
+            let mut all = Vec::new();
+            scrolls(w.upcast_ref(), &mut all);
+            for s in all {
+                let a = s.vadjustment();
+                a.set_value(a.upper());
+            }
+        }
+        glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+            save_png(&w, &p);
+            if let Some(app) = w.application() {
+                app.quit();
+            }
+        });
+    });
 }
 
 fn load_css() {
@@ -1849,6 +1990,7 @@ fn build_ui(app: &adw::Application) {
         index_add_open: Cell::new(false),
         selected: Cell::new(None),
         exporting: Cell::new(false),
+        vim_pending: Cell::new(None),
     });
     if state.settings.borrow().tray {
         state.set_tray(true);
@@ -2244,6 +2386,10 @@ fn build_ui(app: &adw::Application) {
     }
     state.refresh();
     window.present();
+    // Cu tastele Vim, fereastra pornește în modul normal (nu în câmpul de scris).
+    if state.settings.borrow().vim {
+        gtk::prelude::GtkWindowExt::set_focus(&window, None::<&gtk::Widget>);
+    }
     let weak = Rc::downgrade(&state);
     glib::idle_add_local_once(move || {
         if let Some(s) = weak.upgrade() {
@@ -2592,6 +2738,26 @@ fn build_ui(app: &adw::Application) {
                 }
             });
         }
+        Ok("test-vim") => {
+            // Tastele Vim pe ziua arătată: j j x (bifează a doua), j >> (sub cea de deasupra), dd (șterge), apoi fișierul.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                s.settings.borrow_mut().vim = true;
+                gtk::prelude::GtkWindowExt::set_focus(&s.window, None::<&gtk::Widget>);
+                let path = s.journal.day_path(s.shown.get());
+                eprintln!("selftest-vim: înainte:\n{}", std::fs::read_to_string(&path).unwrap_or_default());
+                let none = gdk::ModifierType::empty();
+                for k in ["j", "j", "x", "j", "greater", "greater", "j", "d", "d"] {
+                    let key = gdk::Key::from_name(k).expect("tastă");
+                    let r = s.entry_key(key, none);
+                    eprintln!("selftest-vim: {k} -> {r:?}, aleasă {:?}", s.selected.get().map(|(_, i)| i));
+                }
+                eprintln!("selftest-vim: după:\n{}", std::fs::read_to_string(&path).unwrap_or_default());
+                if let Some(app) = s.window.application() {
+                    app.quit();
+                }
+            });
+        }
         Ok("test-poze") => {
             let s = state.clone();
             glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
@@ -2749,6 +2915,7 @@ fn build_ui(app: &adw::Application) {
             let w = state.window.clone();
             glib::idle_add_local_once(move || {
                 gtk::prelude::WidgetExt::activate_action(&w, "win.shortcuts", None).ok();
+                capture_and_quit(&w);
             });
         }
         Ok("tava") => {
@@ -2769,37 +2936,7 @@ fn build_ui(app: &adw::Application) {
             let w = state.window.clone();
             glib::idle_add_local_once(move || {
                 gtk::prelude::WidgetExt::activate_action(&w, "win.preferences", None).ok();
-                if let Ok(p) = std::env::var("LANRUJ_PNG") {
-                    let w = w.clone();
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
-                        // LANRUJ_JOS=1: derulează setările până jos înainte de captură.
-                        if std::env::var_os("LANRUJ_JOS").is_some() {
-                            fn scrolls(w: &gtk::Widget, out: &mut Vec<gtk::ScrolledWindow>) {
-                                if let Some(s) = w.downcast_ref::<gtk::ScrolledWindow>() {
-                                    out.push(s.clone());
-                                }
-                                let mut c = w.first_child();
-                                while let Some(ch) = c {
-                                    scrolls(&ch, out);
-                                    c = ch.next_sibling();
-                                }
-                            }
-                            let mut all = Vec::new();
-                            scrolls(w.upcast_ref(), &mut all);
-                            for s in all {
-                                let a = s.vadjustment();
-                                a.set_value(a.upper());
-                            }
-                        }
-                        let w = w.clone();
-                        glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
-                            save_png(&w, &p);
-                            if let Some(app) = w.application() {
-                                app.quit();
-                            }
-                        });
-                    });
-                }
+                capture_and_quit(&w);
             });
         }
         Ok("test-setari") => {

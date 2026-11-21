@@ -56,6 +56,8 @@ pub struct Settings {
     pub backup: Backup,
     pub backup_dir: Option<PathBuf>,
     pub backup_keep: u32,
+    /// Tastele ca în Vim: j/k, h/l, x, dd, >>, i/o, /.
+    pub vim: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,7 +99,7 @@ pub const BACKUPS: [(Backup, &str, &str, &str); 3] = [
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10 }
+        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false }
     }
 }
 
@@ -203,6 +205,9 @@ impl Settings {
         {
             s.backup_keep = n as u32;
         }
+        if let Ok(b) = kf.boolean("lanruj", "taste-vim") {
+            s.vim = b;
+        }
         s
     }
 
@@ -223,6 +228,7 @@ impl Settings {
         kf.set_string("lanruj", "copii", key_of(&BACKUPS, self.backup));
         kf.set_string("lanruj", "copii-dosar", &self.backup_dir.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default());
         kf.set_integer("lanruj", "copii-pastrate", self.backup_keep as i32);
+        kf.set_boolean("lanruj", "taste-vim", self.vim);
         let p = path();
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir)?;
