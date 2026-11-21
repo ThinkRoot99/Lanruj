@@ -84,7 +84,8 @@ impl App {
         // Tragerea: biletul urmează mouse-ul; la sfârșit locul se salvează.
         // Fără mișcare, e un clic: se deschide pentru editare.
         let drag = gtk::GestureDrag::new();
-        let start = Rc::new(Cell::new((x, y)));
+        // Unde a fost apucat biletul (în coordonatele lui), ca să rămână sub cursor.
+        let start = Rc::new(Cell::new((0.0f64, 0.0f64)));
         let moved = Rc::new(Cell::new(false));
         let begun = Rc::new(Cell::new(false));
         {
@@ -98,20 +99,34 @@ impl App {
                     return;
                 }
                 begun.set(true);
-                start.set((n2.margin_start(), n2.margin_top()));
+                start.set((px, py));
                 moved.set(false);
                 n2.add_css_class("trage");
             });
         }
         {
             let (n2, start, moved, over) = (note.clone(), start.clone(), moved.clone(), self.notes_over.clone());
-            drag.connect_drag_update(move |_, dx, dy| {
-                if dx.abs() + dy.abs() > 4.0 {
-                    moved.set(true);
+            drag.connect_drag_update(move |g, dx, dy| {
+                if !moved.get() && dx.abs() + dy.abs() <= 4.0 {
+                    return;
                 }
-                let (sx, sy) = start.get();
-                n2.set_margin_start((sx + dx as i32).clamp(0, (over.width() - 60).max(0)));
-                n2.set_margin_top((sy + dy as i32).clamp(0, (over.height() - 40).max(0)));
+                moved.set(true);
+                // Cursorul, socotit față de caiet (care stă pe loc), nu față de biletul care se mișcă:
+                // altfel cele două se „ceartă” și biletul sare între două locuri.
+                let seq = g.current_sequence();
+                let Some((cx, cy)) = g.point(seq.as_ref()) else { return };
+                let Some(p) = n2.compute_point(&over, &gtk::graphene::Point::new(cx as f32, cy as f32)) else { return };
+                let (gx, gy) = start.get();
+                let nx = (p.x() as f64 - gx).round() as i32;
+                let ny = (p.y() as f64 - gy).round() as i32;
+                let nx = nx.clamp(0, (over.width() - 60).max(0));
+                let ny = ny.clamp(0, (over.height() - 40).max(0));
+                if nx != n2.margin_start() {
+                    n2.set_margin_start(nx);
+                }
+                if ny != n2.margin_top() {
+                    n2.set_margin_top(ny);
+                }
             });
         }
         {

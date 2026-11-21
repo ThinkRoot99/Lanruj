@@ -555,5 +555,5 @@ window.noapte button.sterge-bilet { color: #f7f0cc; }
 textview.bilet-nou, textview.bilet-nou text { background-color: #fff3a8; color: #3a3320; font-family: "Patrick Hand", "Caveat", sans-serif; font-size: 17px; }
 textview.bilet-nou { padding: 10px; border-radius: 4px; }
 button.iesire-ecran { min-width: 36px; min-height: 36px; }
-.bilet.trage { box-shadow: 0 4px 8px alpha(black, 0.22), 0 14px 28px alpha(black, 0.22); }
+.bilet.trage { box-shadow: 0 3px 8px alpha(black, 0.25); }
 .text-bilet { margin-top: 2px; }
