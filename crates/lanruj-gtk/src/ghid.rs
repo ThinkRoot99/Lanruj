@@ -7,7 +7,7 @@ use lanruj_core::Lang;
 use std::rc::Rc;
 
 /// (titlu, text) în română și în engleză. Textul e markup Pango (<b>, <i>, <tt>).
-const CAPITOLE: [(&str, &str, &str, &str); 19] = [
+const CAPITOLE: [(&str, &str, &str, &str); 20] = [
     (
         "Cum începi",
         "O zi obișnuită cu Lanruj:\n\n         <b>1.</b> Deschizi aplicația: ești pe ziua de azi, cu cursorul în câmpul de jos.\n         <b>2.</b> Scrii ce ai de făcut, câte un rând, și apeși Enter după fiecare: <tt>. Sună la bancă</tt>,          <tt>o 18:00 Cină cu familia</tt>, <tt>- Prima zăpadă</tt>.\n         <b>3.</b> Când termini o sarcină, dai clic pe punctul din fața ei: devine ×.\n         <b>4.</b> Ca să adaugi o notiță sub o intrare (de exemplu „frig, dar senin” sub „Plimbare”), o scrii jos,          apoi o alegi cu ↑ și apeși <b>Tab</b>: trece sub intrarea de deasupra.\n         <b>5.</b> Vrei să schimbi ceva? Dublu clic pe intrare (sau clic dreapta → Editează).\n         <b>6.</b> Seara, Lanruj îți arată ce n-ai terminat: alegi mâine, altă zi, renunț sau o las (vezi Migrarea).\n         <b>7.</b> Sub zi pui etichete și nota zilei; cu agrafa din câmpul de jos, poze.\n\n         Pentru lucruri care nu țin de o zi anume: planul săptămânii, lista lunii, Planurile pentru lunile care vin          și Indexul pentru ce vrei să găsești ușor mai târziu.",
@@ -331,6 +331,30 @@ const CAPITOLE: [(&str, &str, &str, &str); 19] = [
          From then on Lanruj asks for the password at every start. If you forgot it: <b>I forgot the password</b>, type the recovery key and choose a new password.\n\n\
          Good to know: other programs (Obsidian, Markor) can't read the files any more; backups and the zip archive stay encrypted; \
          <b>without the password and the recovery key the journal is lost</b>. Also in Preferences you change the password or turn encryption off (the files become text again).",
+    ),
+    (
+        "Încuierea",
+        "În <b>☰ → Setări → Încuierea</b>:\n\n\
+         • <b>La deschidere cere</b>: nimic, o parolă sau un PIN de 4 cifre (se trimite singur la a patra cifră). \
+         La un jurnal necriptat, încuietoarea doar ascunde fereastra: fișierele se pot citi în continuare cu alte programe.\n\
+         • <b>Se încuie la blocarea ecranului</b>: când blochezi calculatorul, Lanruj se ascunde și cere parola sau PIN-ul. \
+         Un jurnal <b>criptat</b> se încuie mereu; după blocarea ecranului cere PIN-ul (dacă ai pus unul) sau parola jurnalului.\n\
+         • <b>Ține minte parola pe acest calculator</b> (jurnal criptat): parola stă în portofelul de chei GNOME. \
+         Portofelul se deschide odată cu sesiunea (la autentificarea automată, în fereastra mică de după pornire), iar Lanruj nu mai cere parola: \
+         fereastra lui de parolă se închide singură.\n\
+         • <b>Pornește odată cu calculatorul</b>.\n\n\
+         Dacă închizi fereastra „Lanruj e încuiat”, Lanruj se oprește, iar jurnalul rămâne încuiat.",
+        "Lock",
+        "In <b>☰ → Preferences → Lock</b>:\n\n\
+         • <b>When opening, ask for</b>: nothing, a password or a 4-digit PIN (sent by itself at the fourth digit). \
+         For an unencrypted journal the lock only hides the window: other programs can still read the files.\n\
+         • <b>Lock when the screen locks</b>: when you lock the computer, Lanruj hides and asks for the password or PIN. \
+         An <b>encrypted</b> journal always locks; after the screen locks it asks for the PIN (if you set one) or the journal password.\n\
+         • <b>Remember the password on this computer</b> (encrypted journal): the password lives in the GNOME keyring. \
+         The keyring opens with your session (with automatic login, in the small window after startup), and Lanruj no longer asks: \
+         its password window closes by itself.\n\
+         • <b>Start with the computer</b>.\n\n\
+         Closing the \"Lanruj is locked\" window quits Lanruj; the journal stays locked.",
     ),
     (
         "Sfaturi utile",

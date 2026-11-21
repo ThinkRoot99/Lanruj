@@ -158,6 +158,21 @@ pub fn set_password(root: &Path, key: &Key, password: &str) -> io::Result<()> {
     write_atomic(&root.join(BY_PASSWORD), &lock_with(password, &key.id)?)
 }
 
+/// Încuie `data` cu un secret (parolă sau PIN), prin scrypt.
+pub fn seal(secret: &str, data: &[u8]) -> io::Result<Vec<u8>> {
+    #[allow(unused_mut)]
+    let mut r = age::scrypt::Recipient::new(SecretString::from(secret.to_string()));
+    #[cfg(test)]
+    r.set_work_factor(10);
+    age::encrypt(&r, data).map_err(io::Error::other)
+}
+
+/// Deschide ce a încuiat `seal`; `None` = secretul nu e bun.
+pub fn unseal(secret: &str, data: &[u8]) -> Option<Vec<u8>> {
+    let id = age::scrypt::Identity::new(SecretString::from(secret.to_string()));
+    age::decrypt(&id, data).ok()
+}
+
 /// Oprește criptarea: șterge cheile (după ce fișierele au fost decriptate).
 pub fn remove(root: &Path) -> io::Result<()> {
     for p in key_files(root) {
@@ -199,6 +214,10 @@ mod tests {
         set_password(&root, &k3, "nouă").unwrap();
         assert!(matches!(unlock(&root, "parola bună"), Err(Unlock::Wrong)));
         assert_eq!(unlock(&root, "nouă").unwrap().decrypt(&data).unwrap(), "- [ ] Sună la bancă\n".as_bytes());
+
+        let sealed = seal("1234", b"lanruj").unwrap();
+        assert_eq!(unseal("1234", &sealed).as_deref(), Some(&b"lanruj"[..]));
+        assert!(unseal("4321", &sealed).is_none());
 
         remove(&root).unwrap();
         assert!(!enabled(&root));

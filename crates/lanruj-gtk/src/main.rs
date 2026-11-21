@@ -4,6 +4,7 @@
 mod bara;
 mod cautare;
 mod cheie;
+mod incuiere;
 mod copii;
 mod export;
 mod ghid;
@@ -1542,6 +1543,131 @@ impl App {
         bk.add(&now);
         page.add(&bk);
 
+        // Încuierea.
+        let enc = self.journal.key().is_some();
+        let lk = adw::PreferencesGroup::builder()
+            .title(tr(lang, "Încuierea", "Lock"))
+            .description(if enc {
+                tr(lang, "Jurnalul e criptat: la pornire se cere parola lui, iar la blocarea ecranului Lanruj se încuie mereu.", "The journal is encrypted: its password is asked at startup, and Lanruj always locks with the screen.")
+            } else {
+                tr(lang, "O parolă sau un PIN la deschidere. Fișierele rămân necriptate (pentru asta, vezi Criptarea).", "A password or PIN when opening. The files stay unencrypted (for that, see Encryption).")
+            })
+            .build();
+        let names: Vec<&str> = setari::LOCKS.iter().map(|(_, _, ro, en)| if lang == Lang::Ro { *ro } else { *en }).collect();
+        let kind = adw::ComboRow::builder()
+            .title(if enc { tr(lang, "După blocarea ecranului cere", "After the screen locks, ask for") } else { tr(lang, "La deschidere cere", "When opening, ask for") })
+            .subtitle(if enc { tr(lang, "„Nimic” = parola jurnalului", "\"Nothing\" = the journal password") } else { "" })
+            .model(&gtk::StringList::new(&names))
+            .build();
+        kind.set_selected(setari::LOCKS.iter().position(|(v, ..)| *v == s.lock).unwrap_or(0) as u32);
+        let screen = adw::SwitchRow::builder()
+            .title(tr(lang, "Se încuie la blocarea ecranului", "Lock when the screen locks"))
+            .active(enc || s.lock_on_screen)
+            .sensitive(!enc && s.lock != setari::Lock::None)
+            .build();
+        let weak = Rc::downgrade(self);
+        let (scr, busy) = (screen.clone(), Rc::new(Cell::new(false)));
+        kind.connect_selected_notify(move |row| {
+            let Some(app) = weak.upgrade() else { return };
+            if busy.get() {
+                return;
+            }
+            let Some((v, ..)) = setari::LOCKS.get(row.selected() as usize).copied() else { return };
+            let before = app.settings.borrow().lock;
+            if v == before {
+                return;
+            }
+            let enc = app.journal.key().is_some();
+            if v == setari::Lock::None {
+                if let Err(e) = incuiere::set_lock(None) {
+                    app.error(&e);
+                }
+                app.settings.borrow_mut().lock = v;
+                app.apply_settings();
+                scr.set_sensitive(false);
+                return;
+            }
+            let (weak, row, scr, busy) = (Rc::downgrade(&app), row.clone(), scr.clone(), busy.clone());
+            incuiere::new_lock_dialog(&app, v, move |ok| {
+                let Some(app) = weak.upgrade() else { return };
+                if ok {
+                    app.settings.borrow_mut().lock = v;
+                    app.apply_settings();
+                    scr.set_sensitive(!enc);
+                } else {
+                    busy.set(true);
+                    row.set_selected(setari::LOCKS.iter().position(|(x, ..)| *x == before).unwrap_or(0) as u32);
+                    busy.set(false);
+                }
+            });
+        });
+        lk.add(&kind);
+        let weak = Rc::downgrade(self);
+        screen.connect_active_notify(move |r| {
+            if let Some(app) = weak.upgrade()
+                && app.journal.key().is_none()
+            {
+                app.settings.borrow_mut().lock_on_screen = r.is_active();
+                app.apply_settings();
+            }
+        });
+        lk.add(&screen);
+        if enc {
+            let remember = adw::SwitchRow::builder()
+                .title(tr(lang, "Ține minte parola pe acest calculator", "Remember the password on this computer"))
+                .subtitle(tr(
+                    lang,
+                    "În portofelul de chei: se deschide odată cu sesiunea (parola de la pornirea calculatorului), iar Lanruj nu o mai cere la pornire.",
+                    "In the keyring: it opens with your session (the login password), and Lanruj no longer asks at startup.",
+                ))
+                .active(s.remember)
+                .build();
+            let (weak, busy) = (Rc::downgrade(self), Rc::new(Cell::new(false)));
+            remember.connect_active_notify(move |r| {
+                let Some(app) = weak.upgrade() else { return };
+                if busy.get() {
+                    return;
+                }
+                let root = app.journal.root().to_path_buf();
+                if !r.is_active() {
+                    app.settings.borrow_mut().remember = false;
+                    app.apply_settings();
+                    glib::spawn_future_local(incuiere::keyring_clear(root));
+                    return;
+                }
+                // Pornit: e nevoie de parola jurnalului, ca să fie pusă în portofel.
+                let (r2, busy2) = (r.clone(), busy.clone());
+                app.ask_password_then(
+                    tr(app.lang, "Ține minte parola", "Remember the password"),
+                    tr(app.lang, "Scrie parola jurnalului; ea se pune în portofelul de chei.", "Type the journal password; it goes into the keyring."),
+                    tr(app.lang, "Ține minte", "Remember"),
+                    move |app, secret| {
+                        app.settings.borrow_mut().remember = true;
+                        app.apply_settings();
+                        app.remember_password(secret);
+                    },
+                    move || {
+                        busy2.set(true);
+                        r2.set_active(false);
+                        busy2.set(false);
+                    },
+                );
+            });
+            lk.add(&remember);
+        }
+        let auto = adw::SwitchRow::builder()
+            .title(tr(lang, "Pornește odată cu calculatorul", "Start with the computer"))
+            .active(incuiere::autostart())
+            .build();
+        let weak = Rc::downgrade(self);
+        auto.connect_active_notify(move |r| {
+            if let (Some(app), Err(e)) = (weak.upgrade(), incuiere::set_autostart(r.is_active())) {
+                app.error(&e);
+            }
+        });
+        lk.add(&auto);
+        page.add(&lk);
+
         // Criptarea.
         let cr = adw::PreferencesGroup::builder()
             .title(tr(lang, "Criptarea", "Encryption"))
@@ -1753,16 +1879,55 @@ fn nav_row(icon: &str, text: &str, extra: Option<&gtk::Label>) -> (gtk::ListBoxR
 }
 
 fn build_ui(app: &adw::Application) {
-    // A doua pornire aduce în față fereastra deja deschisă.
+    // A doua pornire aduce în față fereastra deja deschisă (sau pe cea de încuiere).
+    if incuiere::present_lock() {
+        return;
+    }
     if let Some(w) = app.active_window() {
         w.present();
         return;
     }
-    // Jurnal criptat: întâi parola.
+    // Doar la probe: o încuietoare pusă înainte de pornire (LANRUJ_PUNE_INCUIETOARE=pin:1234).
+    #[cfg(debug_assertions)]
+    if let Ok(v) = std::env::var("LANRUJ_PUNE_INCUIETOARE")
+        && let Some((kind, secret)) = v.split_once(':')
+    {
+        let _ = incuiere::set_lock(Some(secret));
+        let mut st = setari::Settings::load();
+        st.lock = if kind == "pin" { setari::Lock::Pin } else { setari::Lock::Password };
+        st.lock_on_screen = true;
+        let _ = st.save();
+    }
     let root = Journal::default_root();
+    let settings = setari::Settings::load();
+    let lang = settings.lang();
+    // Jurnal criptat: fereastra cu parola apare imediat; dacă parola e ținută minte,
+    // portofelul de chei o dă (după ce se deblochează) și fereastra se închide singură.
     if lanruj_core::crypt::enabled(&root) {
-        let lang = setari::Settings::load().lang();
-        cheie::unlock_window(app, root, lang, |app, key| build_main(app, Some(key)));
+        let opened = Rc::new(Cell::new(false));
+        let o = opened.clone();
+        let win = cheie::unlock_window(app, root.clone(), lang, move |app, key| {
+            if !o.replace(true) {
+                build_main(app, Some(key));
+            }
+        });
+        if settings.remember {
+            let app = app.clone();
+            glib::spawn_future_local(async move {
+                let Some(p) = incuiere::keyring_get(root.clone()).await else { return };
+                let r = root.clone();
+                let Some(k) = gio::spawn_blocking(move || lanruj_core::crypt::unlock(&r, &p).ok()).await.ok().flatten() else { return };
+                if !opened.replace(true) {
+                    build_main(&app, Some(std::sync::Arc::new(k)));
+                    win.destroy();
+                }
+            });
+        }
+        return;
+    }
+    // Jurnal necriptat cu încuietoare: întâi parola sau PIN-ul.
+    if settings.lock != setari::Lock::None {
+        incuiere::lock_window(app, lang, incuiere::Check::Lock(settings.lock), |app| build_main(app, None));
         return;
     }
     build_main(app, None);
@@ -2460,6 +2625,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     }
     state.refresh();
     window.present();
+    state.watch_screen_lock();
     // Cu tastele Vim, fereastra pornește în modul normal (nu în câmpul de scris).
     if state.settings.borrow().vim {
         gtk::prelude::GtkWindowExt::set_focus(&window, None::<&gtk::Widget>);
@@ -2869,6 +3035,36 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                         }
                     });
                 });
+            });
+        }
+        Ok("test-incuie") => {
+            // Ca la blocarea ecranului: Lanruj se încuie, apoi LANRUJ_SECRET îl deschide.
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                s.lock_now();
+                eprintln!("selftest-incuie: încuiat, fereastra jurnalului vizibilă: {}", s.window.is_visible());
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(5000), move || {
+                    eprintln!("selftest-incuie: după secret, fereastra jurnalului vizibilă: {}", s2.window.is_visible());
+                    if let Some(app) = s2.window.application() {
+                        app.quit();
+                    }
+                });
+            });
+        }
+        Ok("test-portofel") => {
+            // Pune parola LANRUJ_PAROLA în portofel (ca „Ține minte”), apoi ieșire.
+            let s = state.clone();
+            s.settings.borrow_mut().remember = true;
+            let _ = s.settings.borrow().save();
+            let root = s.journal.root().to_path_buf();
+            let p = std::env::var("LANRUJ_PAROLA").unwrap_or_default();
+            glib::spawn_future_local(async move {
+                eprintln!("selftest-portofel: pus: {:?}", incuiere::keyring_set(root.clone(), p).await);
+                eprintln!("selftest-portofel: citit înapoi: {}", incuiere::keyring_get(root).await.is_some());
+                if let Some(app) = s.window.application() {
+                    app.quit();
+                }
             });
         }
         Ok("test-cripteaza") => {

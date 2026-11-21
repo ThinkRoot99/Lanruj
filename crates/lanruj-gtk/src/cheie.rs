@@ -59,7 +59,7 @@ fn check_new(lang: Lang, a: &str, b: &str) -> Option<String> {
 
 /// Fereastra de la pornire, când jurnalul e criptat: parola sau cheia de recuperare.
 /// După deschidere cheamă `then` cu cheia și se închide.
-pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: impl Fn(&adw::Application, Arc<Key>) + 'static) {
+pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: impl Fn(&adw::Application, Arc<Key>) + 'static) -> adw::ApplicationWindow {
     let window = adw::ApplicationWindow::builder().application(app).title("Lanruj").default_width(460).default_height(420).build();
     let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::SlideLeftRight).vhomogeneous(false).build();
 
@@ -143,11 +143,19 @@ pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: im
             open.set_label(tr(lang, "Se deschide…", "Opening…"));
             let (window, pass, err, open, root, then) = (window.clone(), pass.clone(), err.clone(), open.clone(), root.clone(), then.clone());
             glib::spawn_future_local(async move {
-                let res = gio::spawn_blocking(move || crypt::unlock(&root, &secret)).await;
+                let r0 = root.clone();
+                let res = gio::spawn_blocking(move || crypt::unlock(&r0, &secret)).await;
                 open.set_sensitive(true);
                 open.set_label(tr(lang, "Deschide", "Open"));
                 match res {
                     Ok(Ok(key)) => {
+                        // Ținută minte: parola (poate schimbată în altă parte) intră din nou în portofel.
+                        if crate::setari::Settings::load().remember {
+                            let (r, p) = (root.clone(), pass.text().to_string());
+                            glib::spawn_future_local(async move {
+                                let _ = crate::incuiere::keyring_set(r, p).await;
+                            });
+                        }
                         if let Some(app) = window.application().and_downcast::<adw::Application>() {
                             then(&app, Arc::new(key));
                         }
@@ -238,6 +246,7 @@ pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: im
         pass.set_text(&p);
         glib::timeout_add_local_once(std::time::Duration::from_millis(600), try_open);
     }
+    window
 }
 
 /// Tipărește un text simplu (cheia de recuperare), prin fereastra de tipărire.
@@ -416,8 +425,23 @@ impl App {
         d.present(Some(&self.window));
     }
 
+    /// Cere parola jurnalului; `then(app, parola)` dacă e bună, `cancel()` dacă fereastra se închide fără ea.
+    pub fn ask_password_then(self: &Rc<Self>, title: &str, intro: &str, button: &str, then: impl Fn(&Rc<App>, String) + 'static, cancel: impl Fn() + 'static) {
+        let done = Rc::new(std::cell::Cell::new(false));
+        let d2 = done.clone();
+        let d = self.ask_password(title, intro, None, button, move |app, secret, _| {
+            d2.set(true);
+            then(app, secret);
+        });
+        d.connect_closed(move |_| {
+            if !done.get() {
+                cancel();
+            }
+        });
+    }
+
     /// Cere parola de acum, apoi face `then` (pentru schimbarea parolei și oprirea criptării).
-    fn ask_password(self: &Rc<Self>, title: &str, intro: &str, extra: Option<(gtk::PasswordEntry, gtk::PasswordEntry)>, button: &str, then: impl Fn(&Rc<App>, String, Option<String>) + 'static) {
+    fn ask_password(self: &Rc<Self>, title: &str, intro: &str, extra: Option<(gtk::PasswordEntry, gtk::PasswordEntry)>, button: &str, then: impl Fn(&Rc<App>, String, Option<String>) + 'static) -> adw::Dialog {
         let lang = self.lang;
         let b = page_box();
         b.append(&text(intro, &[]));
@@ -458,11 +482,12 @@ impl App {
                     show_error(&err, tr(lang, "Parola nu e bună.", "Wrong password."));
                     return;
                 }
-                dl.close();
                 then(&app, secret, newp);
+                dl.close();
             });
         });
         d.present(Some(&self.window));
+        d
     }
 
     /// Setări → Criptarea → Schimbă parola.
@@ -478,11 +503,15 @@ impl App {
                 let (Some(key), Some(newp)) = (app.journal.key(), newp) else { return };
                 let root = app.journal.root().to_path_buf();
                 let weak = Rc::downgrade(app);
+                let newp2 = newp.clone();
                 glib::spawn_future_local(async move {
                     let res = gio::spawn_blocking(move || crypt::set_password(&root, &key, &newp)).await;
                     let Some(app) = weak.upgrade() else { return };
                     match res {
-                        Ok(Ok(())) => app.toast(tr(app.lang, "Parola e schimbată.", "The password is changed.")),
+                        Ok(Ok(())) => {
+                            app.remember_password(newp2);
+                            app.toast(tr(app.lang, "Parola e schimbată.", "The password is changed."));
+                        }
                         Ok(Err(e)) => app.error(&e),
                         Err(_) => {}
                     }
@@ -525,6 +554,9 @@ impl App {
                     match res {
                         Ok(Ok(n)) => {
                             app.journal.set_key(None);
+                            app.settings.borrow_mut().remember = false;
+                            app.apply_settings();
+                            glib::spawn_future_local(crate::incuiere::keyring_clear(app.journal.root().to_path_buf()));
                             let msg = match app.lang {
                                 Lang::Ro => format!("Criptarea e oprită ({n} fișiere decriptate)."),
                                 Lang::En => format!("Encryption is off ({n} files decrypted)."),
