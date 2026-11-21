@@ -10,7 +10,7 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 
 #### Added
 - **Writing font** in Preferences: the system font or one of seven fonts that come with the app (Inter, Noto Sans, Caveat, Patrick Hand, Lora, Courier Prime, Nunito), applied to the notebook pages only. Handwriting fonts are shown slightly larger so they stay easy to read.
-- **First start**: a short welcome in three steps (language, paper, optional encryption with a recovery key), after which today's page opens with a small example of the signs.
+- **First start**: a short welcome in three steps (language; paper, font and text size; optional encryption with a recovery key), after which today's page opens with a small example of the signs.
 - **Tracking**, with three tabs, month by month:
   - **Activities**: your own list, ticked (coffee, making the bed), counted (push-ups; water in glasses) or timed (plank), day by day, with how many days you did each one and, for counted ones, the total and daily average. The list carries over to the following months.
   - **Sleep**: how long you slept at night and during the day, with an automatic chart of the month and the averages.

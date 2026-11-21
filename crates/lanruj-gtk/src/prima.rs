@@ -32,6 +32,9 @@ struct Choice {
     lang: Lang,
     paper: Paper,
     color: PaperColor,
+    /// Fontul paginilor („” = al sistemului) și mărimea textului, în procente.
+    font: String,
+    text: u32,
     encrypt: bool,
     password: String,
     /// Cheia și codul de recuperare, generate când se ajunge la pasul cheii.
@@ -58,9 +61,9 @@ fn label(s: &str, classes: &[&str]) -> gtk::Label {
 
 /// Fereastra primei porniri; `then` deschide caietul la sfârșit.
 pub fn show(app: &adw::Application, root: PathBuf, then: impl Fn(&adw::Application, Option<Arc<Key>>) + 'static) {
-    let window = adw::ApplicationWindow::builder().application(app).title("Lanruj").default_width(760).default_height(620).build();
+    let window = adw::ApplicationWindow::builder().application(app).title("Lanruj").default_width(780).default_height(760).build();
     window.add_css_class("lanruj");
-    let choice = Choice { lang: Lang::from_env(), paper: Paper::Dots, color: PaperColor::Warm, encrypt: false, password: String::new(), key: None };
+    let choice = Choice { lang: Lang::from_env(), paper: Paper::Dots, color: PaperColor::Warm, font: String::new(), text: 100, encrypt: false, password: String::new(), key: None };
     let w = Rc::new(Wizard { window: window.clone(), root, choice: RefCell::new(choice), step: Cell::new(0), key_ok: Cell::new(false), then: Box::new(then) });
     let style = adw::StyleManager::default();
     let set_night = {
@@ -77,6 +80,14 @@ pub fn show(app: &adw::Application, root: PathBuf, then: impl Fn(&adw::Applicati
     // LANRUJ_PRIMA_GATA termină singur (cu cheia de recuperare confirmată).
     #[cfg(debug_assertions)]
     {
+        if let Ok(f) = std::env::var("LANRUJ_PRIMA_FONT") {
+            {
+                let mut c = w.choice.borrow_mut();
+                c.font = f;
+                c.text = 115;
+            }
+            w.apply_writing();
+        }
         if let Ok(p) = std::env::var("LANRUJ_PRIMA_CRIPT") {
             let mut c = w.choice.borrow_mut();
             c.encrypt = true;
@@ -279,8 +290,15 @@ impl Wizard {
 
     fn page_paper(self: &Rc<Self>, b: &gtk::Box) {
         let lang = self.lang();
-        b.append(&label(tr(lang, "Hârtia caietului", "Your paper"), &["title-2"]));
-        b.append(&label(tr(lang, "Alege modelul și culoarea paginilor. Noaptea, hârtia se întunecă singură, după sistem.", "Choose the pattern and colour of the pages. At night the paper darkens by itself, following the system."), &["dim-label"]));
+        b.append(&label(tr(lang, "Hârtia și scrisul", "Paper and writing"), &["title-2"]));
+        b.append(&label(
+            tr(
+                lang,
+                "Alege cum arată paginile: modelul și culoarea hârtiei, fontul și mărimea scrisului. Noaptea, hârtia se întunecă singură, după sistem.",
+                "Choose how your pages look: the paper's pattern and colour, the font and the text size. At night the paper darkens by itself, following the system.",
+            ),
+            &["dim-label"],
+        ));
         // Mostra: o bucată de pagină cu câteva rânduri.
         let sample = gtk::Box::new(gtk::Orientation::Vertical, 4);
         sample.add_css_class("pagina");
@@ -344,6 +362,52 @@ impl Wizard {
             row.append(&t);
         }
         b.append(&row);
+
+        // Fontul și mărimea scrisului; mostra de sus se schimbă pe loc.
+        b.append(&label(tr(lang, "Fontul", "Font"), &["heading"]));
+        let mut names: Vec<&str> = vec![tr(lang, "Al sistemului", "System font")];
+        names.extend(crate::fonturi::FONTS.iter().map(|f| if lang == Lang::Ro { f.ro } else { f.en }));
+        let font = gtk::DropDown::builder().model(&gtk::StringList::new(&names)).halign(gtk::Align::Start).build();
+        let cur_font = self.choice.borrow().font.clone();
+        font.set_selected(crate::fonturi::FONTS.iter().position(|f| f.key == cur_font).map(|i| i as u32 + 1).unwrap_or(0));
+        let w = self.clone();
+        font.connect_selected_notify(move |d| {
+            let key = match d.selected() {
+                0 => String::new(),
+                i => crate::fonturi::FONTS.get(i as usize - 1).map(|f| f.key.to_string()).unwrap_or_default(),
+            };
+            w.choice.borrow_mut().font = key;
+            w.apply_writing();
+        });
+        b.append(&font);
+        b.append(&label(tr(lang, "Mărimea textului", "Text size"), &["heading"]));
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.set_homogeneous(true);
+        let mut first: Option<gtk::ToggleButton> = None;
+        let cur = self.choice.borrow().text;
+        for (v, _, ro, en) in setari::TEXT_SIZES {
+            let t = gtk::ToggleButton::builder().label(tr(lang, ro, en)).active(v == cur).build();
+            if let Some(f) = &first {
+                t.set_group(Some(f));
+            } else {
+                first = Some(t.clone());
+            }
+            let w = self.clone();
+            t.connect_toggled(move |x| {
+                if x.is_active() {
+                    w.choice.borrow_mut().text = v;
+                    w.apply_writing();
+                }
+            });
+            row.append(&t);
+        }
+        b.append(&row);
+    }
+
+    /// Fontul și mărimea alese se văd pe loc (în mostră și apoi în caiet).
+    fn apply_writing(&self) {
+        let c = self.choice.borrow();
+        crate::set_text_size(c.text, &c.font);
     }
 
     fn page_encryption(self: &Rc<Self>, b: &gtk::Box) {
@@ -438,6 +502,8 @@ impl Wizard {
         s.lang = Some(c.lang);
         s.paper = c.paper;
         s.color = c.color;
+        s.font = c.font.clone();
+        s.text = c.text;
         if let Err(e) = s.save() {
             eprintln!("lanruj: setările: {e}");
         }
