@@ -31,6 +31,7 @@ pub struct Sheet {
     t: Tracking,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn text(cr: &cairo::Context, x: f64, y: f64, s: &str, size: f64, bold: bool, color: (f64, f64, f64), width: Option<f64>, center: bool) -> f64 {
     let layout = pangocairo::functions::create_layout(cr);
     let mut fd = pango::FontDescription::from_string("Sans");
@@ -266,7 +267,7 @@ impl Sheet {
 
         // Totalurile.
         let tot = self.t.totals();
-        let h = |m: u32| if m % 60 == 0 { format!("{} h", m / 60) } else { format!("{} h {} min", m / 60, m % 60) };
+        let h = |m: u32| if m.is_multiple_of(60) { format!("{} h", m / 60) } else { format!("{} h {} min", m / 60, m % 60) };
         let rows = [
             (tr(lang, "Servicii", "Duties"), format!("{} ({} h)", tot.shifts, tot.shifts * Shift::HOURS)),
             (tr(lang, "Rezerve", "Standbys"), tot.reserve.to_string()),
