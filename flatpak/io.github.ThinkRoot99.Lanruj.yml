@@ -55,4 +55,5 @@ modules:
           - flatpak/repo
           - flatpak/.flatpak-builder
           - flatpak/lanruj.flatpak
+          - appimage
       - cargo-sources.json
