@@ -1,23 +1,25 @@
 #!/bin/sh
-# Pornirea lui Lanruj din AppImage: bibliotecile, modulele GTK și datele vin din pachet;
-# glibc, driverele grafice, fonturile sistemului și fontconfig vin din sistem.
+# Pornirea lui Lanruj din AppImage. Pachetul are tot: glibc și încărcătorul ei (ld-linux), GTK, libadwaita,
+# fontconfig. Din sistem se folosesc doar nucleul, ecranul (Wayland sau X11), fonturile și setările lor.
+# Așa merge pe orice distribuție, oricât de veche ar fi glibc-ul ei.
 HERE="$(dirname "$(readlink -f "$0")")"
 LIB="$HERE/usr/lib"
 
-export LD_LIBRARY_PATH="$LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
-export GTK_PATH="$LIB/gtk-4.0"
-export GTK_EXE_PREFIX="$HERE/usr"
-export GTK_DATA_PREFIX="$HERE/usr"
-# Doar modulele GIO din pachet: cele ale sistemului sunt făcute pentru alt glib.
-export GIO_MODULE_DIR="$LIB/gio/modules"
+# Fără placa video: driverele grafice ale sistemului sunt legate de glibc-ul sistemului și nu se pot
+# amesteca cu cea din pachet. Pentru un jurnal, desenarea cu procesorul ajunge.
+export GSK_RENDERER=cairo
+export GDK_DISABLE=gl,vulkan
 
-# Lista încărcătoarelor de imagini (SVG, PNG…) are căi absolute; se scrie la fiecare pornire.
+# Rezervele din pachet, doar dacă sistemul nu are configurația tastaturii sau a fonturilor.
+[ -d /usr/share/X11/xkb ] || export XKB_CONFIG_ROOT="$HERE/usr/share/X11/xkb"
+[ -f /etc/fonts/fonts.conf ] || export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
+
+# Lista încărcătoarelor de imagini (SVG pentru iconițe) are căi absolute; se scrie la fiecare pornire.
 CACHE="${XDG_RUNTIME_DIR:-/tmp}/lanruj-appimage-$(id -u)"
 mkdir -p "$CACHE"
 sed "s#@APPDIR@#$HERE#g" "$LIB/gdk-pixbuf-2.0/loaders.cache.in" > "$CACHE/loaders.cache"
 export GDK_PIXBUF_MODULE_FILE="$CACHE/loaders.cache"
-export GDK_PIXBUF_MODULEDIR="$LIB/gdk-pixbuf-2.0/loaders"
 
-exec "$HERE/usr/bin/lanruj" "$@"
+# Programul pornește prin încărcătorul din pachet, cu bibliotecile din pachet.
+exec "$LIB/ld-linux-x86-64.so.2" --library-path "$LIB" "$HERE/usr/bin/lanruj" "$@"

@@ -7,6 +7,7 @@ mod cautare;
 mod jurnal;
 mod cheie;
 mod incuiere;
+mod integrare;
 mod vechi;
 mod copii;
 mod export;
@@ -4215,6 +4216,7 @@ fn main() -> glib::ExitCode {
         gio::ApplicationFlags::empty()
     };
     vechi::migrate();
+    integrare::appimage();
     let app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
     app.connect_startup(|_| {
         fonturi::register();

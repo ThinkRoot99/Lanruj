@@ -152,7 +152,12 @@ pub fn set_autostart(on: bool) -> std::io::Result<()> {
             _ => Ok(()),
         };
     }
-    let exe = std::env::current_exe()?;
+    // Din AppImage, programul pornește prin încărcătorul din pachet: pornirea automată trebuie să ducă la
+    // fișierul .AppImage (variabila APPIMAGE, pusă de AppImage), nu la program.
+    let exe = match std::env::var_os("APPIMAGE").filter(|p| !p.is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_exe()?,
+    };
     if let Some(d) = p.parent() {
         std::fs::create_dir_all(d)?;
     }

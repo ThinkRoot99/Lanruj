@@ -7,7 +7,8 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 ## [Unreleased]
 
 ### Added
-- **Packages**: a Flatpak (GNOME 51) and an AppImage built on Ubuntu 26.04 LTS, both on the GitHub releases page. The recipes are in `flatpak/` and `appimage/` (`sh appimage/construieste.sh`, with podman).
+- **Packages**: a Flatpak (GNOME 51) and an AppImage, both on the GitHub releases page. The AppImage carries everything it needs, glibc included, so it runs on Debian 13, Ubuntu 24.04 and Linux Mint 22 or newer, Fedora, openSUSE Leap 16 and Arch; it draws without the graphics card. The recipes are in `flatpak/` and `appimage/` (`sh appimage/construieste.sh`, with podman; `appimage/proba.sh` starts the AppImage on bare images of these distributions).
+- **The AppImage in the menu**: at every start it puts its launcher and icons in `~/.local/share`, so it shows in the applications menu of any desktop, and the launcher follows the file if you move it.
 
 ### Fixed
 - **The tray icon in packages**: its picture is now inside the program, so it also shows in Flatpak and AppImage, where the project folder does not exist.

@@ -34,12 +34,10 @@ PB=$(find /usr/lib -type d -path '*gtk-4.0/4.0.0/printbackends' | head -1)
 mkdir -p "$APPDIR/usr/lib/gtk-4.0/4.0.0"
 [ -z "$PB" ] || cp -a "$PB" "$APPDIR/usr/lib/gtk-4.0/4.0.0/"
 PIXBUF=$(pkg-config --variable=gdk_pixbuf_moduledir gdk-pixbuf-2.0)
-mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0/loaders" "$APPDIR/usr/lib/gio/modules"
+mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0/loaders"
 cp -a "$PIXBUF"/*.so "$APPDIR/usr/lib/gdk-pixbuf-2.0/loaders/" 2>/dev/null || true
 GDK_PIXBUF_MODULEDIR="$APPDIR/usr/lib/gdk-pixbuf-2.0/loaders" $SYS/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders \
     | sed "s#$APPDIR#@APPDIR@#g" > "$APPDIR/usr/lib/gdk-pixbuf-2.0/loaders.cache.in"
-# dconf, ca setările GTK ale sistemului (tema, fontul) să fie citite
-[ -f $SYS/gio/modules/libdconfsettings.so ] && cp $SYS/gio/modules/libdconfsettings.so "$APPDIR/usr/lib/gio/modules/"
 
 # ---- Datele: schemele GSettings și tema de iconițe Adwaita (doar cele simbolice) ----
 mkdir -p "$APPDIR/usr/share/glib-2.0/schemas"
@@ -51,11 +49,16 @@ cp -a /usr/share/icons/Adwaita/symbolic "$APPDIR/usr/share/icons/Adwaita/"
 [ -d /usr/share/icons/Adwaita/scalable ] && cp -a /usr/share/icons/Adwaita/scalable "$APPDIR/usr/share/icons/Adwaita/"
 cp /usr/share/icons/hicolor/index.theme "$APPDIR/usr/share/icons/hicolor/"
 
+# ---- Rezerve pentru sistemele fără ele: configurația tastaturii (XKB) și a fonturilor ----
+[ -d /usr/share/X11/xkb ] && { mkdir -p "$APPDIR/usr/share/X11"; cp -aL /usr/share/X11/xkb "$APPDIR/usr/share/X11/"; }
+[ -d /etc/fonts ] && { mkdir -p "$APPDIR/etc"; cp -aL /etc/fonts "$APPDIR/etc/"; }
+
 # ---- Bibliotecile ----
-# Nu intră în pachet ce trebuie să vină din sistem: glibc, driverele grafice (GL, EGL, Vulkan, DRM, GBM),
-# fontconfig și freetype (legate de configurarea fonturilor sistemului) și X11/xcb.
-# Lista urmează excludelist-ul proiectului AppImage.
-EXCLUDE='^(ld-linux|libc|libm|libdl|libpthread|librt|libresolv|libutil|libnsl|libanl|libmvec|libBrokenLocale|libthread_db|libGL|libGLX|libGLdispatch|libOpenGL|libEGL|libGLESv2|libvulkan|libdrm|libgbm|libfontconfig|libfreetype|libharfbuzz|libX11|libX11-xcb|libxcb|libxcb-.*|libxshmfence|libasound|libjack|libuuid|libcom_err|libgpg-error|libexpat|libz)\.so'
+# Intră toate, inclusiv glibc și încărcătorul ei: pachetul nu depinde de versiunile din sistem.
+# libGL, libEGL și celelalte din libglvnd intră și ele (GTK e legat de ele), dar sunt doar dispecerii care
+# aleg driverul plăcii video; driverul nu se încarcă, pentru că AppRun oprește folosirea plăcii video.
+EXCLUDE='^$'
+cp -L /lib64/ld-linux-x86-64.so.2 "$APPDIR/usr/lib/ld-linux-x86-64.so.2"
 
 collect() {
     ldd "$1" | awk '/=> \//{print $3}' | while read -r lib; do
@@ -67,7 +70,7 @@ collect() {
     done
 }
 collect "$APPDIR/usr/bin/lanruj"
-find "$APPDIR/usr/lib/gtk-4.0" "$APPDIR/usr/lib/gdk-pixbuf-2.0" "$APPDIR/usr/lib/gio" -name '*.so' | while read -r m; do collect "$m"; done
+find "$APPDIR/usr/lib/gtk-4.0" "$APPDIR/usr/lib/gdk-pixbuf-2.0" -name '*.so' | while read -r m; do collect "$m"; done
 
 # Verificare: nicio bibliotecă lipsă
 missing=$(for f in "$APPDIR/usr/bin/lanruj" $(find "$APPDIR/usr/lib" -name '*.so*'); do
