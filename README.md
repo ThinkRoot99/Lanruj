@@ -4,7 +4,7 @@ A bullet journal app for Linux, built with GTK 4 and libadwaita. Lanruj helps yo
 
 The name is "jurnal" (Romanian for *journal*) written backwards.
 
-Lanruj is built by Claude, the AI made by Anthropic, and tested by ThinkRoot, who decides what goes into it and tries every version before it is released.
+Lanruj is built by Claude, the AI made by Anthropic, and tested by ThinkRoot.
 
 ![Lanruj showing yesterday and today side by side, with tasks, events and notes](data/screenshots/zi.png)
 
@@ -25,7 +25,7 @@ Lanruj is built by Claude, the AI made by Anthropic, and tested by ThinkRoot, wh
 - **Colours, links, pictures and files** inside your pages.
 - **Export** to PDF (a page as it looks, several days, the journal or the month's Tracking on A4 sheets), **printing**, and the whole journal as a **zip** archive, with or without a password.
 - **Lock** with a password or a 4-digit PIN, locking when the screen locks, and **optional encryption** of every file (age), with a recovery key.
-- **Automatic backups**, a **keyboard-first** design (every action has a key, listed with Ctrl+?) with an optional **Vim key scheme**, full screen with only the pages, several paper styles, seven built-in fonts and a dark mode.
+- **Automatic backups**, a **keyboard-first** design (every action has a key, listed with Ctrl+? and in [Keyboard shortcuts](docs/keyboard-shortcuts.md), also [in Romanian](docs/scurtaturi-de-taste.md)) with an optional **Vim key scheme**, full screen with only the pages, several paper styles, seven built-in fonts and a dark mode.
 - A **first start** in three steps (language; paper, font and text size; optional encryption) and a guide (F1).
 - Available in **English** and **Romanian**.
 
