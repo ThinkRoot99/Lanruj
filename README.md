@@ -4,6 +4,10 @@ A bullet journal app for Linux, built with GTK 4 and libadwaita. Lanruj helps yo
 
 The name is "jurnal" (Romanian for *journal*) written backwards.
 
+Lanruj is built by Claude, the AI made by Anthropic, and tested by ThinkRoot, who decides what goes into it and tries every version before it is released.
+
+![Lanruj showing yesterday and today side by side, with tasks, events and notes](data/screenshots/zi.png)
+
 ## Features
 
 - **Day, week and month pages** and a **future log**, with yesterday and today side by side.
@@ -127,6 +131,7 @@ LANRUJ_DIR=/path/to/a/test/folder cargo run
 - `crates/lanruj-gtk`: the GTK application.
 - `data/icons`: the app icon.
 - `data/fonts`: the bundled fonts and their licences.
+- `data/screenshots`: the screenshot shown above.
 - `flatpak`: the Flatpak recipe; `appimage`: the AppImage build (`sh appimage/construieste.sh`, in an Ubuntu 26.04 container with podman) and its test on bare images of several distributions (`appimage/proba.sh`).
 
 ## Fonts

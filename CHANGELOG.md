@@ -6,6 +6,9 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 
 ## [Unreleased]
 
+### Changed
+- **README**: a screenshot of the app, and who makes Lanruj: it is built by Claude, the AI made by Anthropic, and tested by ThinkRoot.
+
 ## [0.4.2] - 2026-11-27
 
 ### Changed
