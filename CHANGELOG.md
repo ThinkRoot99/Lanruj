@@ -6,11 +6,13 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 
 ## [Unreleased]
 
-### Fixed
-- **AppImage: no more font warnings** on distributions with a newer fontconfig than the package (such as Arch and CachyOS): the AppImage always uses its own font configuration, which still reads the system's fonts and your settings in `~/.config/fontconfig`.
+## [0.4.2] - 2026-11-27
 
 ### Changed
 - **README**: how to install, update and uninstall the AppImage and the Flatpak (for you only, without a password, or for all users), and what stays behind (settings, the journal, the backups).
+
+### Fixed
+- **AppImage: no more font warnings** on distributions with a newer fontconfig than the package (such as Arch and CachyOS): the AppImage always uses its own font configuration, which still reads the system's fonts and your settings in `~/.config/fontconfig`.
 
 ## [0.4.1] - 2026-11-27
 

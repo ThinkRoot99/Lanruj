@@ -98,6 +98,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.2" date="2026-11-27">
+      <description>
+        <p>The AppImage no longer fills the log with font warnings on distributions with a newer fontconfig; the README explains how to install and uninstall both packages.</p>
+      </description>
+    </release>
     <release version="0.4.1" date="2026-11-27">
       <description>
         <p>Packages for Flatpak and AppImage that run on Debian 13, Ubuntu 24.04 and Linux Mint 22 or newer, Fedora, openSUSE and Arch; English by default; a new About window; the app's texts proofread; the tray icon fixed in packages.</p>
