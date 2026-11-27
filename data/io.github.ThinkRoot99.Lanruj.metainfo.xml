@@ -98,6 +98,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.1" date="2026-11-27">
+      <description>
+        <p>Packages for Flatpak and AppImage that run on Debian 13, Ubuntu 24.04 and Linux Mint 22 or newer, Fedora, openSUSE and Arch; English by default; a new About window; the app's texts proofread; the tray icon fixed in packages.</p>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-11-27">
       <description>
         <p>Text size and subheadings in the journal, the journal in the Index, and printing only the open day.</p>

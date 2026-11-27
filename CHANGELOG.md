@@ -6,12 +6,11 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-27
+
 ### Added
 - **Packages**: a Flatpak (GNOME 51) and an AppImage, both on the GitHub releases page. The AppImage carries everything it needs, glibc included, so it runs on Debian 13, Ubuntu 24.04 and Linux Mint 22 or newer, Fedora, openSUSE Leap 16 and Arch; it draws without the graphics card. The recipes are in `flatpak/` and `appimage/` (`sh appimage/construieste.sh`, with podman; `appimage/proba.sh` starts the AppImage on bare images of these distributions).
 - **The AppImage in the menu**: at every start it puts its launcher and icons in `~/.local/share`, so it shows in the applications menu of any desktop, and the launcher follows the file if you move it.
-
-### Fixed
-- **The tray icon in packages**: its picture is now inside the program, so it also shows in Flatpak and AppImage, where the project folder does not exist.
 
 ### Changed
 - **Contact address**: lanruj@thinkopen.site (About → Support questions).
@@ -19,6 +18,9 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 - **The app's texts proofread** in both languages: grammar ("acesteia", "Mutată de 3 ori" / "Moved 3 times"), clearer hints and messages, the tracking totals named as days, "Linii" for lined paper, and a guide brought up to date (printing a day, where the journal, Tracking and notes are kept).
 - **English by default**: the first start opens in English, whatever the system language, and a new installation starts in English; Romanian is one click away, and "Follow system" stays available in Preferences.
 - **About**: like other GNOME apps - the author with "© 2026 ThinkRoot", Credits, Legal (the licence in a short sentence, the seven fonts under the SIL Open Font License, the note about the Bullet Journal method) and a link for help questions by e-mail; the old description and the Details page are gone.
+
+### Fixed
+- **The tray icon in packages**: its picture is now inside the program, so it also shows in Flatpak and AppImage, where the project folder does not exist.
 
 ## [0.4.0] - 2026-11-27
 
