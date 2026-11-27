@@ -11,4 +11,4 @@ culori_proba.py
 flatpak/build-dir/
 flatpak/repo/
 flatpak/.flatpak-builder/
-flatpak/*.flatpak
+# pachetul gata de instalat (flatpak/lanruj.flatpak) intră în depozit
