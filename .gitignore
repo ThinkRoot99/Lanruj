@@ -7,3 +7,8 @@ idei pentru *.txt
 # Unelte locale, nu fac parte din codul aplicației
 jurnal_proba.py
 culori_proba.py
+# Construirea Flatpak (rezultatele, nu rețeta)
+flatpak/build-dir/
+flatpak/repo/
+flatpak/.flatpak-builder/
+flatpak/*.flatpak

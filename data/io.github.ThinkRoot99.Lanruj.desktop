@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Lanruj
+GenericName=Bullet Journal
+GenericName[ro]=Jurnal de tip bullet journal
+Comment=Plan your days, track your habits and keep a journal
+Comment[ro]=Planifică-ți zilele, urmărește-ți obiceiurile și ține un jurnal
+Exec=lanruj
+Icon=io.github.ThinkRoot99.Lanruj
+Terminal=false
+StartupNotify=true
+Categories=Office;Calendar;
+Keywords=journal;bujo;planner;diary;notes;tasks;habits;
+Keywords[ro]=jurnal;agendă;planificare;notițe;sarcini;obiceiuri;

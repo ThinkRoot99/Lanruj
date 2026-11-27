@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 ThinkRoot -->
+<component type="desktop-application">
+  <id>io.github.ThinkRoot99.Lanruj</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Lanruj</name>
+  <summary>Plan your days and keep a journal</summary>
+  <summary xml:lang="ro">Planifică-ți zilele și ține un jurnal</summary>
+
+  <developer id="site.thinkopen">
+    <name>ThinkRoot</name>
+  </developer>
+
+  <description>
+    <p>Lanruj is a bullet journal app for Linux, for taking notes and organising your time and routines. Your journal stays on your computer, as plain Markdown files, with optional encryption.</p>
+    <p xml:lang="ro">Lanruj este o aplicație de tip „bullet journal” pentru Linux, pentru notițe și pentru organizarea timpului și a rutinelor. Jurnalul rămâne pe calculatorul tău, în fișiere Markdown obișnuite, cu criptare opțională.</p>
+    <ul>
+      <li>Day, week and month pages and a future log, with quick lines for tasks, events and notes</li>
+      <li xml:lang="ro">Pagina zilei, a săptămânii și a lunii și Planurile, cu rânduri scurte pentru sarcini, evenimente și notițe</li>
+      <li>Evening migration of unfinished tasks: move, schedule, drop or keep</li>
+      <li xml:lang="ro">Migrarea de seară a sarcinilor neterminate: le muți, le programezi, renunți la ele sau le lași</li>
+      <li>A journal for writing at length, with fonts, headings, lists, colours and links to your tasks</li>
+      <li xml:lang="ro">Un jurnal în care scrii pe larg, cu fonturi, titluri, liste, culori și legături spre sarcinile tale</li>
+      <li>Tracking of activities, sleep and work days, with charts and printable sheets</li>
+      <li xml:lang="ro">Monitorizarea activităților, a somnului și a zilelor de serviciu, cu grafice și foi de tipărit</li>
+      <li>Index, tags and search across everything</li>
+      <li xml:lang="ro">Index, etichete și căutare peste tot</li>
+      <li>Lock with a password or PIN, optional encryption and automatic backups</li>
+      <li xml:lang="ro">Blocare cu parolă sau PIN, criptare opțională și copii de siguranță automate</li>
+    </ul>
+    <p>Lanruj is an independent app and is not affiliated with the Bullet Journal method or its creator, Ryder Carroll.</p>
+    <p xml:lang="ro">Lanruj este o aplicație independentă și nu are legătură cu metoda Bullet Journal sau cu autorul ei, Ryder Carroll.</p>
+  </description>
+
+  <launchable type="desktop-id">io.github.ThinkRoot99.Lanruj.desktop</launchable>
+  <provides>
+    <binary>lanruj</binary>
+  </provides>
+
+  <url type="homepage">https://lanruj.thinkopen.site/</url>
+  <url type="bugtracker">https://github.com/ThinkRoot99/Lanruj/issues</url>
+  <url type="vcs-browser">https://github.com/ThinkRoot99/Lanruj</url>
+  <url type="contact">https://lanruj.thinkopen.site/contact.html</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Yesterday and today, side by side</caption>
+      <image>https://lanruj.thinkopen.site/assets/img/screenshots/zi.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A journal for writing at length</caption>
+      <image>https://lanruj.thinkopen.site/assets/img/screenshots/jurnal.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Tracking, month by month</caption>
+      <image>https://lanruj.thinkopen.site/assets/img/screenshots/monitorizare.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The week page</caption>
+      <image>https://lanruj.thinkopen.site/assets/img/screenshots/saptamana.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The evening migration</caption>
+      <image>https://lanruj.thinkopen.site/assets/img/screenshots/migrare.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>At night</caption>
+      <image>https://lanruj.thinkopen.site/assets/img/screenshots/zi-noapte.png</image>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#f6efe0</color>
+    <color type="primary" scheme_preference="dark">#1f3a5f</color>
+  </branding>
+
+  <content_rating type="oars-1.1"/>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <categories>
+    <category>Office</category>
+  </categories>
+  <keywords>
+    <keyword>journal</keyword>
+    <keyword>bullet journal</keyword>
+    <keyword>planner</keyword>
+    <keyword>diary</keyword>
+    <keyword>habits</keyword>
+  </keywords>
+
+  <releases>
+    <release version="0.4.0" date="2026-11-27">
+      <description>
+        <p>Text size and subheadings in the journal, the journal in the Index, and printing only the open day.</p>
+      </description>
+    </release>
+    <release version="0.3.0" date="2026-11-21">
+      <description>
+        <p>Tracking, the first start, built-in fonts, notes, the journal and search everywhere.</p>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-11-21">
+      <description>
+        <p>Export and printing, Vim keys, encryption and the lock.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-11-20">
+      <description>
+        <p>The day, week and month pages, the future log, migration, the Index, search and pictures.</p>
+      </description>
+    </release>
+  </releases>
+</component>

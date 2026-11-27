@@ -106,7 +106,8 @@ impl ksni::Tray for LanrujTray {
 /// Pornește iconița; `None` dacă sistemul nu are systray (de exemplu GNOME fără extensia AppIndicator).
 pub fn start(lang: Lang) -> Option<ksni::blocking::Handle<LanrujTray>> {
     use ksni::blocking::TrayMethods;
-    LanrujTray { lang, pixmaps: white_pixmaps() }.spawn().ok()
+    // În Flatpak, iconița nu-și poate lua un nume pe D-Bus; se anunță doar cu numele unic al conexiunii.
+    LanrujTray { lang, pixmaps: white_pixmaps() }.disable_dbus_name(crate::in_flatpak()).spawn().ok()
 }
 
 #[cfg(test)]

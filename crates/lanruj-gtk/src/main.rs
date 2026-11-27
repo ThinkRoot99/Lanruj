@@ -128,6 +128,11 @@ pub enum View {
     Diary(NaiveDate),
 }
 
+/// Rulează în Flatpak? (Atunci unele lucruri trec prin portaluri: pornirea automată, legăturile, portofelul.)
+pub fn in_flatpak() -> bool {
+    std::path::Path::new("/.flatpak-info").exists()
+}
+
 fn today() -> NaiveDate {
     // Pentru capturile site-ului: LANRUJ_AZI=2026-11-21 (doar în versiunea de probă).
     #[cfg(debug_assertions)]

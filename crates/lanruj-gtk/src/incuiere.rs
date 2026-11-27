@@ -90,11 +90,61 @@ fn autostart_file() -> PathBuf {
     glib::user_config_dir().join("autostart").join(format!("{}.desktop", crate::APP_ID))
 }
 
+/// În Flatpak, pornirea automată o face sistemul, prin portalul Background; aici ținem minte doar alegerea.
+fn flatpak_autostart_mark() -> PathBuf {
+    glib::user_config_dir().join("lanruj").join("porneste-cu-calculatorul")
+}
+
 pub fn autostart() -> bool {
+    if crate::in_flatpak() && std::env::var_os("LANRUJ_DIR").is_none() {
+        return flatpak_autostart_mark().is_file();
+    }
     autostart_file().is_file()
 }
 
+/// Cere portalului Background să pornească (sau să nu mai pornească) Lanruj odată cu calculatorul.
+fn portal_autostart(on: bool) {
+    let Ok(bus) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else { return };
+    let opts = glib::VariantDict::new(None);
+    opts.insert("reason", "Start Lanruj when you log in");
+    opts.insert("autostart", on);
+    opts.insert("commandline", vec!["lanruj".to_string()]);
+    opts.insert("dbus-activatable", false);
+    let args = glib::Variant::tuple_from_iter(["".to_variant(), opts.end()]);
+    bus.call(
+        Some("org.freedesktop.portal.Desktop"),
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Background",
+        "RequestBackground",
+        Some(&args),
+        None,
+        gio::DBusCallFlags::NONE,
+        -1,
+        gio::Cancellable::NONE,
+        |res| {
+            if let Err(e) = res {
+                eprintln!("lanruj: portalul Background: {e}");
+            }
+        },
+    );
+}
+
 pub fn set_autostart(on: bool) -> std::io::Result<()> {
+    if crate::in_flatpak() && std::env::var_os("LANRUJ_DIR").is_none() {
+        portal_autostart(on);
+        let mark = flatpak_autostart_mark();
+        return if on {
+            if let Some(d) = mark.parent() {
+                std::fs::create_dir_all(d)?;
+            }
+            std::fs::write(mark, "da\n")
+        } else {
+            match std::fs::remove_file(mark) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            }
+        };
+    }
     let p = autostart_file();
     if !on {
         return match std::fs::remove_file(&p) {
