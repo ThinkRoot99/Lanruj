@@ -68,7 +68,7 @@ pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: im
     let icon = gtk::Image::from_icon_name(crate::APP_ID);
     icon.set_pixel_size(72);
     b.append(&icon);
-    let title = text(tr(lang, "Jurnalul e încuiat", "The journal is locked"), &["title-2"]);
+    let title = text(tr(lang, "Jurnalul e blocat", "The journal is locked"), &["title-2"]);
     title.set_xalign(0.5);
     b.append(&title);
     let hint = text(tr(lang, "Scrie parola ca să-l deschizi.", "Type the password to open it."), &["dim-label"]);

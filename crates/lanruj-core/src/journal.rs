@@ -39,7 +39,7 @@ impl Journal {
         }
         match self.key() {
             Some(k) => k.decrypt(&data),
-            None => Err(io::Error::new(io::ErrorKind::PermissionDenied, "jurnalul e încuiat")),
+            None => Err(io::Error::new(io::ErrorKind::PermissionDenied, "jurnalul e blocat")),
         }
     }
 

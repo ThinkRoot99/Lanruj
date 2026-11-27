@@ -7,6 +7,7 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 ## [Unreleased]
 
 ### Changed
+- **"Blocarea"** instead of "Încuierea" in Romanian, as on the website: the setting, the lock windows ("Lanruj e blocat"), "Se blochează odată cu ecranul" and the guide; the guide also shows the Security tab on the way to Lock and Encryption.
 - **The app's texts proofread** in both languages: grammar ("acesteia", "Mutată de 3 ori" / "Moved 3 times"), clearer hints and messages, the tracking totals named as days, "Linii" for lined paper, and a guide brought up to date (printing a day, where the journal, Tracking and notes are kept).
 - **English by default**: the first start opens in English, whatever the system language, and a new installation starts in English; Romanian is one click away, and "Follow system" stays available in Preferences.
 - **About**: like other GNOME apps - the author with "© 2026 ThinkRoot", Credits, Legal (the licence in a short sentence, the seven fonts under the SIL Open Font License, the note about the Bullet Journal method) and a link for help questions by e-mail; the old description and the Details page are gone.

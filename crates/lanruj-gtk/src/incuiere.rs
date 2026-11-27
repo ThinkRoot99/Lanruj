@@ -148,7 +148,7 @@ pub fn lock_window(app: &adw::Application, lang: Lang, check: Check, then: impl 
     let icon = gtk::Image::from_icon_name(crate::APP_ID);
     icon.set_pixel_size(72);
     b.append(&icon);
-    b.append(&gtk::Label::builder().label(tr(lang, "Lanruj e încuiat", "Lanruj is locked")).css_classes(["title-2"]).build());
+    b.append(&gtk::Label::builder().label(tr(lang, "Lanruj e blocat", "Lanruj is locked")).css_classes(["title-2"]).build());
     let hint = match &check {
         Check::Lock(Lock::Pin) => tr(lang, "Scrie PIN-ul.", "Type the PIN."),
         Check::Lock(_) => tr(lang, "Scrie parola de deschidere.", "Type the opening password."),
@@ -274,7 +274,7 @@ pub fn new_lock_dialog(app: &Rc<App>, kind: Lock, done: impl Fn(bool) + 'static)
             } else {
                 tr(
                     lang,
-                    "Lanruj o cere la deschidere. Jurnalul nu e criptat: încuietoarea ascunde fereastra, dar fișierele se pot citi cu alte programe.",
+                    "Lanruj o cere la deschidere. Jurnalul nu e criptat: blocarea ascunde fereastra, dar fișierele se pot citi cu alte programe.",
                     "Lanruj asks for it when opening. The journal isn't encrypted: the lock hides the window, but other programs can still read the files.",
                 )
             })
@@ -292,7 +292,7 @@ pub fn new_lock_dialog(app: &Rc<App>, kind: Lock, done: impl Fn(bool) + 'static)
     b.append(&p2);
     let err = gtk::Label::builder().css_classes(["error"]).xalign(0.0).visible(false).build();
     b.append(&err);
-    let go = gtk::Button::builder().label(tr(lang, "Pune încuietoarea", "Set the lock")).css_classes(["suggested-action", "pill"]).halign(gtk::Align::End).build();
+    let go = gtk::Button::builder().label(tr(lang, "Pornește blocarea", "Set the lock")).css_classes(["suggested-action", "pill"]).halign(gtk::Align::End).build();
     b.append(&go);
     let view = adw::ToolbarView::new();
     view.add_top_bar(&adw::HeaderBar::new());

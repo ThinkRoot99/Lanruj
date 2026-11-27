@@ -1664,9 +1664,9 @@ impl App {
         // Încuierea.
         let enc = self.journal.key().is_some();
         let lk = adw::PreferencesGroup::builder()
-            .title(tr(lang, "Încuierea", "Lock"))
+            .title(tr(lang, "Blocarea", "Lock"))
             .description(if enc {
-                tr(lang, "Jurnalul e criptat: la pornire se cere parola lui, iar la blocarea ecranului Lanruj se încuie mereu.", "The journal is encrypted: its password is asked at startup, and Lanruj always locks with the screen.")
+                tr(lang, "Jurnalul e criptat: la pornire se cere parola lui, iar Lanruj se blochează mereu odată cu ecranul.", "The journal is encrypted: its password is asked at startup, and Lanruj always locks with the screen.")
             } else {
                 tr(lang, "O parolă sau un PIN la deschidere. Fișierele rămân necriptate (pentru asta, vezi Criptarea).", "A password or PIN when opening. The files stay unencrypted (for that, see Encryption).")
             })
@@ -1679,7 +1679,7 @@ impl App {
             .build();
         kind.set_selected(setari::LOCKS.iter().position(|(v, ..)| *v == s.lock).unwrap_or(0) as u32);
         let screen = adw::SwitchRow::builder()
-            .title(tr(lang, "Se încuie la blocarea ecranului", "Lock when the screen locks"))
+            .title(tr(lang, "Se blochează odată cu ecranul", "Lock when the screen locks"))
             .active(enc || s.lock_on_screen)
             .sensitive(!enc && s.lock != setari::Lock::None)
             .build();

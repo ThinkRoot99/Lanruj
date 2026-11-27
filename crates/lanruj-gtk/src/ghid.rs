@@ -378,14 +378,14 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     ),
     (
         "Criptarea",
-        "În <b>☰ → Setări → Criptarea → Criptează…</b> alegi o parolă (cel puțin 8 caractere). Lanruj îți arată apoi \
+        "În <b>☰ → Setări → Siguranță → Criptarea → Criptează…</b> alegi o parolă (cel puțin 8 caractere). Lanruj îți arată apoi \
          <b>cheia de recuperare</b> (6 grupuri de câte 5 caractere): tipărește-o sau scrie-o pe hârtie, apoi scrie ultimele ei 4 caractere ca să mergi mai departe. \
          Întâi se face o copie a jurnalului, apoi fiecare pagină și fiecare poză se criptează separat (numele fișierelor rămân aceleași).\n\n\
          De atunci, la fiecare pornire Lanruj cere parola. Dacă ai uitat-o: <b>Am uitat parola</b>, scrii cheia de recuperare și alegi o parolă nouă.\n\n\
          De știut: fișierele nu se mai pot citi cu alte programe (Obsidian, Markor); copiile de siguranță și arhiva zip rămân criptate; \
          <b>fără parolă și fără cheia de recuperare jurnalul e pierdut</b>. Tot din Setări schimbi parola sau oprești criptarea (fișierele redevin text).",
         "Encryption",
-        "In <b>☰ → Preferences → Encryption → Encrypt…</b> you choose a password (at least 8 characters). Lanruj then shows the \
+        "In <b>☰ → Preferences → Security → Encryption → Encrypt…</b> you choose a password (at least 8 characters). Lanruj then shows the \
          <b>recovery key</b> (6 groups of 5 characters): print it or write it on paper, then type its last 4 characters to continue. \
          A backup is made first, then every page and every picture is encrypted separately (file names stay the same).\n\n\
          From then on Lanruj asks for the password at every start. If you forgot it: <b>I forgot the password</b>, type the recovery key and choose a new password.\n\n\
@@ -393,19 +393,19 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          <b>without the password and the recovery key the journal is lost</b>. Also in Preferences you change the password or turn encryption off (the files become text again).",
     ),
     (
-        "Încuierea",
-        "În <b>☰ → Setări → Încuierea</b>:\n\n\
+        "Blocarea",
+        "În <b>☰ → Setări → Siguranță → Blocarea</b>:\n\n\
          • <b>La deschidere cere</b>: nimic, o parolă sau un PIN de 4 cifre (se trimite singur la a patra cifră). \
-         La un jurnal necriptat, încuietoarea doar ascunde fereastra: fișierele se pot citi în continuare cu alte programe.\n\
-         • <b>Se încuie la blocarea ecranului</b>: când blochezi calculatorul, Lanruj se ascunde și cere parola sau PIN-ul. \
-         Un jurnal <b>criptat</b> se încuie mereu; după blocarea ecranului cere PIN-ul (dacă ai pus unul) sau parola jurnalului.\n\
+         La un jurnal necriptat, blocarea doar ascunde fereastra: fișierele se pot citi în continuare cu alte programe.\n\
+         • <b>Se blochează odată cu ecranul</b>: când blochezi calculatorul, Lanruj se ascunde și cere parola sau PIN-ul. \
+         Un jurnal <b>criptat</b> se blochează mereu; după blocarea ecranului cere PIN-ul (dacă ai pus unul) sau parola jurnalului.\n\
          • <b>Ține minte parola pe acest calculator</b> (jurnal criptat): parola stă în portofelul de chei GNOME. \
          Portofelul se deschide odată cu sesiunea (la autentificarea automată, în fereastra mică de după pornire), iar Lanruj nu mai cere parola: \
          fereastra lui de parolă se închide singură.\n\
          • <b>Pornește odată cu calculatorul</b>.\n\n\
-         Dacă închizi fereastra „Lanruj e încuiat”, Lanruj se oprește, iar jurnalul rămâne încuiat.",
+         Dacă închizi fereastra „Lanruj e blocat”, Lanruj se oprește, iar jurnalul rămâne blocat.",
         "Lock",
-        "In <b>☰ → Preferences → Lock</b>:\n\n\
+        "In <b>☰ → Preferences → Security → Lock</b>:\n\n\
          • <b>When opening, ask for</b>: nothing, a password or a 4-digit PIN (sent by itself at the fourth digit). \
          For an unencrypted journal the lock only hides the window: other programs can still read the files.\n\
          • <b>Lock when the screen locks</b>: when you lock the computer, Lanruj hides and asks for the password or PIN. \
