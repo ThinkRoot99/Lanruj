@@ -7,7 +7,7 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 ## [Unreleased]
 
 ### Changed
-- **About**: like other GNOME apps - the author with "© 2026 ThinkRoot", Credits (with what Lanruj is built with), Legal (the licence, the seven fonts under the SIL Open Font License, the note about the Bullet Journal method) and a link for help questions by e-mail; the old description and the Details page are gone.
+- **About**: like other GNOME apps - the author with "© 2026 ThinkRoot", Credits, Legal (the licence in a short sentence, the seven fonts under the SIL Open Font License, the note about the Bullet Journal method) and a link for help questions by e-mail; the old description and the Details page are gone.
 
 ## [0.4.0] - 2026-11-27
 

@@ -2814,7 +2814,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     let weak = Rc::downgrade(&state);
     about.connect_activate(move |_, _| {
         let Some(s) = weak.upgrade() else { return };
-        // Ca la aplicațiile GNOME (de exemplu Fișiere): autorul, colaboratorii, partea legală și câteva legături,
+        // Ca la aplicațiile GNOME (de exemplu Fișiere): autorul, colaboratorii, partea legală și întrebările de ajutor,
         // fără o pagină „Detalii”.
         let l = s.lang;
         let d = adw::AboutDialog::builder()
@@ -2824,10 +2824,15 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
             .developer_name("ThinkRoot")
             .developers(["ThinkRoot"])
             .copyright("© 2026 ThinkRoot")
-            .license_type(gtk::License::Gpl30)
+            // Licența scrisă de noi: cu un tip cunoscut (Gpl30), GNOME adaugă singur textul despre garanție.
+            .license_type(gtk::License::Custom)
+            .license(tr(
+                l,
+                "Lanruj este software liber, publicat sub <a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">Licența Publică Generală GNU, versiunea 3 sau mai nouă</a>.",
+                "Lanruj is free software, released under the <a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">GNU General Public License, version 3 or later</a>.",
+            ))
             .support_url("mailto:lanruj@thinkroot.xyz")
             .build();
-        d.add_credit_section(Some(tr(l, "Construit cu", "Built with")), &["GTK https://gtk.org", "libadwaita https://gnome.pages.gitlab.gnome.org/libadwaita/", "Rust https://www.rust-lang.org", "age https://age-encryption.org"]);
         let fonts: Vec<&str> = fonturi::FONTS.iter().map(|f| f.ro).collect();
         d.add_legal_section(
             tr(l, "Fonturile", "Fonts"),
@@ -3539,7 +3544,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     app.activate_action("about", None);
                 }
                 let s2 = s.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
+                glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
                     if let Ok(p) = std::env::var("LANRUJ_PNG") {
                         save_png(&s2.window, &p);
                     }
