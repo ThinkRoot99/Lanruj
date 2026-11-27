@@ -2,23 +2,25 @@
 
 All notable changes to Lanruj are listed here, newest first.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Lanruj has not had a release yet; everything below belongs to the first version.
+Versions before 1.0 are development versions; 1.0 will be the first public release.
 
 ## [Unreleased]
 
-### 2026-11-27
+Nothing yet.
 
-#### Added
+## [0.4.0] - 2026-11-27
+
+### Added
 - **Subheadings in the journal** (the t button, Ctrl+Shift+S), below headings: saved as `### …`, while a `### ` followed only by a time (`### 08:30`) stays the time of an entry.
 - **Text size in the journal**: a piece of text or a line can be Small, Normal, Large, Larger or Huge (the A↕ button, Ctrl+] and Ctrl+[), saved as `<span style="font-size:…%">`; the whole journal has its own size (Ctrl+plus, Ctrl+minus, Ctrl+0), remembered in the settings. The rest of the app keeps the size from Preferences.
 - **The journal in the Index**: a Journal section lists the months with journal days, each opening that day's journal; a day page has a button to its journal.
 
-#### Changed
+### Changed
 - **Printing a day** (Ctrl+P, PDF) takes only the open day, not yesterday's page next to it.
 
-### 2026-11-21 (afternoon)
+## [0.3.0] - 2026-11-21 (afternoon)
 
-#### Added
+### Added
 - **Fonts in the journal**: any piece of text can have its own font (the Aa button or Ctrl+Shift+F), on the selection or the whole line, saved as `<span style="font-family:…">`; the rest of the app keeps the font from Preferences.
 - **Printing the journal**: Ctrl+P and Ctrl+Shift+E on the journal print or save the open day's text, laid out on A4 sheets with its fonts, colors, headings and lists, and page numbers.
 - **Journal toolbar in groups**: text style, colors, lines, lists, then time and links; each group wraps as a whole on narrow windows. Clearing the formatting keeps the links. The keyboard shortcuts window describes every key exactly, with its own sections for pages and the journal. Printing and PDF say plainly that the journal can't be exported yet.
@@ -38,13 +40,13 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 - **Tracking on paper**: Ctrl+P (or "Page as PDF") in Tracking prints the month on two A4 sheets: activities and sleep, with the sleep chart; work, with the calendar, totals and the month's notes. Days still to come stay empty, to be filled in by hand.
 - A guide chapter about tracking.
 
-#### Changed
+### Changed
 - Preferences are arranged in four tabs: Appearance, Journal, Security and General.
 - The two pages of the notebook always have the same width, however much text they hold.
 
-### 2026-11-21
+## [0.2.0] - 2026-11-21
 
-#### Added
+### Added
 - **Website** (not published yet): an English home page and a Romanian page (`lang/ro.html`), with styles, scripts and images in `assets/`. The chosen language is remembered in the visitor's browser. It includes a features section, frequently asked questions and a download section, plus small touches such as a hand-drawn ink underline, a margin note, an animated migration example and sections that fade in as you scroll.
 - Screenshots for the website, taken from an English sample journal (`site/tools/jurnal_en.py`).
 - **Lock**: Lanruj can ask for a password or a 4-digit PIN when it opens, and can lock itself when the screen locks. An encrypted journal always locks with the screen.
@@ -63,17 +65,17 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 - **Notes under an entry** (Tab and Shift+Tab) and **Go to date** (Ctrl+G).
 - **Guide** (F1): every instruction, in chapters, with search.
 
-#### Changed
+### Changed
 - **The app is now called Lanruj** ("jurnal" written backwards), because the previous name was already used by other apps. The app ID is now `io.github.ThinkRoot99.Lanruj`. On first start, existing data (journal, settings, state, backups, keys and autostart entry) is moved to the new locations once, without overwriting anything.
 
-#### Fixed
+### Fixed
 - No empty gap under small and medium pictures in a maximised window.
 - Zoom in the picture viewer works again.
 - Links open directly with the default program outside Flatpak.
 
-### 2026-11-20
+## [0.1.0] - 2026-11-20
 
-#### Added
+### Added
 - **App icon**: a pen nib writing on a dotted page, with small and symbolic versions.
 - **Core and the Day page**: quick writing with signs (`.` task, `o` event, `-` note, `*` important, `!` idea), with yesterday and today side by side. Everything is saved as Markdown files.
 - **Migration**: unfinished tasks are sorted one by one (today, schedule, drop, keep), at the end of the day, the week and the month.
@@ -90,6 +92,6 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 - **Main menu** with every action that has a key; F10 opens and closes it, and F11 maximises the window.
 - **Colours**: coloured text and highlighter, shown directly in the editing field.
 
-#### Fixed
+### Fixed
 - Buttons and Enter stopped working right after start-up, because the window state was released too early.
 - The tray icon showed three dots instead of the Lanruj icon.
