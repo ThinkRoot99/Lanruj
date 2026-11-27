@@ -27,6 +27,64 @@ The name is "jurnal" (Romanian for *journal*) written backwards.
 
 See [CHANGELOG.md](CHANGELOG.md) for everything that has been done so far.
 
+## Installing
+
+Lanruj comes as an AppImage and as a Flatpak, both on the [releases page](https://github.com/ThinkRoot99/Lanruj/releases). Both run on Debian 13, Ubuntu 24.04 and Linux Mint 22 or newer, Fedora, openSUSE Leap 16, Arch and other distributions at least as recent.
+
+### AppImage
+
+The AppImage carries everything it needs; nothing else has to be installed.
+
+1. Download `Lanruj-<version>-x86_64.AppImage` and put it where you want to keep it, for example in `~/Applications`.
+2. Make it executable: right-click it, Properties, Permissions, allow running it as a program; or in a terminal:
+   ```
+   chmod +x Lanruj-<version>-x86_64.AppImage
+   ```
+3. Double-click it, or run `./Lanruj-<version>-x86_64.AppImage`.
+
+At every start, Lanruj adds itself to the applications menu, so after the first start you can open it from there. If you move the file, the menu entry follows it at the next start.
+
+To update, download the new version, start it once and delete the old file.
+
+### Flatpak
+
+Flatpak must be installed and Flathub added. Most distributions have both; on Debian, run `sudo apt install flatpak` and follow [flathub.org/setup](https://flathub.org/setup).
+
+```
+flatpak install lanruj.flatpak
+```
+
+Flatpak asks for your password and downloads the GNOME 51 runtime from Flathub if it is missing. Double-clicking `lanruj.flatpak` works only where GNOME Software is installed; elsewhere, for example on Linux Mint, use the command above.
+
+If Lanruj does not appear in the applications menu after your first Flatpak installation, log out and back in; on Cinnamon (Linux Mint), Ctrl+Alt+Esc is enough.
+
+To update, install the new `lanruj.flatpak` the same way.
+
+### Uninstalling
+
+Uninstalling removes the app, not your journal. Before you remove it, turn off in Preferences (if you turned them on) "Start with the computer" and "Remember the password on this computer", so nothing is left in your startup programs or in your keyring.
+
+**AppImage:** delete the `.AppImage` file, then its menu entry and icons:
+
+```
+rm ~/.local/share/applications/io.github.ThinkRoot99.Lanruj.desktop
+rm ~/.local/share/icons/hicolor/scalable/apps/io.github.ThinkRoot99.Lanruj.svg
+rm ~/.local/share/icons/hicolor/symbolic/apps/io.github.ThinkRoot99.Lanruj-symbolic.svg
+```
+
+The settings stay in `~/.config/lanruj`, `~/.local/state/lanruj` and `~/.cache/lanruj`; delete these folders too if you do not want to keep them.
+
+**Flatpak:**
+
+```
+flatpak uninstall --delete-data io.github.ThinkRoot99.Lanruj
+flatpak uninstall --unused
+```
+
+`--delete-data` also removes the Flatpak version's settings; the second command removes the GNOME runtime if no other app needs it.
+
+**The journal itself** stays in `~/.lanruj` and the backups in `~/Documents/Lanruj - copii` (or the folder you chose in Preferences). Delete them only if you are sure you no longer need what you wrote.
+
 ## Your journal
 
 The journal lives in `~/.lanruj`, as plain Markdown files:
@@ -59,6 +117,7 @@ LANRUJ_DIR=/path/to/a/test/folder cargo run
 - `crates/lanruj-gtk`: the GTK application.
 - `data/icons`: the app icon.
 - `data/fonts`: the bundled fonts and their licences.
+- `flatpak`: the Flatpak recipe; `appimage`: the AppImage build (`sh appimage/construieste.sh`, in an Ubuntu 26.04 container with podman) and its test on bare images of several distributions (`appimage/proba.sh`).
 
 ## Fonts
 
