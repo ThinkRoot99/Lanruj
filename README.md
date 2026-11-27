@@ -9,18 +9,34 @@ The name is "jurnal" (Romanian for *journal*) written backwards.
 - **Day, week and month pages** and a **future log**, with yesterday and today side by side.
 - **Quick writing with signs**: `.` task, `o` event, `-` note, `*` important, `!` idea.
 - **Migration**: every evening, unfinished tasks are reviewed one by one (move to today, schedule, drop or keep). A task postponed several times asks whether it is still worth it.
-- **Index** with a page for each topic, **tags**, and **search** across the whole journal.
+- **Journal**: a notebook page for every day, for writing at length about what you lived and what you think:
+  - bold, italic, underline, strikethrough, text colours and markers;
+  - fonts and text sizes for any piece of text, and a size of its own for the whole journal;
+  - headings, subheadings, quotes, bulleted, numbered (2, 2.1, 2.1.1) and check lists;
+  - the time for each entry of the day;
+  - web links (typed addresses become links by themselves) and links to a day, a specific task, event or note, a page or Tracking, with a sign on the linked entry that leads back to the journal.
+- **Notes**: ideas jotted down quickly, like small slips of paper stuck on the notebook, on every page, until you delete them.
+- **Tracking**, month by month: your own activities (ticked, counted or timed), sleep with a chart, and work (duty, standby, leave, overtime), with notes.
+- **Index** with a page for each topic, **tags**, and **search** across everything: pages, journal, notes, Tracking and the Index, with exact phrases and words to leave out.
 - **Colours, links, pictures and files** inside your pages.
-- **Export** to PDF (a page as it looks, or several days), **printing**, and the whole journal as a **zip** archive, with or without a password.
+- **Export** to PDF (a page as it looks, several days, the journal or the month's Tracking on A4 sheets), **printing**, and the whole journal as a **zip** archive, with or without a password.
 - **Lock** with a password or a 4-digit PIN, locking when the screen locks, and **optional encryption** of every file (age), with a recovery key.
-- **Automatic backups**, a **keyboard-first** design with an optional **Vim key scheme**, several paper styles and a dark mode.
+- **Automatic backups**, a **keyboard-first** design (every action has a key, listed with Ctrl+?) with an optional **Vim key scheme**, full screen with only the pages, several paper styles, seven built-in fonts and a dark mode.
+- A **first start** in three steps (language; paper, font and text size; optional encryption) and a guide (F1).
 - Available in **English** and **Romanian**.
 
 See [CHANGELOG.md](CHANGELOG.md) for everything that has been done so far.
 
 ## Your journal
 
-The journal lives in `~/.lanruj`, as one Markdown file per day (for example `2026/11/2026-11-21.md`), plus files for the months, weeks, future log and index. Pictures sit next to the day they belong to. When encryption is off, you can read and edit the files with any text editor, and sync them between computers with Syncthing.
+The journal lives in `~/.lanruj`, as plain Markdown files:
+
+- one file per day, for example `2026/11/2026-11-21.md`, plus files for the months, weeks, the future log (`viitor.md`) and the index (`index.md`, `pagini/`);
+- the journal, one file per day: `jurnal/2026/2026-11-21.md`;
+- Tracking, one file per month: `monitorizare/2026-11.md`;
+- the notes: `bilete.md`.
+
+Pictures sit next to the day they belong to. When encryption is off, you can read and edit the files with any text editor, and sync them between computers with Syncthing.
 
 ## Building from source
 

@@ -4,7 +4,7 @@
 //! (`jurnal/AAAA/AAAA-LL-ZZ.md`, vezi `lanruj_core::diary`). Se salvează singur, la o clipă după scris.
 //!
 //! Etichetele din câmp: `s:bold`, `s:italic`, `s:strike`, `s:underline`; culorile și legăturile
-//! ca în pagini (`f#…`, `b#…`, `l…`); felul rândului: `r:ora`, `r:titlu`, `r:citat`.
+//! ca în pagini (`f#…`, `b#…`, `l…`); felul rândului: `r:ora`, `r:titlu`, `r:subtitlu`, `r:citat`.
 
 use crate::page::{color_tag, link_tag, open_uri};
 use crate::{App, View, fonturi, tr};
@@ -87,6 +87,11 @@ fn tag(buf: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
             t.set_scale(1.3);
             t.set_pixels_above_lines(10);
         }
+        "r:subtitlu" => {
+            t.set_weight(700);
+            t.set_scale(1.15);
+            t.set_pixels_above_lines(8);
+        }
         "r:citat" => {
             t.set_style(gtk::pango::Style::Italic);
             t.set_left_margin(56);
@@ -102,6 +107,7 @@ fn line_tag_name(k: LineKind) -> Option<&'static str> {
     match k {
         LineKind::Time => Some("r:ora"),
         LineKind::Title => Some("r:titlu"),
+        LineKind::Subtitle => Some("r:subtitlu"),
         LineKind::Quote => Some("r:citat"),
         LineKind::Text => None,
     }
@@ -190,7 +196,7 @@ fn line_bounds(buf: &gtk::TextBuffer, line: i32) -> Option<(gtk::TextIter, gtk::
 fn line_kind(buf: &gtk::TextBuffer, line: i32) -> Option<&'static str> {
     let (mut a, b) = line_bounds(buf, line)?;
     while a.offset() < b.offset() {
-        for n in ["r:ora", "r:titlu", "r:citat"] {
+        for n in ["r:ora", "r:titlu", "r:subtitlu", "r:citat"] {
             if let Some(t) = buf.tag_table().lookup(n)
                 && a.has_tag(&t)
             {
@@ -204,7 +210,7 @@ fn line_kind(buf: &gtk::TextBuffer, line: i32) -> Option<&'static str> {
 
 fn set_line_kind(buf: &gtk::TextBuffer, line: i32, kind: Option<&str>) {
     let Some((a, b)) = line_bounds(buf, line) else { return };
-    for n in ["r:ora", "r:titlu", "r:citat"] {
+    for n in ["r:ora", "r:titlu", "r:subtitlu", "r:citat"] {
         buf.remove_tag(&tag(buf, n), &a, &b);
     }
     if let Some(k) = kind {
@@ -479,6 +485,7 @@ impl Diary {
             vec![],
             vec![
                 mk("titlu", None, Some("T"), tr(lang, "Titlu (Ctrl+Shift+T)", "Heading (Ctrl+Shift+T)")),
+                mk("subtitlu", None, Some("t"), tr(lang, "Subtitlu (Ctrl+Shift+S)", "Subheading (Ctrl+Shift+S)")),
                 mk("citat", None, Some("„“"), tr(lang, "Citat (Ctrl+Shift+Q)", "Quote (Ctrl+Shift+Q)")),
             ],
             vec![
@@ -661,6 +668,7 @@ impl Diary {
             let kind = match line_kind(&buf, l) {
                 Some("r:ora") => LineKind::Time,
                 Some("r:titlu") => LineKind::Title,
+                Some("r:subtitlu") => LineKind::Subtitle,
                 Some("r:citat") => LineKind::Quote,
                 _ => LineKind::Text,
             };
@@ -738,7 +746,7 @@ impl Diary {
         }
         let line = buf.iter_at_mark(&buf.get_insert()).line();
         let kind = line_kind(&buf, line);
-        for (id, n) in [("titlu", "r:titlu"), ("citat", "r:citat")] {
+        for (id, n) in [("titlu", "r:titlu"), ("subtitlu", "r:subtitlu"), ("citat", "r:citat")] {
             let b = self.button(id);
             if kind == Some(n) { b.add_css_class("aprins") } else { b.remove_css_class("aprins") }
         }
@@ -1296,11 +1304,11 @@ impl App {
                 }
             });
         }
-        for id in ["titlu", "citat"] {
+        for (id, kind) in [("titlu", "r:titlu"), ("subtitlu", "r:subtitlu"), ("citat", "r:citat")] {
             let weak = Rc::downgrade(self);
             dy.button(id).connect_clicked(move |_| {
                 if let Some(app) = weak.upgrade() {
-                    app.diary_line_kind(if id == "titlu" { "r:titlu" } else { "r:citat" });
+                    app.diary_line_kind(kind);
                 }
             });
         }
@@ -1423,6 +1431,7 @@ impl App {
                 (true, Key::o) => app.diary_time(),
                 (true, Key::t) => app.diary_line_kind("r:titlu"),
                 (true, Key::q) => app.diary_line_kind("r:citat"),
+                (true, Key::s) => app.diary_line_kind("r:subtitlu"),
                 (true, Key::h) => app.diary_marker(),
                 (true, Key::g) => app.diary_colors(),
                 (false, Key::bracketright) => app.diary_size_step(1),
@@ -2011,6 +2020,10 @@ impl App {
         }
     }
     #[cfg(debug_assertions)]
+    pub fn diary_test_line(self: &Rc<Self>, kind: &'static str) {
+        self.diary_line_kind(kind);
+    }
+    #[cfg(debug_assertions)]
     pub fn diary_test_title(self: &Rc<Self>) {
         self.diary_line_kind("r:titlu");
     }
@@ -2136,7 +2149,7 @@ impl DiaryPrint {
             layout.set_wrap(gtk::pango::WrapMode::WordChar);
             let m = match kind {
                 LineKind::Time => format!("<span weight=\"bold\" foreground=\"#1c71d8\">{markup}</span>"),
-                LineKind::Title => format!("<span weight=\"bold\">{markup}</span>"),
+                LineKind::Title | LineKind::Subtitle => format!("<span weight=\"bold\">{markup}</span>"),
                 LineKind::Quote => format!("<span style=\"italic\" foreground=\"#555555\">{markup}</span>"),
                 LineKind::Text => markup.clone(),
             };
@@ -2144,6 +2157,7 @@ impl DiaryPrint {
             let before = match kind {
                 LineKind::Time => 12.0,
                 LineKind::Title => 10.0,
+                LineKind::Subtitle => 8.0,
                 _ => 2.0,
             };
             let mut it = layout.iter();
@@ -2240,7 +2254,11 @@ impl App {
         let d = self.diary.date.get()?;
         let font = fonturi::by_key(&self.settings.borrow().font);
         let paras = self.diary.lines().into_iter().map(|l| {
-                let factor = if l.kind == LineKind::Title { 1.35 } else { 1.0 };
+                let factor = match l.kind {
+                    LineKind::Title => 1.35,
+                    LineKind::Subtitle => 1.15,
+                    _ => 1.0,
+                };
                 (l.kind, l.spans.iter().map(|sp| span_markup(sp, factor)).collect::<String>())
             }).collect();
         Some(DiaryPrint {

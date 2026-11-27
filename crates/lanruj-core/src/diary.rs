@@ -61,6 +61,8 @@ pub enum LineKind {
     Time,
     /// Un titlu: `## …`.
     Title,
+    /// Un subtitlu: `### …` (un `### ` urmat doar de o oră, `### 08:30`, e ora unei scrieri).
+    Subtitle,
     /// Un citat: `> …`.
     Quote,
 }
@@ -389,6 +391,16 @@ fn list_out(md: &str) -> String {
     md.to_string()
 }
 
+/// „08:30”, „8:05”: o oră.
+fn is_time(s: &str) -> bool {
+    let Some((h, m)) = s.split_once(':') else { return false };
+    (1..=2).contains(&h.len())
+        && m.len() == 2
+        && h.chars().chain(m.chars()).all(|c| c.is_ascii_digit())
+        && h.parse::<u32>().is_ok_and(|h| h < 24)
+        && m.parse::<u32>().is_ok_and(|m| m < 60)
+}
+
 /// Textul unei zile (fără titlul fișierului), rând cu rând.
 pub fn parse_doc(text: &str) -> Vec<Line> {
     let mut lines: Vec<Line> = text
@@ -396,7 +408,10 @@ pub fn parse_doc(text: &str) -> Vec<Line> {
         .map(|l| {
             let l = l.trim_end_matches('\r');
             if let Some(r) = l.strip_prefix("### ") {
-                Line { kind: LineKind::Time, spans: parse_inline(r) }
+                let spans = parse_inline(r);
+                let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+                let kind = if is_time(text.trim()) { LineKind::Time } else { LineKind::Subtitle };
+                Line { kind, spans }
             } else if let Some(r) = l.strip_prefix("## ") {
                 Line { kind: LineKind::Title, spans: parse_inline(r) }
             } else if let Some(r) = l.strip_prefix("> ").or_else(|| (l == ">").then_some("")) {
@@ -422,6 +437,7 @@ pub fn to_doc(lines: &[Line]) -> String {
             match l.kind {
                 LineKind::Time => format!("### {md}"),
                 LineKind::Title => format!("## {md}"),
+                LineKind::Subtitle => format!("### {md}"),
                 LineKind::Quote => format!("> {md}").trim_end().to_string(),
                 LineKind::Text => list_out(&md),
             }
@@ -665,7 +681,7 @@ mod tests {
             "~~tăiat~~ și <u>subliniat</u> și ***amândouă***",
             "Plătește ==impozitul== până <span style=\"color:#c01c28\">vineri</span>",
             "<mark style=\"background:#8ff0a4\">verde</mark> apoi [piața **cu** mama](lanruj:intrare/zi/2026-11-21/k3f9).",
-            "### 08:30\nText\n\n## Titlu\n> citat\n- unu\n  - doi\n- [ ] de făcut\n- [x] gata\n1. primul",
+            "### 08:30\nText\n\n## Titlu\n### Un subtitlu\n> citat\n- unu\n  - doi\n- [ ] de făcut\n- [x] gata\n1. primul",
             "5 \\* 3 = 15, a \\== b, \\[nu e legătură\\]",
             "**bold *bold italic* bold**",
             "Un cuvânt <span style=\"font-size:150%\">mare</span> și <span style=\"font-family:Lora\"><span style=\"font-size:85%\">mic cu Lora</span></span>",

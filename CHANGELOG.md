@@ -9,6 +9,7 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 ### 2026-11-27
 
 #### Added
+- **Subheadings in the journal** (the t button, Ctrl+Shift+S), below headings: saved as `### …`, while a `### ` followed only by a time (`### 08:30`) stays the time of an entry.
 - **Text size in the journal**: a piece of text or a line can be Small, Normal, Large, Larger or Huge (the A↕ button, Ctrl+] and Ctrl+[), saved as `<span style="font-size:…%">`; the whole journal has its own size (Ctrl+plus, Ctrl+minus, Ctrl+0), remembered in the settings. The rest of the app keeps the size from Preferences.
 - **The journal in the Index**: a Journal section lists the months with journal days, each opening that day's journal; a day page has a button to its journal.
 

@@ -1291,6 +1291,7 @@ impl App {
                     (tr(l, "Marker galben pe textul selectat; dacă îl are deja, îl scoate", "Yellow marker on the selected text; if it has one, removes it"), "<Control><Shift>h"),
                     (tr(l, "Alege culoarea textului sau a markerului (săgeți și Enter)", "Pick a text or marker color (arrows and Enter)"), "<Control><Shift>g"),
                     (tr(l, "Face din rând un titlu; încă o dată, text obișnuit", "Turn the line into a heading; again, back to plain text"), "<Control><Shift>t"),
+                    (tr(l, "Face din rând un subtitlu; încă o dată, text obișnuit", "Turn the line into a subheading; again, back to plain text"), "<Control><Shift>s"),
                     (tr(l, "Face din rând un citat; încă o dată, text obișnuit", "Turn the line into a quote; again, back to plain text"), "<Control><Shift>q"),
                     (tr(l, "Listă cu buline pe rândul curent sau pe cele selectate", "Bulleted list on the current or selected lines"), "<Control><Shift>8"),
                     (tr(l, "Listă numerotată pe rândul curent sau pe cele selectate", "Numbered list on the current or selected lines"), "<Control><Shift>7"),
@@ -3475,6 +3476,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 put("\nUn titlu cu Patrick Hand");
                 s.diary_test_font(Some("Patrick Hand"));
                 s.diary_test_title();
+                put("\nUn subtitlu");
+                s.diary_test_line("r:subtitlu");
                 put("\nUn rând foarte mare.");
                 s.diary_test_size(Some(150), 2);
                 put("\nTextul obișnuit, cu fontul din setări, **nu** se schimbă.\n");
