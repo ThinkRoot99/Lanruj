@@ -87,7 +87,7 @@ impl App {
                 let (n, _) = t.sleep_average();
                 (tr(lang, "Somn", "Sleep"), match n {
                     Some(n) => format!("{} {}", tr(lang, "noaptea, în medie", "on average at night"), hours_text(n)),
-                    None => tr(lang, "nimic trecut încă", "nothing entered yet").to_string(),
+                    None => tr(lang, "nimic notat încă", "nothing entered yet").to_string(),
                 })
             }
             Tab::Activities => {
@@ -559,7 +559,7 @@ impl Page {
         let rows = [
             (tr(lang, "Noaptea, în medie", "Average at night"), night.map(hours_text).unwrap_or_else(|| "-".into())),
             (tr(lang, "Ziua, în medie", "Average during the day"), day.map(hours_text).unwrap_or_else(|| "-".into())),
-            (tr(lang, "Nopți trecute", "Nights entered"), nights.to_string()),
+            (tr(lang, "Nopți notate", "Nights entered"), nights.to_string()),
         ];
         for (name, value) in rows {
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -623,10 +623,10 @@ impl Page {
         }
         let tot = t.totals();
         let rows = [
-            (tr(lang, "Servicii", "Duties"), tot.shifts.to_string(), format!("{} h", tot.shifts * Shift::HOURS)),
-            (tr(lang, "Rezerve", "Standbys"), tot.reserve.to_string(), String::new()),
+            (tr(lang, "Zile de serviciu", "Duty days"), tot.shifts.to_string(), format!("{} h", tot.shifts * Shift::HOURS)),
+            (tr(lang, "Zile de rezervă", "Standby days"), tot.reserve.to_string(), String::new()),
             (tr(lang, "Ore suplimentare", "Overtime"), hours_text(tot.overtime), String::new()),
-            (tr(lang, "Zile de concediu", "Days of leave"), tot.leave.to_string(), String::new()),
+            (tr(lang, "Zile de concediu", "Leave days"), tot.leave.to_string(), String::new()),
             (tr(lang, "Total ore lucrate", "Total hours worked"), hours_text(tot.worked()), String::new()),
         ];
         for (name, value, extra) in rows {

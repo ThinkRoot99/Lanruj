@@ -195,7 +195,7 @@ pub fn lock_window(app: &adw::Application, lang: Lang, check: Check, then: impl 
                     }
                     window.destroy();
                 } else {
-                    err.set_label(tr(lang, "Nu e bună. Mai încearcă.", "That's not it. Try again."));
+                    err.set_label(tr(lang, "Greșit. Mai încearcă.", "That's not it. Try again."));
                     err.set_visible(true);
                     entry.set_text("");
                     entry.grab_focus();
@@ -268,8 +268,8 @@ pub fn new_lock_dialog(app: &Rc<App>, kind: Lock, done: impl Fn(bool) + 'static)
             .label(if app.journal.key().is_some() {
                 tr(
                     lang,
-                    "Le ceri după blocarea ecranului, în locul parolei mari a jurnalului (care rămâne pentru pornire).",
-                    "Asked after the screen locks, instead of the journal's big password (still used at startup).",
+                    "Se cere după blocarea ecranului, în locul parolei jurnalului (care rămâne pentru pornire).",
+                    "Asked for after the screen locks, instead of the journal password (which is still used at startup).",
                 )
             } else {
                 tr(

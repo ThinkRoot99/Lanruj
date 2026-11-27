@@ -658,7 +658,7 @@ impl App {
             }
             let names: Vec<String> = months.iter().map(|(y, m)| lang.month_title(*y, *m)).collect();
             let names_ref: Vec<&str> = names.iter().map(String::as_str).collect();
-            pbox.append(&gtk::Label::builder().label(tr(lang, "În planuri", "To the future log")).css_classes(["heading"]).xalign(0.0).build());
+            pbox.append(&gtk::Label::builder().label(tr(lang, "În Planuri", "To the future log")).css_classes(["heading"]).xalign(0.0).build());
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             let dd = gtk::DropDown::from_strings(&names_ref);
             dd.set_hexpand(true);
@@ -754,7 +754,7 @@ impl App {
         );
         panel.append(
             &gtk::Label::builder()
-                .label(tr(lang, "Apasă Gata, sau alege o sarcină ca să schimbi ce ai ales.", "Press Done, or pick a task to change your choice."))
+                .label(tr(lang, "Apasă Gata sau alege o sarcină ca să schimbi ce ai ales.", "Press Done or pick a task to change your choice."))
                 .xalign(0.0)
                 .wrap(true)
                 .css_classes(["mic"])

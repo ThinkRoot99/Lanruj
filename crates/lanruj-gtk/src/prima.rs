@@ -259,7 +259,7 @@ impl Wizard {
         let s = label(
             tr(
                 lang,
-                "Un jurnal de tip „bullet journal”, pe Linux. Trei alegeri scurte și poți începe; toate se pot schimba oricând din Setări.",
+                "Un jurnal de tip „bullet journal” pentru Linux. Trei alegeri scurte și poți începe; toate se pot schimba oricând din Setări.",
                 "A bullet journal app for Linux. Three short choices and you can start; all of them can be changed any time in Preferences.",
             ),
             &["dim-label"],

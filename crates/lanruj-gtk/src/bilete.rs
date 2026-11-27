@@ -56,7 +56,7 @@ impl App {
         note.set_margin_start(x);
         note.set_margin_top(y);
         note.set_cursor_from_name(Some("grab"));
-        note.set_tooltip_text(Some(tr(lang, "Trage ca să-l muți; clic: editează; clic dreapta: mai multe", "Drag to move; click: edit; right-click: more")));
+        note.set_tooltip_text(Some(tr(lang, "Trage ca să-l muți; clic ca să-l editezi; clic dreapta pentru mai multe", "Drag to move; click to edit; right-click for more")));
         let text = gtk::Label::builder()
             .label(&n.text)
             .wrap(true)

@@ -90,8 +90,8 @@ pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: im
     r.append(&text(
         tr(
             lang,
-            "Scrie cheia de recuperare (6 grupuri de câte 5 caractere; literele mici și liniuțele nu contează) și alege o parolă nouă.",
-            "Type the recovery key (6 groups of 5 characters; lowercase and dashes don't matter) and choose a new password.",
+            "Scrie cheia de recuperare (6 grupuri de câte 5 caractere; nu contează dacă literele sunt mari sau mici și nici liniuțele) și alege o parolă nouă.",
+            "Type the recovery key (6 groups of 5 characters; capitals and dashes don't matter) and choose a new password.",
         ),
         &["dim-label"],
     ));
@@ -162,7 +162,7 @@ pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: im
                         window.destroy();
                     }
                     Ok(Err(Unlock::Wrong)) => {
-                        show_error(&err, tr(lang, "Parola nu e bună.", "Wrong password."));
+                        show_error(&err, tr(lang, "Parola nu e corectă.", "Wrong password."));
                         pass.select_region(0, -1);
                         pass.grab_focus();
                     }
@@ -203,7 +203,7 @@ pub fn unlock_window(app: &adw::Application, root: PathBuf, lang: Lang, then: im
                         }
                         window.destroy();
                     }
-                    Ok(Err(Unlock::Wrong)) => show_error(&err2, tr(lang, "Cheia de recuperare nu e bună.", "Wrong recovery key.")),
+                    Ok(Err(Unlock::Wrong)) => show_error(&err2, tr(lang, "Cheia de recuperare nu e corectă.", "Wrong recovery key.")),
                     Ok(Err(Unlock::Io(e))) => show_error(&err2, &e.to_string()),
                     Err(_) => show_error(&err2, "?"),
                 }
@@ -383,7 +383,7 @@ impl App {
             let (Some(app), Some(key)) = (weak.upgrade(), key.borrow_mut().take()) else { return };
             btn.set_sensitive(false);
             dl.set_can_close(false);
-            btn.set_label(tr(lang, "Se criptează… nu închide aplicația", "Encrypting… don't close the app"));
+            btn.set_label(tr(lang, "Se criptează… Nu închide aplicația.", "Encrypting… Don't close the app."));
             let (pass, code) = (pass.clone(), code.clone());
             let key = Arc::new(key);
             let root = app.journal.root().to_path_buf();
@@ -479,7 +479,7 @@ impl App {
                 let ok = gio::spawn_blocking(move || crypt::unlock(&root, &s2).is_ok()).await.unwrap_or(false);
                 btn.set_sensitive(true);
                 if !ok {
-                    show_error(&err, tr(lang, "Parola nu e bună.", "Wrong password."));
+                    show_error(&err, tr(lang, "Parola nu e corectă.", "Wrong password."));
                     return;
                 }
                 then(&app, secret, newp);
@@ -529,7 +529,7 @@ impl App {
             tr(
                 lang,
                 "Fișierele jurnalului vor fi din nou text obișnuit, pe care îl poate citi oricine are acces la calculator. Întâi se face o copie (criptată) a jurnalului.",
-                "The journal files will be plain text again, readable by anyone with access to the computer. A (encrypted) backup is made first.",
+                "The journal files will be plain text again, readable by anyone with access to the computer. An encrypted backup is made first.",
             ),
             None,
             tr(lang, "Oprește criptarea", "Turn off encryption"),

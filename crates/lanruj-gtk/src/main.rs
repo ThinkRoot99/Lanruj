@@ -327,7 +327,7 @@ impl App {
         let range = lanruj_core::index::range_text(lang, start, end);
         self.left.fill(self, &page, r, &format!("Index · {range}"), &title, None);
         let count = end.map(|e| (e - start).num_days() + 1).unwrap_or(1).clamp(1, 62);
-        self.right.fill_days(self, start, count, tr(lang, "Zilele lui", "Its days"), &range);
+        self.right.fill_days(self, start, count, tr(lang, "Zi cu zi", "Day by day"), &range);
         self.title.set_title(&title);
         self.title.set_subtitle(&range);
     }
@@ -1252,15 +1252,15 @@ impl App {
                     (tr(l, "Deschide setările", "Open the preferences"), "<Control>comma"),
                     (tr(l, "Arată fereastra aceasta, cu toate tastele", "Show this window, with all the keys"), "<Control>question"),
                     (tr(l, "Deschide ghidul", "Open the guide"), "F1"),
-                    (tr(l, "Închide fereastra (cu iconița din bara de sistem, Lanruj rămâne pornit)", "Close the window (with the tray icon on, Lanruj keeps running)"), "<Control>w"),
+                    (tr(l, "Închide fereastra (cu iconița din systray pornită, Lanruj rămâne deschis)", "Close the window (with the tray icon on, Lanruj keeps running)"), "<Control>w"),
                     (tr(l, "Închide Lanruj de tot", "Quit Lanruj completely"), "<Control>q"),
                 ],
             ),
             (
                 tr(l, "Navigare", "Navigation"),
                 vec![
-                    (tr(l, "Pagina de dinainte: ziua, săptămâna, luna sau ziua de jurnal, după ce e deschis", "Previous page: the day, week, month or journal day, whichever is open"), "<Alt>Left <Control>Page_Up"),
-                    (tr(l, "Pagina de după: ziua, săptămâna, luna sau ziua de jurnal, după ce e deschis", "Next page: the day, week, month or journal day, whichever is open"), "<Alt>Right <Control>Page_Down"),
+                    (tr(l, "Pagina de dinainte: ziua, săptămâna, luna sau ziua de jurnal, în funcție de ce e deschis", "Previous page: the day, week, month or journal day, whichever is open"), "<Alt>Left <Control>Page_Up"),
+                    (tr(l, "Pagina de după: ziua, săptămâna, luna sau ziua de jurnal, în funcție de ce e deschis", "Next page: the day, week, month or journal day, whichever is open"), "<Alt>Right <Control>Page_Down"),
                     (tr(l, "Înapoi la azi (în jurnal, la jurnalul de azi)", "Back to today (in the journal, to today's journal)"), "<Alt>Home"),
                     (tr(l, "Mergi la o dată aleasă din calendar", "Go to a date picked from a calendar"), "<Control>g"),
                     (tr(l, "Tipărește pagina deschisă (în jurnal: textul zilei, pe foi A4)", "Print the open page (in the journal: the day's text, on A4 sheets)"), "<Control>p"),
@@ -1301,7 +1301,7 @@ impl App {
                     (tr(l, "Listă cu buline pe rândul curent sau pe cele selectate", "Bulleted list on the current or selected lines"), "<Control><Shift>8"),
                     (tr(l, "Listă numerotată pe rândul curent sau pe cele selectate", "Numbered list on the current or selected lines"), "<Control><Shift>7"),
                     (tr(l, "Listă cu căsuțe pe rândul curent sau pe cele selectate", "Checklist on the current or selected lines"), "<Control><Shift>9"),
-                    (tr(l, "Într-o listă: rândul coboară un nivel (sub-listă) / urcă un nivel", "In a list: the line goes one level down (sub-list) / one level up"), "Tab <Shift>Tab"),
+                    (tr(l, "Într-o listă: rândul coboară un nivel (sublistă) / urcă un nivel", "In a list: the line goes one level down (sub-list) / one level up"), "Tab <Shift>Tab"),
                     (tr(l, "Într-o listă: rând nou cu același semn; pe un rând gol, urcă un nivel sau termină lista", "In a list: a new line with the same sign; on an empty line, goes up a level or ends the list"), "Return"),
                     (tr(l, "Chiar după semnul listei: urcă un nivel sau scoate semnul", "Right after the list sign: go up a level or remove the sign"), "BackSpace"),
                     (tr(l, "Bifează sau debifează căsuța rândului", "Tick or untick the line's box"), "<Control>Return"),
@@ -1477,7 +1477,7 @@ impl App {
             .build();
         let auto = adw::SwitchRow::builder()
             .title(tr(lang, "Pornește singură", "Starts by itself"))
-            .subtitle(tr(lang, "Altfel doar cu butonul Migrează (Ctrl+M)", "Otherwise only with the Migrate button (Ctrl+M)"))
+            .subtitle(tr(lang, "Altfel, doar cu butonul Migrează (Ctrl+M)", "Otherwise, only with the Migrate button (Ctrl+M)"))
             .active(s.auto_migrate)
             .build();
         let weak = Rc::downgrade(self);
@@ -1791,8 +1791,8 @@ impl App {
             .title(tr(lang, "Criptarea", "Encryption"))
             .description(tr(
                 lang,
-                "Fișierele jurnalului criptate cu o parolă; la pornire Lanruj cere parola. Copiile de siguranță ale unui jurnal criptat sunt și ele criptate.",
-                "The journal files encrypted with a password; Lanruj asks for it at startup. Backups of an encrypted journal are encrypted too.",
+                "Fișierele jurnalului sunt criptate cu o parolă, pe care Lanruj o cere la pornire. Copiile de siguranță ale unui jurnal criptat sunt și ele criptate.",
+                "The journal files are encrypted with a password, which Lanruj asks for at startup. Backups of an encrypted journal are encrypted too.",
             ))
             .build();
         let on = lanruj_core::crypt::enabled(self.journal.root());
@@ -4162,7 +4162,7 @@ fn selftest(s: &Rc<App>) {
                 q.set_text(t);
                 q.emit_activate();
             }
-            // „Mută…” din meniul primei intrări din stânga: în lista lunii aceasteia.
+            // „Mută…” din meniul primei intrări din stânga: în lista lunii acesteia.
             click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta", 0);
             click(&s3.left.root.clone().upcast::<gtk::Widget>(), "muta-spre", 4); // Azi, Mâine, 2 săptămâni, apoi luna aceasta
             let s3 = s3.clone();

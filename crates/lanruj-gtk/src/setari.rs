@@ -129,7 +129,7 @@ impl Default for Settings {
 pub const PAPERS: [(Paper, &str, &str, &str); 4] = [
     (Paper::Dots, "puncte", "Puncte", "Dots"),
     (Paper::Grid, "patratele", "Pătrățele", "Grid"),
-    (Paper::Lines, "dungi", "Dungi", "Lines"),
+    (Paper::Lines, "dungi", "Linii", "Lines"),
     (Paper::Plain, "alba", "Fără model", "Plain"),
 ];
 

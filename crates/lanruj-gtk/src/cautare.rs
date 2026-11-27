@@ -107,7 +107,7 @@ impl Cautare {
         top.set_margin_start(18);
         top.set_margin_end(18);
         let entry = gtk::SearchEntry::builder()
-            .placeholder_text(tr(lang, "Caută peste tot: cuvinte, „o expresie”, -fără-cuvânt", "Search everywhere: words, \"a phrase\", -without-word"))
+            .placeholder_text(tr(lang, "Caută peste tot: cuvinte, „o expresie”, -cuvânt exclus", "Search everywhere: words, \"a phrase\", -excluded-word"))
             .hexpand(true)
             .build();
         top.append(&entry);
@@ -358,7 +358,7 @@ impl Cautare {
         if groups.is_empty() {
             self.status.set_visible(true);
             self.scroller.set_visible(false);
-            self.status.set_title(tr(l, "Nimic găsit", "Nothing found"));
+            self.status.set_title(tr(l, "Nu s-a găsit nimic", "Nothing found"));
             *self.targets.borrow_mut() = targets;
             return;
         }

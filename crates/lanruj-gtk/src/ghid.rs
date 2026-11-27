@@ -40,7 +40,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          <b>Scrisul</b>: selectezi textul și alegi din bară îngroșat (Ctrl+B), cursiv (Ctrl+I), subliniat (Ctrl+U) sau tăiat (Ctrl+D), o culoare a textului sau un marker (Ctrl+Shift+G le arată pe toate, de ales cu săgețile; Ctrl+Shift+H pune markerul galben). Fără selecție, butonul se aplică pe ce scrii mai departe; culorile, pe cuvântul de la cursor. Ctrl+Space scoate formatarea. Ctrl+Z anulează.\n\n\
          <b>Fontul</b> (butonul Aa sau Ctrl+Shift+F): fiecare bucată de text poate avea alt font - un rând cu Caveat, altul cu Lora, un titlu cu Patrick Hand. Se pune pe textul selectat sau, fără selecție, pe tot rândul; „Fontul din setări” îl scoate. Fontul ales aici e doar al jurnalului; restul aplicației păstrează fontul din Setări.\n\n\
          <b>Mărimea</b> (butonul A↕): o bucată de text sau un rând poate fi Mic, Normal, Mare, Foarte mare sau Uriaș (Ctrl+] și Ctrl+[); tot jurnalul poate fi mai mare sau mai mic decât restul aplicației (Ctrl+plus, Ctrl+minus, Ctrl+0 înapoi la 100%). Restul aplicației păstrează mărimea din Setări.\n\n\
-         <b>Rândurile</b>: titlu (Ctrl+Shift+T), subtitlu (butonul t, Ctrl+Shift+S), citat (Ctrl+Shift+Q) și trei feluri de liste - cu buline (Ctrl+Shift+8), numerotate (Ctrl+Shift+7) și cu căsuțe (Ctrl+Shift+9; Ctrl+Enter sau un clic bifează). Enter continuă lista. <b>Tab</b> face din rând o sub-listă, <b>Shift+Tab</b> îl întoarce un nivel mai sus; Enter pe un rând gol urcă și el un nivel, iar la primul nivel termină lista; Backspace chiar după semn face la fel. Listele numerotate merg pe niveluri: 2, 2.1, 2.1.1, apoi 3.\n\n\
+         <b>Rândurile</b>: titlu (Ctrl+Shift+T), subtitlu (butonul t, Ctrl+Shift+S), citat (Ctrl+Shift+Q) și trei feluri de liste - cu buline (Ctrl+Shift+8), numerotate (Ctrl+Shift+7) și cu căsuțe (Ctrl+Shift+9; Ctrl+Enter sau un clic bifează). Enter continuă lista. <b>Tab</b> face din rând o sublistă, <b>Shift+Tab</b> îl întoarce un nivel mai sus; Enter pe un rând gol urcă și el un nivel, iar la primul nivel termină lista; Backspace chiar după semn face la fel. Listele numerotate merg pe niveluri: 2, 2.1, 2.1.1, apoi 3.\n\n\
          <b>Ora</b> (ceasul din bară sau Ctrl+Shift+O): când scrii de mai multe ori în aceeași zi, fiecare scriere începe cu ora ei.\n\n\
          <b>Legăturile</b>: adresele scrise sau lipite (<tt>https://…</tt>, <tt>www.…</tt>, e-mail) devin legături singure. Butonul cu lanțul (Ctrl+K) pune o adresă pe textul selectat - un cuvânt sau o propoziție; fără selecție, cere textul și adresa; în interiorul unei legături, o schimbă sau o scoate. Butonul cu calendarul (Ctrl+L) leagă textul selectat - un cuvânt, o propoziție sau un paragraf întreg - de o zi, de un rând anume (sarcină, eveniment, notă), de planul săptămânii, de pagina lunii, de Planuri, de Index sau de Monitorizare. Legăturile se deschid cu Ctrl+clic.\n\n\
          <b>Pe hârtie</b>: Ctrl+P tipărește jurnalul zilei deschise, iar Ctrl+Shift+E îl salvează ca PDF - textul e așezat pe foi A4, cu fonturile, culorile, titlurile și listele lui, pe câte foi e nevoie.\n\n\
@@ -102,16 +102,16 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          Calendarul mic din bara laterală deschide orice zi; zilele scrise sunt colorate.\n\n\
          <b>Pagina săptămânii</b>: în stânga planul (ce vrei să faci săptămâna asta), în dreapta zilele pe scurt; clic pe o zi o deschide.\n\n\
          <b>Pagina lunii</b>: calendarul (dublu clic pe o zi ca să scrii ce e atunci) și sarcinile lunii.\n\n\
-         <b>Planuri</b>: lunile care vin, două câte două. Pe 1 ale lunii, ce ai scris acolo trece singur în pagina lunii.\n\n\
+         <b>Planuri</b>: lunile care vin, două câte două. La începutul lunii, ce ai scris acolo trece singur în pagina lunii.\n\n\
          <b>Index</b>: rândurile tale (+ Adaugă în index sau Ctrl+I din orice zi) și, automat, lunile și etichetele. \
-         Fiecare rând din index are pagina lui (de exemplu „Concediu”): ce scrii acolo, iar rândurile care încep cu o dată \
+         Fiecare rând din index are pagina lui (de exemplu „Concediu”), în care scrii ce ține de el; rândurile care încep cu o dată \
          (<tt>26.11 Delfinariu</tt>) apar și în ziua aceea. Pe zilele din interval apare banda „Concediu · ziua 1 din 8”.",
         "Pages",
         "<b>Day</b>: the arrows in the header (Alt+← →) go from day to day; <b>Today</b> (Alt+Home) brings you back. \
          The small calendar in the sidebar opens any day; written days are colored.\n\n\
          <b>Week</b>: the plan on the left (what you want to do this week), the days at a glance on the right; click a day to open it.\n\n\
          <b>Month</b>: the calendar (double-click a day to write what's on) and the month's tasks.\n\n\
-         <b>Future log</b>: the coming months, two at a time. On the 1st, what you wrote there moves to the month's page.\n\n\
+         <b>Future log</b>: the coming months, two at a time. At the start of the month, what you wrote there moves to the month's page.\n\n\
          <b>Index</b>: your lines (+ Add to index, or Ctrl+I from any day) and, automatically, months and tags. \
          Each index line has its own page (for example \"Holiday\"); lines there that start with a date \
          (<tt>26.11 Dolphinarium</tt>) also show on that day, and the days in range show \"Holiday · day 1 of 8\".",
@@ -140,7 +140,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          <b>Clic dreapta</b> pe o intrare deschide meniul ei: Editează, <b>Mută…</b>, Culoare…, Adaugă poze sau fișiere…, \
          Sub intrarea de deasupra (Tab), Scoate de sub ea (Shift+Tab), Șterge. Dacă intrarea are legături, sus apar și \
          „Deschide …” / „Scrie la …”.\n\n\
-         <b>Mută…</b> duce intrarea pe altă pagină: azi, mâine, planul săptămânii aceasteia sau viitoare, lista lunii aceasteia \
+         <b>Mută…</b> duce intrarea pe altă pagină: azi, mâine, planul săptămânii acesteia sau al celei viitoare, lista lunii acesteia \
          sau viitoare, o lună din Planuri ori o zi anume din calendar. O sarcină lasă urma ei (&lt;); notele și evenimentele pleacă de tot, \
          cu tot ce au dedesubt.\n\n\
          <b>Șterge</b> scoate intrarea cu notițele și pozele ei; jos apare <b>Anulează</b>, dacă te-ai răzgândit.\n\n\
@@ -171,7 +171,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          <b>Toată intrarea deodată</b>: clic dreapta → Culoare… și alegi.\n\n\
          <b>Legături</b>\n\
          • O adresă scrisă (<tt>https://…</tt>) sau o adresă de e-mail devine singură legătură.\n\
-         • Pe un cuvânt: în editare îl selectezi, apeși 🔗 din bară (sau <b>Ctrl+K</b>), lipești adresa și Enter. \
+         • Pe un cuvânt: în editare îl selectezi, apeși 🔗 din bară (sau <b>Ctrl+K</b>), lipești adresa și apeși Enter. \
          Poți scrie scurt, <tt>exemplu.ro</tt>; Lanruj adaugă <tt>https://</tt>.\n\
          • „Scoate legătura” din aceeași fereastră o scoate de pe textul selectat.\n\
          • Clic pe o legătură o deschide în browser (sau în programul de e-mail).\n\n\
@@ -202,7 +202,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          apar și în ziua aceea, sub banda „Concediu · ziua 4 din 8”.\n\
          În dreapta Indexului, automat: lunile cu zilele scrise și etichetele cu zilele lor.\n\n\
          <b>Calendarul lunii</b> (în Pagina lunii): dublu clic pe o zi și scrii ce e atunci; mai multe lucruri pe aceeași zi \
-         le desparți cu <tt>;</tt>; dacă golești textul, rândul zilei dispare. Clic pe număr deschide ziua.",
+         le desparți cu punct și virgulă (<tt>;</tt>); dacă golești textul, rândul zilei dispare. Clic pe număr deschide ziua.",
         "The Index",
         "<b>Add</b> a line with <b>+ Add to index</b> or, from any day, with <b>Ctrl+I</b>: type the title (for example \"Holiday\"), \
          pick the day and, if you tick \"Several days\", the last day.\n\
@@ -230,7 +230,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     ),
     (
         "Monitorizarea",
-        "<b>Monitorizare</b>, din bara laterală, are trei file, lună de lună. Săgețile din antet (sau Alt+← →) schimbă luna.\n\n\
+        "<b>Monitorizarea</b>, din bara laterală, are trei file, lună de lună. Săgețile din antet (sau Alt+← →) schimbă luna.\n\n\
          <b>Activități</b>: scrii sus ce vrei să urmărești și alegi felul: <b>cu bifă</b> (cafea, făcut patul) sau <b>cu număr</b> (flotări; apă, cu unitatea „pahare”) sau <b>cu timp</b> (plank: 1:30 înseamnă un minut și 30 de secunde), apoi Enter. \
          În fiecare zi bifezi sau scrii câte ai făcut. În dreapta vezi în câte zile ai făcut fiecare și, la cele cu număr, totalul și media pe zi. \
          Lista trece singură în lunile următoare; clic dreapta pe un nume îl scoate.\n\n\
@@ -238,7 +238,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          În dreapta, graficul lunii se face singur: noaptea cu albastru, ziua cu ocru deasupra, plus mediile.\n\n\
          <b>Serviciu</b>: clic pe o zi pentru <b>Serviciu</b> (24 de ore), <b>Rezervă</b>, <b>Concediu</b> sau <b>Liber</b>; tot în meniu scrii o <b>notă</b> pentru zi \
          și adaugi <b>ore suplimentare</b> (de exemplu 08:00-12:00), cu notă dacă vrei. Cu tastatura, pe ziua aleasă: S, R, C, O, Delete. \
-         În dreapta: serviciile, rezervele, orele suplimentare, zilele de concediu și totalul orelor lucrate. \
+         În dreapta: zilele de serviciu și de rezervă, orele suplimentare, zilele de concediu și totalul orelor lucrate. \
          Notele lunii apar toate sub totaluri. Ce ai trecut aici, cu notele, apare și în pagina zilei, în zilele săptămânii și în calendarul lunii; un clic pe casetă te aduce înapoi aici.\n\n\
          <b>Pe hârtie</b>: în Monitorizare, Ctrl+P tipărește luna pe două foi A4 (activitățile și somnul cu graficul; serviciul cu calendarul, totalurile și notele), \
          iar „Pagina ca PDF” (Ctrl+Shift+E) le salvează ca PDF. Zilele care n-au venit rămân goale, ca să le completezi de mână.\n\n\
@@ -252,7 +252,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
          On the right, the month's chart draws itself: night in blue, daytime sleep in ochre on top, plus the averages.\n\n\
          <b>Work</b>: click a day for <b>Duty</b> (24 hours), <b>Standby</b>, <b>Leave</b> or <b>Free</b>; in the same menu write a <b>note</b> for the day \
          and add <b>overtime</b> (for example 08:00-12:00), with a note if you like. With the keyboard, on the chosen day: D, S, L, O, Delete. \
-         On the right: duties, standbys, overtime, days of leave and total hours worked. \
+         On the right: duty and standby days, overtime, leave days and total hours worked. \
          All of the month's notes are listed under the totals. What you enter here, notes included, also appears on the day page, on the week's days and in the month calendar; clicking it brings you back here.\n\n\
          <b>On paper</b>: in Tracking, Ctrl+P prints the month on two A4 sheets (activities and sleep with the chart; work with the calendar, totals and notes), \
          and \"Page as PDF\" (Ctrl+Shift+E) saves them as a PDF. Days still to come stay empty, so you can fill them in by hand.\n\n\
@@ -268,7 +268,7 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     ),
     (
         "Căutarea",
-        "<b>Ctrl+F</b> sau lupa caută peste tot: în zile, liste, planuri, pagini din index, etichete, calendarul lunilor, în <b>jurnal</b>, în <b>bilete</b>, în notele din <b>Monitorizare</b> și în titlurile din <b>Index</b>. Rezultatele vin pe locuri, cele mai noi primele. \
+        "<b>Ctrl+F</b> sau lupa caută peste tot: în zile, liste, planuri, pagini din index, etichete, calendarul lunilor, în <b>jurnal</b>, în <b>bilete</b>, în notele din <b>Monitorizare</b> și în titlurile din <b>Index</b>. Rezultatele sunt grupate pe locuri, cele mai noi primele. \
          Literele mari și diacriticele nu contează („sedinta” găsește „Ședință”). Toate cuvintele scrise trebuie să apară; <tt>„cu mama”</tt> între ghilimele caută exact expresia, iar <tt>-tata</tt> lasă deoparte ce conține cuvântul. \
          Filtrele aleg sarcinile, evenimentele, notițele, ★ sau !, ori doar jurnalul, biletele sau Monitorizarea (fără cuvinte, Jurnal arată toate zilele scrise). \
          <b>Enter</b> deschide primul rezultat, <b>↓</b> trece în listă; un rezultat din jurnal se deschide chiar la rândul găsit, cu cuvântul selectat. Esc închide căutarea.",
@@ -281,20 +281,20 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
     (
         "Exportul și tipărirea",
         "În <b>☰ → Exportă și tipărește</b>:\n\n\
-         <b>Pagina ca PDF</b> (Ctrl+Shift+E): ce vezi acum (ieri și azi alăturate, săptămâna, luna, planurile, indexul), \
+         <b>Pagina ca PDF</b> (Ctrl+Shift+E): ce vezi acum (ziua deschisă, săptămâna, luna, Planurile, Indexul; în jurnal, textul zilei pe foi A4), \
          cu hârtia și culorile tale, întreagă chiar dacă pe ecran trebuie derulată.\n\
          <b>Mai multe zile ca PDF</b>: alegi de la ce zi până la ce zi (cel mult un an); fiecare zi devine o pagină.\n\
          <b>Tipărește</b> (Ctrl+P): aceleași pagini, prin fereastra de tipărire a calculatorului (de acolo se poate salva și ca PDF).\n\
          <b>Tot jurnalul ca arhivă zip</b>: toate fișierele Markdown și pozele, bune ca copie de siguranță sau ca să le muți pe alt calculator. Alegi „fără parolă” sau „cu parolă” (cel puțin 8 caractere; arhiva se deschide cu parola în 7-Zip sau în managerul de arhive). Un jurnal criptat dă mereu o arhivă cu parolă.\n\n\
-         În PDF nu apar câmpul de scris, „+ etichetă” și intrarea aleasă. În timpul migrării sau al căutării exportul așteaptă să le termini.",
+         În PDF nu apar câmpul de scris, „+ etichetă” și intrarea aleasă. În timpul migrării sau al căutării nu se poate exporta: termină-le întâi.",
         "Export and print",
         "In <b>☰ → Export and print</b>:\n\n\
-         <b>Page as PDF</b> (Ctrl+Shift+E): what you see now (yesterday and today side by side, the week, month, plans, index), \
+         <b>Page as PDF</b> (Ctrl+Shift+E): what you see now (the open day, the week, the month, the future log, the Index; in the journal, the day's text on A4 sheets), \
          with your paper and colors, whole even if it needs scrolling on screen.\n\
          <b>Several days as PDF</b>: pick the first and last day (at most a year); each day becomes a page.\n\
          <b>Print</b> (Ctrl+P): the same pages, through the computer's print window (which can also save as PDF).\n\
          <b>The whole journal as zip</b>: every Markdown file and picture, good as a backup or to move to another computer. Choose \"without a password\" or \"with a password\" (at least 8 characters; the archive opens with it in 7-Zip or the archive manager). An encrypted journal always gives a password-protected archive.\n\n\
-         The writing field, \"+ tag\" and the selected entry don't appear in the PDF. During a migration or a search, export waits until you finish.",
+         The writing field, \"+ tag\" and the selected entry don't appear in the PDF. During a migration or a search you can't export: finish them first.",
     ),
     (
         "Tastele",
@@ -320,14 +320,14 @@ const CAPITOLE: [(&str, &str, &str, &str); 22] = [
         "Unde stă jurnalul",
         "Totul stă în dosarul ascuns <tt>~/.lanruj</tt>, în fișiere Markdown pe care le poți citi și fără aplicație: \
          <tt>2026/11/2026-11-21.md</tt> (o zi), <tt>2026/11/luna.md</tt>, <tt>viitor.md</tt>, <tt>index.md</tt>, \
-         <tt>pagini/</tt>, iar pozele lângă ziua lor.\n\n\
+         <tt>pagini/</tt>, jurnalul în <tt>jurnal/</tt>, Monitorizarea în <tt>monitorizare/</tt>, biletele în <tt>bilete.md</tt>, iar pozele lângă ziua lor.\n\n\
          <b>Pe mai multe calculatoare</b>: instalează Syncthing pe fiecare, leagă calculatoarele între ele (Adaugă dispozitiv, cu codul lui) \
          și partajează dosarul <tt>~/.lanruj</tt>. Se trimite doar ce e nou.\n\n\
          <b>Copii de siguranță</b>: Lanruj face singur copii zip (vezi Setările); pentru siguranță deplină, ține dosarul copiilor pe alt disc sau stick.",
         "Where the journal lives",
         "Everything lives in the hidden folder <tt>~/.lanruj</tt>, in Markdown files you can read without the app: \
          <tt>2026/11/2026-11-21.md</tt> (a day), <tt>2026/11/luna.md</tt>, <tt>viitor.md</tt>, <tt>index.md</tt>, \
-         <tt>pagini/</tt>, with pictures next to their day.\n\n\
+         <tt>pagini/</tt>, the journal in <tt>jurnal/</tt>, Tracking in <tt>monitorizare/</tt>, the notes in <tt>bilete.md</tt>, with pictures next to their day.\n\n\
          <b>On several computers</b>: install Syncthing on each, link the computers (Add device, with its ID) \
          and share the folder <tt>~/.lanruj</tt>. Only what's new is sent.\n\n\
          <b>Backups</b>: Lanruj makes zip backups by itself (see Preferences); to be really safe, keep the backup folder on another disk or USB stick.",

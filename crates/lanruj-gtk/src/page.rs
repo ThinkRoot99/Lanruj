@@ -1033,7 +1033,7 @@ fn edit_row(app: &Rc<App>, e: &Entry) -> gtk::Box {
     row.append(&color_bar(app.lang, ColorTarget::Field(view.clone(), night)));
     row.append(
         &gtk::Label::builder()
-            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare sau o legătură (Ctrl+K); fără selecție, culoarea merge pe tot textul. Enter salvează, Esc renunță.", "Select some text, then a color or a link (Ctrl+K); with no selection, the color goes on all the text. Enter saves, Esc cancels."))
+            .label(tr(app.lang, "Selectează o bucată de text, apoi o culoare sau o legătură (Ctrl+K); fără selecție, culoarea se pune pe tot textul. Enter salvează, Esc renunță.", "Select some text, then a color or a link (Ctrl+K); with no selection, the color goes on all the text. Enter saves, Esc cancels."))
             .css_classes(["mic", "dim-label"])
             .wrap(true)
             .xalign(0.0)
@@ -1427,7 +1427,7 @@ pub fn color_bar(lang: lanruj_core::Lang, target: ColorTarget) -> gtk::Box {
     bar
 }
 
-/// Unde se poate muta o intrare: azi, mâine, lista lunii aceasteia și a celei viitoare.
+/// Unde se poate muta o intrare: azi, mâine, lista lunii acesteia și a celei viitoare.
 /// (O zi anume și o lună din Planuri se aleg separat, în același meniu.)
 fn move_targets(app: &App, from: PageRef) -> Vec<(PageRef, String)> {
     let lang = app.lang;
@@ -1443,9 +1443,9 @@ fn move_targets(app: &App, from: PageRef) -> Vec<(PageRef, String)> {
     [
         (PageRef::Day(t), tr(lang, "Azi", "Today").to_string()),
         (PageRef::Day(t.succ_opt().expect("zi")), tr(lang, "Mâine", "Tomorrow").to_string()),
-        (this_week, tr(lang, "Planul săptămânii aceasteia", "This week's plan").to_string()),
+        (this_week, tr(lang, "Planul săptămânii acesteia", "This week's plan").to_string()),
         (next_week, tr(lang, "Planul săptămânii viitoare", "Next week's plan").to_string()),
-        (this_month, format!("{} ({})", tr(lang, "Lista lunii aceasteia", "This month's list"), name(this_month))),
+        (this_month, format!("{} ({})", tr(lang, "Lista lunii acesteia", "This month's list"), name(this_month))),
         (next_month, format!("{} ({})", tr(lang, "Lista lunii viitoare", "Next month's list"), name(next_month))),
     ]
     .into_iter()
@@ -1780,7 +1780,13 @@ fn entry_row(app: &Rc<App>, r: PageRef, index: usize, e: &Entry, mig: Option<&Mi
                     m.add_css_class("mult");
                     m.set_label(&format!("↻{n} {}", tr(lang, "mai merită?", "still worth it?")));
                 }
-                m.set_tooltip_text(Some(&format!("{} {n}", tr(lang, "Mutată de", "Moved"))));
+                m.set_tooltip_text(Some(&match (lang, n) {
+                    (lanruj_core::Lang::Ro, 1) => "Mutată o dată".to_string(),
+                    (lanruj_core::Lang::Ro, n) if n % 100 >= 20 || n % 100 == 0 => format!("Mutată de {n} de ori"),
+                    (lanruj_core::Lang::Ro, n) => format!("Mutată de {n} ori"),
+                    (_, 1) => "Moved once".to_string(),
+                    (_, n) => format!("Moved {n} times"),
+                }));
                 text_box.append(&m);
             }
         }
