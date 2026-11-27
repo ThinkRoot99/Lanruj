@@ -13,3 +13,10 @@ flatpak/repo/
 flatpak/.flatpak-builder/
 # pachetul gata de instalat stă la Releases pe GitHub, nu în depozit
 flatpak/*.flatpak
+# AppImage: imaginile containerului, uneltele descărcate, rezultatele
+appimage/.podman/
+appimage/.cargo/
+appimage/.target/
+appimage/unelte/
+appimage/build/
+appimage/*.AppImage

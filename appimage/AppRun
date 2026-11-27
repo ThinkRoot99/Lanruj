@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pornirea lui Lanruj din AppImage: bibliotecile, modulele GTK și datele vin din pachet;
+# glibc, driverele grafice, fonturile sistemului și fontconfig vin din sistem.
+HERE="$(dirname "$(readlink -f "$0")")"
+LIB="$HERE/usr/lib"
+
+export LD_LIBRARY_PATH="$LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
+export GTK_PATH="$LIB/gtk-4.0"
+export GTK_EXE_PREFIX="$HERE/usr"
+export GTK_DATA_PREFIX="$HERE/usr"
+# Doar modulele GIO din pachet: cele ale sistemului sunt făcute pentru alt glib.
+export GIO_MODULE_DIR="$LIB/gio/modules"
+
+# Lista încărcătoarelor de imagini (SVG, PNG…) are căi absolute; se scrie la fiecare pornire.
+CACHE="${XDG_RUNTIME_DIR:-/tmp}/lanruj-appimage-$(id -u)"
+mkdir -p "$CACHE"
+sed "s#@APPDIR@#$HERE#g" "$LIB/gdk-pixbuf-2.0/loaders.cache.in" > "$CACHE/loaders.cache"
+export GDK_PIXBUF_MODULE_FILE="$CACHE/loaders.cache"
+export GDK_PIXBUF_MODULEDIR="$LIB/gdk-pixbuf-2.0/loaders"
+
+exec "$HERE/usr/bin/lanruj" "$@"

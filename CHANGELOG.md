@@ -6,6 +6,12 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 
 ## [Unreleased]
 
+### Added
+- **Packages**: a Flatpak (GNOME 51) and an AppImage built on Ubuntu 26.04 LTS, both on the GitHub releases page. The recipes are in `flatpak/` and `appimage/` (`sh appimage/construieste.sh`, with podman).
+
+### Fixed
+- **The tray icon in packages**: its picture is now inside the program, so it also shows in Flatpak and AppImage, where the project folder does not exist.
+
 ### Changed
 - **Contact address**: lanruj@thinkopen.site (About → Support questions).
 - **"Blocarea"** instead of "Încuierea" in Romanian, as on the website: the setting, the lock windows ("Lanruj e blocat"), "Se blochează odată cu ecranul" and the guide; the guide also shows the Security tab on the way to Lock and Encryption.

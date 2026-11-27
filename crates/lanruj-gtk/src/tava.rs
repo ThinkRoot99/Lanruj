@@ -18,10 +18,12 @@ pub struct LanrujTray {
 
 /// Iconița simbolică, desenată albă pe transparent, în ARGB32 (ordinea rețelei).
 fn white_pixmaps() -> Vec<ksni::Icon> {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons/hicolor/symbolic/apps/io.github.ThinkRoot99.Lanruj-symbolic.svg");
+    // Iconița e în program, nu citită de pe disc: în Flatpak și AppImage dosarul proiectului nu există.
+    const SVG: &[u8] = include_bytes!("../../../data/icons/hicolor/symbolic/apps/io.github.ThinkRoot99.Lanruj-symbolic.svg");
     let mut out = Vec::new();
     for size in [16, 22, 24, 32, 48] {
-        let Ok(pb) = gtk::gdk_pixbuf::Pixbuf::from_file_at_size(path, size, size) else { continue };
+        let stream = gtk::gio::MemoryInputStream::from_bytes(&gtk::glib::Bytes::from_static(SVG));
+        let Ok(pb) = gtk::gdk_pixbuf::Pixbuf::from_stream_at_scale(&stream, size, size, true, gtk::gio::Cancellable::NONE) else { continue };
         let (w, h) = (pb.width(), pb.height());
         let (stride, n) = (pb.rowstride() as usize, pb.n_channels() as usize);
         let bytes = pb.read_pixel_bytes();
@@ -74,7 +76,8 @@ impl ksni::Tray for LanrujTray {
 
     fn icon_theme_path(&self) -> String {
         // Cât timp aplicația nu e instalată, iconițele stau în dosarul proiectului.
-        concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons").into()
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons");
+        if std::path::Path::new(dir).is_dir() { dir.into() } else { String::new() }
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
