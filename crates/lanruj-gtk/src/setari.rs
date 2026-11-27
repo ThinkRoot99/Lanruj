@@ -122,7 +122,7 @@ pub const BACKUPS: [(Backup, &str, &str, &str); 3] = [
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, diary_text: 100, font: String::new(), start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false, lock: Lock::None, lock_on_screen: false, remember: false }
+        Settings { lang: Some(Lang::En), paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, diary_text: 100, font: String::new(), start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false, lock: Lock::None, lock_on_screen: false, remember: false }
     }
 }
 

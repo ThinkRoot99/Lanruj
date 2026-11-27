@@ -63,7 +63,7 @@ fn label(s: &str, classes: &[&str]) -> gtk::Label {
 pub fn show(app: &adw::Application, root: PathBuf, then: impl Fn(&adw::Application, Option<Arc<Key>>) + 'static) {
     let window = adw::ApplicationWindow::builder().application(app).title("Lanruj").default_width(780).default_height(760).build();
     window.add_css_class("lanruj");
-    let choice = Choice { lang: Lang::from_env(), paper: Paper::Dots, color: PaperColor::Warm, font: String::new(), text: 100, encrypt: false, password: String::new(), key: None };
+    let choice = Choice { lang: Lang::En, paper: Paper::Dots, color: PaperColor::Warm, font: String::new(), text: 100, encrypt: false, password: String::new(), key: None };
     let w = Rc::new(Wizard { window: window.clone(), root, choice: RefCell::new(choice), step: Cell::new(0), key_ok: Cell::new(false), then: Box::new(then) });
     let style = adw::StyleManager::default();
     let set_night = {
