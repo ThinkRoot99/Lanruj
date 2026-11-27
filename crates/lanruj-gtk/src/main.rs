@@ -2814,18 +2814,46 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
     let weak = Rc::downgrade(&state);
     about.connect_activate(move |_, _| {
         let Some(s) = weak.upgrade() else { return };
+        // Ca la aplicațiile GNOME (de exemplu Fișiere): autorul, colaboratorii, partea legală și câteva legături,
+        // fără o pagină „Detalii”.
+        let l = s.lang;
         let d = adw::AboutDialog::builder()
             .application_name("Lanruj")
             .application_icon(APP_ID)
             .version(VERSION)
             .developer_name("ThinkRoot")
+            .developers(["ThinkRoot"])
+            .copyright("© 2026 ThinkRoot")
             .license_type(gtk::License::Gpl30)
-            .comments(tr(
-                s.lang,
-                "Un jurnal cu cerneală, zi de zi. Inspirat de metoda Bullet Journal.",
-                "An ink journal, day by day. Inspired by the Bullet Journal method.",
-            ))
+            .support_url("mailto:lanruj@thinkroot.xyz")
             .build();
+        d.add_credit_section(Some(tr(l, "Construit cu", "Built with")), &["GTK https://gtk.org", "libadwaita https://gnome.pages.gitlab.gnome.org/libadwaita/", "Rust https://www.rust-lang.org", "age https://age-encryption.org"]);
+        let fonts: Vec<&str> = fonturi::FONTS.iter().map(|f| f.ro).collect();
+        d.add_legal_section(
+            tr(l, "Fonturile", "Fonts"),
+            None,
+            gtk::License::Custom,
+            Some(&format!(
+                "{} {}.\n\n{}",
+                tr(l, "Lanruj vine cu fonturile", "Lanruj comes with the fonts"),
+                fonts.join(", "),
+                tr(
+                    l,
+                    "Sunt publicate de autorii lor sub <a href=\"https://openfontlicense.org\">SIL Open Font License 1.1</a>; licențele lor sunt în codul sursă, în dosarul data/fonts.",
+                    "They are published by their authors under the <a href=\"https://openfontlicense.org\">SIL Open Font License 1.1</a>; their licences are in the source code, in the data/fonts folder.",
+                ),
+            )),
+        );
+        d.add_legal_section(
+            tr(l, "Metoda Bullet Journal", "The Bullet Journal method"),
+            None,
+            gtk::License::Custom,
+            Some(tr(
+                l,
+                "Metoda Bullet Journal a fost creată de Ryder Carroll. Lanruj este o aplicație independentă și nu are legătură cu metoda sau cu autorul ei.",
+                "The Bullet Journal method was created by Ryder Carroll. Lanruj is an independent app and is not affiliated with it or its creator.",
+            )),
+        );
         d.present(Some(&s.window));
     });
     app.add_action(&about);
@@ -3495,6 +3523,23 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 s.diary.view.scroll_to_iter(&mut buf.start_iter(), 0.0, false, 0.0, 0.0);
                 let s2 = s.clone();
                 glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                    if let Ok(p) = std::env::var("LANRUJ_PNG") {
+                        save_png(&s2.window, &p);
+                    }
+                    if let Some(app) = s2.window.application() {
+                        app.quit();
+                    }
+                });
+            });
+        }
+        Ok("test-despre") => {
+            let s = state.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                if let Some(app) = s.window.application() {
+                    app.activate_action("about", None);
+                }
+                let s2 = s.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
                     if let Ok(p) = std::env::var("LANRUJ_PNG") {
                         save_png(&s2.window, &p);
                     }
