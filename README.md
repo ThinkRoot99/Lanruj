@@ -50,15 +50,25 @@ To update, download the new version, start it once and delete the old file.
 
 Flatpak must be installed and Flathub added. Most distributions have both; on Debian, run `sudo apt install flatpak` and follow [flathub.org/setup](https://flathub.org/setup).
 
+There are two ways to install it; both download the GNOME 51 runtime from Flathub if it is missing.
+
+**For you only**, without a password:
+
+```
+flatpak install --user lanruj.flatpak
+```
+
+If this is the first Flatpak app you install for yourself, Lanruj may appear in the applications menu only after you log out and back in; on Cinnamon (Linux Mint), Ctrl+Alt+Esc is enough.
+
+**For all users** of the computer, which asks for your administrator password, because the file does not come from a signed repository such as Flathub:
+
 ```
 flatpak install lanruj.flatpak
 ```
 
-Flatpak asks for your password and downloads the GNOME 51 runtime from Flathub if it is missing. Double-clicking `lanruj.flatpak` works only where GNOME Software is installed; elsewhere, for example on Linux Mint, use the command above.
+Lanruj appears in the applications menu right away.
 
-If Lanruj does not appear in the applications menu after your first Flatpak installation, log out and back in; on Cinnamon (Linux Mint), Ctrl+Alt+Esc is enough.
-
-To update, install the new `lanruj.flatpak` the same way.
+Double-clicking `lanruj.flatpak` works only where GNOME Software is installed; elsewhere, for example on Linux Mint, use one of the commands above. To update, install the new `lanruj.flatpak` the same way.
 
 ### Uninstalling
 
@@ -81,7 +91,7 @@ flatpak uninstall --delete-data io.github.ThinkRoot99.Lanruj
 flatpak uninstall --unused
 ```
 
-`--delete-data` also removes the Flatpak version's settings; the second command removes the GNOME runtime if no other app needs it.
+If you installed it for you only, add `--user` to both commands. `--delete-data` also removes the Flatpak version's settings; the second command removes the GNOME runtime if no other app needs it.
 
 **The journal itself** stays in `~/.lanruj` and the backups in `~/Documents/Lanruj - copii` (or the folder you chose in Preferences). Delete them only if you are sure you no longer need what you wrote.
 

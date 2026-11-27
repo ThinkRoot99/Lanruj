@@ -7,7 +7,7 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 ## [Unreleased]
 
 ### Changed
-- **README**: how to install, update and uninstall the AppImage and the Flatpak, and what stays behind (settings, the journal, the backups).
+- **README**: how to install, update and uninstall the AppImage and the Flatpak (for you only, without a password, or for all users), and what stays behind (settings, the journal, the backups).
 
 ## [0.4.1] - 2026-11-27
 
