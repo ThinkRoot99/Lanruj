@@ -129,6 +129,11 @@ pub enum View {
 }
 
 fn today() -> NaiveDate {
+    // Pentru capturile site-ului: LANRUJ_AZI=2026-11-21 (doar în versiunea de probă).
+    #[cfg(debug_assertions)]
+    if let Some(d) = std::env::var("LANRUJ_AZI").ok().and_then(|v| NaiveDate::parse_from_str(&v, "%Y-%m-%d").ok()) {
+        return d;
+    }
     Local::now().date_naive()
 }
 
@@ -3114,6 +3119,10 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                     state.go_future(y, m);
                 }
                 Ok("index") => state.go_index(),
+                Ok("jurnal") => state.go_diary(t),
+                Ok("migrare") => {
+                    gtk::prelude::WidgetExt::activate_action(&state.window, "win.migrate", None).ok();
+                }
                 Ok("monitorizare") => {
                     state.tracking_tab.set(match std::env::var("LANRUJ_FILA").as_deref() {
                         Ok("somn") => monitorizare::Tab::Sleep,
