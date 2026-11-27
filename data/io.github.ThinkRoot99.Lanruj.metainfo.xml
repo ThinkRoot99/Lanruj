@@ -39,35 +39,35 @@
     <binary>lanruj</binary>
   </provides>
 
-  <url type="homepage">https://lanruj.thinkopen.site/</url>
+  <url type="homepage">https://lanruj.thinkopen.ro/</url>
   <url type="bugtracker">https://github.com/ThinkRoot99/Lanruj/issues</url>
   <url type="vcs-browser">https://github.com/ThinkRoot99/Lanruj</url>
-  <url type="contact">https://lanruj.thinkopen.site/contact.html</url>
+  <url type="contact">https://lanruj.thinkopen.ro/contact.html</url>
 
   <screenshots>
     <screenshot type="default">
       <caption>Yesterday and today, side by side</caption>
-      <image>https://lanruj.thinkopen.site/assets/img/screenshots/zi.png</image>
+      <image>https://lanruj.thinkopen.ro/assets/img/screenshots/zi.png</image>
     </screenshot>
     <screenshot>
       <caption>A journal for writing at length</caption>
-      <image>https://lanruj.thinkopen.site/assets/img/screenshots/jurnal.png</image>
+      <image>https://lanruj.thinkopen.ro/assets/img/screenshots/jurnal.png</image>
     </screenshot>
     <screenshot>
       <caption>Tracking, month by month</caption>
-      <image>https://lanruj.thinkopen.site/assets/img/screenshots/monitorizare.png</image>
+      <image>https://lanruj.thinkopen.ro/assets/img/screenshots/monitorizare.png</image>
     </screenshot>
     <screenshot>
       <caption>The week page</caption>
-      <image>https://lanruj.thinkopen.site/assets/img/screenshots/saptamana.png</image>
+      <image>https://lanruj.thinkopen.ro/assets/img/screenshots/saptamana.png</image>
     </screenshot>
     <screenshot>
       <caption>The evening migration</caption>
-      <image>https://lanruj.thinkopen.site/assets/img/screenshots/migrare.png</image>
+      <image>https://lanruj.thinkopen.ro/assets/img/screenshots/migrare.png</image>
     </screenshot>
     <screenshot>
       <caption>At night</caption>
-      <image>https://lanruj.thinkopen.site/assets/img/screenshots/zi-noapte.png</image>
+      <image>https://lanruj.thinkopen.ro/assets/img/screenshots/zi-noapte.png</image>
     </screenshot>
   </screenshots>
 
@@ -98,6 +98,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.3" date="2026-11-27">
+      <description>
+        <p>The website moves to lanruj.thinkopen.ro and the contact address to lanruj@thinkopen.ro; the keyboard shortcuts are explained in the documentation.</p>
+      </description>
+    </release>
     <release version="0.4.2" date="2026-11-27">
       <description>
         <p>The AppImage no longer fills the log with font warnings on distributions with a newer fontconfig; the README explains how to install and uninstall both packages.</p>

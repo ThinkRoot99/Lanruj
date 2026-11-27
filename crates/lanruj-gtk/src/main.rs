@@ -2842,7 +2842,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 "Lanruj este software liber, publicat sub <a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">Licența Publică Generală GNU, versiunea 3 sau mai nouă</a>.",
                 "Lanruj is free software, released under the <a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">GNU General Public License, version 3 or later</a>.",
             ))
-            .support_url("mailto:lanruj@thinkopen.site")
+            .support_url("mailto:lanruj@thinkopen.ro")
             .build();
         let fonts: Vec<&str> = fonturi::FONTS.iter().map(|f| f.ro).collect();
         d.add_legal_section(

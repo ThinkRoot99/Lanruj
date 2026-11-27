@@ -6,6 +6,8 @@ The name is "jurnal" (Romanian for *journal*) written backwards.
 
 Lanruj is built by Claude, the AI made by Anthropic, and tested by ThinkRoot.
 
+Website: [lanruj.thinkopen.ro](https://lanruj.thinkopen.ro)
+
 ![Lanruj showing yesterday and today side by side, with tasks, events and notes](data/screenshots/zi.png)
 
 ## Features

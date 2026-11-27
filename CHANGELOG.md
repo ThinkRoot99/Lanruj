@@ -6,10 +6,13 @@ Versions before 1.0 are development versions; 1.0 will be the first public relea
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-27
+
 ### Added
 - **Keyboard shortcuts, explained**: `docs/keyboard-shortcuts.md` and its Romanian version `docs/scurtaturi-de-taste.md` describe every key combination and what it does, grouped as in the app; they are also in the project wiki.
 
 ### Changed
+- **Website and contact address**: the website is now https://lanruj.thinkopen.ro and the contact address lanruj@thinkopen.ro (About → Support questions, the AppStream data, the website).
 - **README**: a screenshot of the app, and who makes Lanruj: it is built by Claude, the AI made by Anthropic, and tested by ThinkRoot.
 
 ## [0.4.2] - 2026-11-27
