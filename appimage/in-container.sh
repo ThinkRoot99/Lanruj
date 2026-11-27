@@ -72,6 +72,13 @@ collect() {
 collect "$APPDIR/usr/bin/lanruj"
 find "$APPDIR/usr/lib/gtk-4.0" "$APPDIR/usr/lib/gdk-pixbuf-2.0" -name '*.so' | while read -r m; do collect "$m"; done
 
+# fontconfig cercetează și lista de configurații „disponibile” a sistemului (calea e scrisă în bibliotecă), pe care
+# un fontconfig mai vechi n-o înțelege: avertismente fără folos. Calea devine una de aceeași lungime, care nu există.
+FC=$(ls "$APPDIR"/usr/lib/libfontconfig.so.* | head -1)
+n=$(grep -c -a "/usr/share/fontconfig/conf.avail" "$FC" || true)
+perl -pi -e 's#/usr/share/fontconfig/conf\.avail#/usr/share/fontconfig/conf.nonex#g' "$FC"
+echo "fontconfig: $n locuri schimbate"
+
 # Verificare: nicio bibliotecă lipsă
 missing=$(for f in "$APPDIR/usr/bin/lanruj" $(find "$APPDIR/usr/lib" -name '*.so*'); do
     LD_LIBRARY_PATH="$APPDIR/usr/lib" ldd "$f" 2>/dev/null | grep "not found"; done | sort -u)

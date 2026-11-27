@@ -11,9 +11,14 @@ export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/sha
 export GSK_RENDERER=cairo
 export GDK_DISABLE=gl,vulkan
 
-# Rezervele din pachet, doar dacă sistemul nu are configurația tastaturii sau a fonturilor.
+# Configurația tastaturii din pachet, doar dacă sistemul nu o are.
 [ -d /usr/share/X11/xkb ] || export XKB_CONFIG_ROOT="$HERE/usr/share/X11/xkb"
-[ -f /etc/fonts/fonts.conf ] || export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
+# Configurația fonturilor e mereu cea din pachet: a sistemului poate fi scrisă pentru un fontconfig mai nou
+# decât cel din pachet (de exemplu pe Arch), care ar umple jurnalul cu avertismente. Cea din pachet citește
+# tot fonturile sistemului (/usr/share/fonts, ~/.local/share/fonts) și setările din ~/.config/fontconfig.
+export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
+# conf.d (inclus fără cale în fonts.conf) se caută aici, nu în /etc/fonts
+export FONTCONFIG_PATH="$HERE/etc/fonts"
 
 # Lista încărcătoarelor de imagini (SVG pentru iconițe) are căi absolute; se scrie la fiecare pornire.
 CACHE="${XDG_RUNTIME_DIR:-/tmp}/lanruj-appimage-$(id -u)"
