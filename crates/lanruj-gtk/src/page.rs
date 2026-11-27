@@ -460,6 +460,41 @@ impl Page {
             });
             self.list.append(&b);
         }
+        // Jurnalul: lunile cu zile scrise în jurnal, fiecare cu zilele ei.
+        let mut by_month: Vec<((i32, u32), Vec<NaiveDate>)> = Vec::new();
+        for d in app.journal.diary_dates() {
+            match by_month.last_mut() {
+                Some((k, v)) if *k == (d.year(), d.month()) => v.push(d),
+                _ => by_month.push(((d.year(), d.month()), vec![d])),
+            }
+        }
+        if !by_month.is_empty() {
+            self.list.append(&gtk::Label::builder().label(tr(lang, "Jurnal", "Journal")).xalign(0.0).css_classes(["index-sectiune"]).margin_top(14).build());
+            for ((y, m), days) in by_month {
+                let flow = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).max_children_per_line(4).column_spacing(4).row_spacing(4).build();
+                for d in &days {
+                    let d = *d;
+                    let b = gtk::Button::builder().label(format!("{} {}", d.day(), lang.month(d.month()))).css_classes(["flat", "index-zi"]).build();
+                    let weak = Rc::downgrade(app);
+                    b.connect_clicked(move |_| {
+                        if let Some(app) = weak.upgrade() {
+                            glib::idle_add_local_once(move || app.go_diary(d));
+                        }
+                    });
+                    flow.append(&b);
+                }
+                let count = match lang {
+                    lanruj_core::Lang::Ro => match days.len() {
+                        1 => "o zi".to_string(),
+                        n if n % 100 >= 20 => format!("{n} de zile"),
+                        n => format!("{n} zile"),
+                    },
+                    lanruj_core::Lang::En => if days.len() == 1 { "1 day".into() } else { format!("{} days", days.len()) },
+                };
+                let exp = gtk::Expander::builder().label(format!("{} · {count}", lang.month_title(y, m))).child(&flow).css_classes(["index-eticheta"]).build();
+                self.list.append(&exp);
+            }
+        }
         self.list.append(&gtk::Label::builder().label(tr(lang, "Etichete", "Tags")).xalign(0.0).css_classes(["index-sectiune"]).margin_top(14).build());
         if tags.is_empty() {
             self.list.append(
@@ -681,6 +716,23 @@ impl Page {
         add.set_popover(Some(&pop));
         tags.append(&add);
         self.footer.append(&tags);
+
+        // Ziua are și jurnal: un drum direct spre el.
+        if app.journal.diary_path(date).exists() {
+            let b = gtk::Button::builder()
+                .icon_name("accessories-text-editor-symbolic")
+                .tooltip_text(tr(lang, "Jurnalul zilei", "That day's journal"))
+                .css_classes(["flat", "spre-jurnal"])
+                .valign(gtk::Align::Center)
+                .build();
+            let weak = Rc::downgrade(app);
+            b.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    glib::idle_add_local_once(move || app.go_diary(date));
+                }
+            });
+            self.footer.append(&b);
+        }
 
         let nota = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         nota.set_valign(gtk::Align::Center);

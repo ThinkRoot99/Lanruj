@@ -46,6 +46,8 @@ pub struct Settings {
     pub sidebar_compact: bool,
     /// Mărimea textului, în procente (90, 100, 115, 130).
     pub text: u32,
+    /// Mărimea textului din jurnal, în procente din mărimea de mai sus (restul aplicației rămâne la ea).
+    pub diary_text: u32,
     /// Fontul paginilor: „” = al sistemului, altfel cheia unui font din `fonturi`.
     pub font: String,
     /// Pagina arătată la pornire.
@@ -120,7 +122,7 @@ pub const BACKUPS: [(Backup, &str, &str, &str); 3] = [
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, font: String::new(), start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false, lock: Lock::None, lock_on_screen: false, remember: false }
+        Settings { lang: None, paper: Paper::Dots, color: PaperColor::Warm, scheme: Scheme::System, evening_hour: 21, auto_migrate: true, tray: false, sidebar_compact: false, text: 100, diary_text: 100, font: String::new(), start: Start::Day, one_page: false, worth: 3, backup: Backup::Weekly, backup_dir: None, backup_keep: 10, vim: false, lock: Lock::None, lock_on_screen: false, remember: false }
     }
 }
 
@@ -226,6 +228,11 @@ impl Settings {
         if let Ok(b) = kf.boolean("lanruj", "o-pagina") {
             s.one_page = b;
         }
+        if let Ok(n) = kf.integer("lanruj", "jurnal-text")
+            && (70..=250).contains(&n)
+        {
+            s.diary_text = n as u32;
+        }
         if let Ok(n) = kf.integer("lanruj", "mai-merita")
             && (2..=10).contains(&n)
         {
@@ -276,6 +283,7 @@ impl Settings {
         kf.set_string("lanruj", "pornire", key_of(&STARTS, self.start));
         kf.set_boolean("lanruj", "o-pagina", self.one_page);
         kf.set_integer("lanruj", "mai-merita", self.worth as i32);
+        kf.set_integer("lanruj", "jurnal-text", self.diary_text as i32);
         kf.set_string("lanruj", "copii", key_of(&BACKUPS, self.backup));
         kf.set_string("lanruj", "copii-dosar", &self.backup_dir.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default());
         kf.set_integer("lanruj", "copii-pastrate", self.backup_keep as i32);

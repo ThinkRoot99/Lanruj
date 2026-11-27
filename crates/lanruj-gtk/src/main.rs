@@ -1285,6 +1285,8 @@ impl App {
                     (tr(l, "Subliniat, la fel", "Underline, the same way"), "<Control>u"),
                     (tr(l, "Tăiat, la fel", "Strikethrough, the same way"), "<Control>d <Control><Shift>x"),
                     (tr(l, "Fontul textului selectat sau, fără selecție, al rândului (doar în jurnal)", "Font of the selected text or, with no selection, of the line (only in the journal)"), "<Control><Shift>f"),
+                    (tr(l, "Textul selectat sau rândul: mai mare / mai mic (doar în jurnal)", "Selected text or the line: larger / smaller (only in the journal)"), "<Control>bracketright <Control>bracketleft"),
+                    (tr(l, "Tot jurnalul: mai mare / mai mic / ca restul aplicației", "The whole journal: larger / smaller / like the rest of the app"), "<Control>plus <Control>minus <Control>0"),
                     (tr(l, "Scoate formatarea și culorile de pe textul selectat (legăturile rămân)", "Clear the formatting and colors from the selected text (links stay)"), "<Control>space"),
                     (tr(l, "Marker galben pe textul selectat; dacă îl are deja, îl scoate", "Yellow marker on the selected text; if it has one, removes it"), "<Control><Shift>h"),
                     (tr(l, "Alege culoarea textului sau a markerului (săgeți și Enter)", "Pick a text or marker color (arrows and Enter)"), "<Control><Shift>g"),
@@ -1369,6 +1371,7 @@ impl App {
             self.window.add_css_class(&c);
         }
         set_text_size(s.text, &s.font);
+        set_diary_size(s.text, &s.font, s.diary_text);
         self.layout();
         adw::StyleManager::default().set_color_scheme(match s.scheme {
             setari::Scheme::System => adw::ColorScheme::Default,
@@ -1948,6 +1951,24 @@ pub fn set_text_size(pct: u32, font: &str) {
     TEXT_CSS.with(|p| p.load_from_string(&text_css(pct, fonturi::by_key(font))));
 }
 
+thread_local! {
+    /// Mărimea textului din jurnal (peste celelalte mărimi), aleasă în jurnal.
+    static DIARY_CSS: gtk::CssProvider = {
+        let p = gtk::CssProvider::new();
+        if let Some(display) = gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(&display, &p, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 2);
+        }
+        p
+    };
+}
+
+/// Textul jurnalului: 16 px, cu mărimea din setări, mărirea fontului și mărimea aleasă pentru jurnal.
+pub fn set_diary_size(pct: u32, font: &str, diary: u32) {
+    let scale = fonturi::by_key(font).map(|f| f.scale).unwrap_or(1.0);
+    let px = 16.0 * pct as f64 / 100.0 * scale * diary as f64 / 100.0;
+    DIARY_CSS.with(|p| p.load_from_string(&format!("textview.jurnal-text, textview.jurnal-text text {{ font-size: {px:.1}px; }}")));
+}
+
 
 /// Pentru probe: după o clipă (LANRUJ_JOS=1: derulat până jos), captura ferestrei în LANRUJ_PNG, apoi ieșire.
 #[cfg(debug_assertions)]
@@ -2096,6 +2117,7 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
         window.add_css_class(&c);
     }
     set_text_size(settings.text, &settings.font);
+    set_diary_size(settings.text, &settings.font, settings.diary_text);
     let set_night = {
         let w = window.clone();
         move |s: &adw::StyleManager| {
@@ -3453,6 +3475,8 @@ fn build_main(app: &adw::Application, key: Option<std::sync::Arc<lanruj_core::cr
                 put("\nUn titlu cu Patrick Hand");
                 s.diary_test_font(Some("Patrick Hand"));
                 s.diary_test_title();
+                put("\nUn rând foarte mare.");
+                s.diary_test_size(Some(150), 2);
                 put("\nTextul obișnuit, cu fontul din setări, **nu** se schimbă.\n");
                 for k in 1..=40 {
                     put(&format!("Rândul {k}: o zi lungă, cu multe de povestit, ca să se vadă cum trece textul pe foaia a doua.\n"));

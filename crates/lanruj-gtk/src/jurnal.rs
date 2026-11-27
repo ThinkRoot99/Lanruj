@@ -40,12 +40,17 @@ pub struct Diary {
     /// Fontul bucății de text (doar în jurnal): butonul și lista lui.
     font_button: gtk::MenuButton,
     font_list: gtk::ListBox,
+    /// Mărimea: a bucății de text și a întregului jurnal.
+    size_button: gtk::MenuButton,
+    size_buttons: Vec<(u32, gtk::Button)>,
+    zoom_buttons: [gtk::Button; 3],
+    zoom_label: gtk::Label,
 }
 
 const INLINE: [(&str, &str); 4] = [("s:bold", "bold"), ("s:italic", "italic"), ("s:strike", "strike"), ("s:underline", "underline")];
 
 fn is_inline(name: &str) -> bool {
-    name.starts_with("t:") || name.starts_with("s:") || name.starts_with("f#") || name.starts_with("b#") || name.starts_with('l')
+    name.starts_with("z:") || name.starts_with("t:") || name.starts_with("s:") || name.starts_with("f#") || name.starts_with("b#") || name.starts_with('l')
 }
 
 fn tag(buf: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
@@ -58,6 +63,11 @@ fn tag(buf: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
         "s:italic" => t.set_style(gtk::pango::Style::Italic),
         "s:strike" => t.set_strikethrough(true),
         "s:underline" => t.set_underline(gtk::pango::Underline::Single),
+        n if n.starts_with("z:") => {
+            if let Ok(z) = n[2..].parse::<f64>() {
+                t.set_scale(z / 100.0);
+            }
+        }
         n if n.starts_with("t:") => {
             let family = &n[2..];
             t.set_family(Some(family));
@@ -108,7 +118,9 @@ fn style_at(it: &gtk::TextIter) -> Style {
             "s:strike" => st.strike = true,
             "s:underline" => st.underline = true,
             _ => {
-                if let Some(f) = n.strip_prefix("t:") {
+                if let Some(z) = n.strip_prefix("z:") {
+                    st.size = z.parse().ok();
+                } else if let Some(f) = n.strip_prefix("t:") {
                     st.font = Some(f.to_string());
                 } else if let Some(h) = n.strip_prefix('f') {
                     st.color = Some(h.to_string());
@@ -142,8 +154,14 @@ fn style_tags(buf: &gtk::TextBuffer, st: &Style, night: bool) -> Vec<gtk::TextTa
     if let Some(f) = &st.font {
         v.push(tag(buf, &format!("t:{f}")));
     }
+    if let Some(z) = st.size {
+        v.push(tag(buf, &format!("z:{z}")));
+    }
     v
 }
+
+/// Mărimile pe bucăți: (procent, numele în română, în engleză).
+const SIZES: [(u32, &str, &str); 5] = [(85, "Mic", "Small"), (100, "Normal", "Normal"), (125, "Mare", "Large"), (150, "Foarte mare", "Larger"), (200, "Uriaș", "Huge")];
 
 fn set_style(buf: &gtk::TextBuffer, a: &gtk::TextIter, b: &gtk::TextIter, st: &Style, night: bool) {
     let mut all = Vec::new();
@@ -488,6 +506,44 @@ impl Diary {
             font_list.append(&row(&format!("<span font_family=\"{}\" size=\"large\">{}</span>", f.family, f.ro)));
         }
         let fpop = gtk::Popover::builder().child(&font_list).build();
+        // Mărimea: sus, a textului selectat (sau a rândului); jos, a întregului jurnal.
+        let sbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        let sec_head = |t: &str| gtk::Label::builder().label(t).xalign(0.0).css_classes(["caption-heading", "dim-label"]).build();
+        sbox.append(&sec_head(tr(lang, "Textul selectat sau rândul (Ctrl+] / Ctrl+[)", "Selected text or the line (Ctrl+] / Ctrl+[)")));
+        let mut size_buttons = Vec::new();
+        for (z, ro, en) in SIZES {
+            let b = gtk::Button::builder().css_classes(["flat"]).build();
+            let l = gtk::Label::builder().label(format!("<span size=\"{z}%\">{}</span>", tr(lang, ro, en))).use_markup(true).xalign(0.0).build();
+            b.set_child(Some(&l));
+            sbox.append(&b);
+            size_buttons.push((z, b));
+        }
+        sbox.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        sbox.append(&sec_head(tr(lang, "Tot jurnalul (Ctrl+plus / Ctrl+minus / Ctrl+0)", "The whole journal (Ctrl+plus / Ctrl+minus / Ctrl+0)")));
+        let zrow = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let zoom_buttons = [
+            gtk::Button::builder().icon_name("zoom-out-symbolic").css_classes(["flat", "circular"]).tooltip_text(tr(lang, "Mai mic", "Smaller")).build(),
+            gtk::Button::builder().label("100%").css_classes(["flat"]).tooltip_text(tr(lang, "Ca restul aplicației", "Like the rest of the app")).build(),
+            gtk::Button::builder().icon_name("zoom-in-symbolic").css_classes(["flat", "circular"]).tooltip_text(tr(lang, "Mai mare", "Larger")).build(),
+        ];
+        let zoom_label = gtk::Label::builder().hexpand(true).xalign(0.5).build();
+        zrow.append(&zoom_buttons[0]);
+        zrow.append(&zoom_label);
+        zrow.append(&zoom_buttons[2]);
+        zrow.append(&zoom_buttons[1]);
+        sbox.append(&zrow);
+        sbox.set_margin_top(6);
+        sbox.set_margin_bottom(6);
+        sbox.set_margin_start(6);
+        sbox.set_margin_end(6);
+        let spop = gtk::Popover::builder().child(&sbox).build();
+        let size_button = gtk::MenuButton::builder()
+            .label("A↕")
+            .popover(&spop)
+            .focus_on_click(false)
+            .css_classes(["flat", "unealta-jurnal"])
+            .tooltip_text(tr(lang, "Mărimea textului: a bucății selectate sau a întregului jurnal; doar în jurnal", "Text size: of the selected piece or of the whole journal; only in the journal"))
+            .build();
         let font_button = gtk::MenuButton::builder()
             .label("Aa")
             .popover(&fpop)
@@ -500,6 +556,7 @@ impl Diary {
             let group = if k == 1 { colors_slot.clone() } else { gtk::Box::new(gtk::Orientation::Horizontal, 2) };
             if k == 0 {
                 group.append(&font_button);
+                group.append(&size_button);
             }
             if k > 0 {
                 group.add_css_class("grupa-jurnal");
@@ -545,6 +602,10 @@ impl Diary {
             colors_slot,
             font_button,
             font_list,
+            size_button,
+            size_buttons,
+            zoom_buttons,
+            zoom_label,
         })
     }
 
@@ -1108,6 +1169,24 @@ impl App {
             }
             c = ch.next_sibling();
         }
+        for (z, b) in &dy.size_buttons {
+            let (weak, z) = (Rc::downgrade(self), *z);
+            b.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.diary.size_button.popdown();
+                    app.diary_size(if z == 100 { None } else { Some(z) });
+                }
+            });
+        }
+        for (k, b) in dy.zoom_buttons.iter().enumerate() {
+            let weak = Rc::downgrade(self);
+            b.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.diary_zoom([-1, 0, 1][k]);
+                }
+            });
+        }
+        self.show_zoom();
         let weak = Rc::downgrade(self);
         dy.font_list.connect_row_activated(move |_, row| {
             if let Some(app) = weak.upgrade() {
@@ -1346,6 +1425,11 @@ impl App {
                 (true, Key::q) => app.diary_line_kind("r:citat"),
                 (true, Key::h) => app.diary_marker(),
                 (true, Key::g) => app.diary_colors(),
+                (false, Key::bracketright) => app.diary_size_step(1),
+                (false, Key::bracketleft) => app.diary_size_step(-1),
+                (_, Key::plus | Key::equal | Key::KP_Add) => app.diary_zoom(1),
+                (_, Key::minus | Key::KP_Subtract) => app.diary_zoom(-1),
+                (false, Key::_0 | Key::KP_0) => app.diary_zoom(0),
                 (true, Key::f) => {
                     app.diary.font_button.popup();
                     if let Some(r) = app.diary.font_list.row_at_index(0) {
@@ -1536,6 +1620,71 @@ impl App {
         }
         self.diary.show_state();
         self.diary.view.grab_focus();
+    }
+
+    /// Mărimea unei bucăți (doar în jurnal): pe textul selectat; fără selecție, pe tot rândul; pe un rând gol, pe
+    /// ce urmează să scrii. `None` = mărimea obișnuită a jurnalului.
+    fn diary_size(self: &Rc<Self>, size: Option<u32>) {
+        let dy = &self.diary;
+        let buf = dy.buf();
+        let range = buf.selection_bounds().or_else(|| {
+            let line = buf.iter_at_mark(&buf.get_insert()).line();
+            line_bounds(&buf, line).filter(|(a, b)| a.offset() < b.offset())
+        });
+        match range {
+            Some((a, b)) => {
+                let mut sizes = Vec::new();
+                buf.tag_table().foreach(|t| {
+                    if t.name().is_some_and(|n| n.starts_with("z:")) {
+                        sizes.push(t.clone());
+                    }
+                });
+                for t in &sizes {
+                    buf.remove_tag(t, &a, &b);
+                }
+                if let Some(z) = size {
+                    buf.apply_tag(&tag(&buf, &format!("z:{z}")), &a, &b);
+                }
+            }
+            None => {
+                let at = buf.iter_at_mark(&buf.get_insert()).offset();
+                let mut st = dy.style_here();
+                st.size = size;
+                dy.typing.replace(Some((at, st)));
+            }
+        }
+        dy.view.grab_focus();
+    }
+
+    /// Ctrl+] / Ctrl+[: bucata trece la mărimea următoare sau la cea dinainte.
+    fn diary_size_step(self: &Rc<Self>, delta: i32) {
+        let buf = self.diary.buf();
+        let now = match buf.selection_bounds() {
+            Some((a, _)) => style_at(&a).size,
+            None => self.diary.style_here().size,
+        }
+        .unwrap_or(100);
+        let i = SIZES.iter().position(|(z, _, _)| *z >= now).unwrap_or(1) as i32;
+        let z = SIZES[(i + delta).clamp(0, SIZES.len() as i32 - 1) as usize].0;
+        self.diary_size(if z == 100 { None } else { Some(z) });
+    }
+
+    /// Mărimea întregului jurnal: -1 mai mic, 1 mai mare, 0 înapoi la 100%. Se ține minte în setări.
+    fn diary_zoom(self: &Rc<Self>, delta: i32) {
+        let s = {
+            let mut s = self.settings.borrow_mut();
+            s.diary_text = if delta == 0 { 100 } else { (s.diary_text as i32 + 10 * delta).clamp(70, 250) as u32 };
+            s.clone()
+        };
+        let _ = s.save();
+        crate::set_diary_size(s.text, &s.font, s.diary_text);
+        self.show_zoom();
+    }
+
+    fn show_zoom(&self) {
+        let z = self.settings.borrow().diary_text;
+        self.diary.zoom_label.set_label(&format!("{z}%"));
+        self.diary.zoom_buttons[1].set_sensitive(z != 100);
     }
 
     /// Fontul (doar în jurnal): pe textul selectat; fără selecție, pe tot rândul (și pe ce scrii
@@ -1855,6 +2004,13 @@ impl App {
         self.diary_font(f);
     }
     #[cfg(debug_assertions)]
+    pub fn diary_test_size(self: &Rc<Self>, z: Option<u32>, zoom: i32) {
+        self.diary_size(z);
+        for _ in 0..zoom.abs() {
+            self.diary_zoom(zoom.signum());
+        }
+    }
+    #[cfg(debug_assertions)]
     pub fn diary_test_title(self: &Rc<Self>) {
         self.diary_line_kind("r:titlu");
     }
@@ -1929,6 +2085,9 @@ fn span_markup(sp: &Span, factor: f64) -> String {
     let st = &sp.style;
     let mut attrs = Vec::new();
     let mut size = factor;
+    if let Some(z) = st.size {
+        size *= z as f64 / 100.0;
+    }
     if let Some(f) = &st.font {
         attrs.push(format!("font_family=\"{}\"", esc(f)));
         // Scrisul de mână e mărit puțin, ca pe ecran.
@@ -2089,7 +2248,7 @@ impl App {
             title: self.lang.day_title(d),
             paras,
             family: font.map(|f| f.family).unwrap_or("Sans").to_string(),
-            size: 11.0 * font.map(|f| f.scale).unwrap_or(1.0),
+            size: 11.0 * font.map(|f| f.scale).unwrap_or(1.0) * self.settings.borrow().diary_text as f64 / 100.0,
         })
     }
 

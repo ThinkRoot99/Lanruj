@@ -190,7 +190,8 @@ impl App {
             return None;
         }
         // Luna stă una sub alta pe ferestrele înguste: atunci fiecare pagină e separată.
-        if self.caiet.orientation() == gtk::Orientation::Vertical || pages.len() == 1 {
+        // Pe pagina zilei se tipărește doar ziua deschisă (cea din dreapta), nu și ziua de ieri de alături.
+        if self.caiet.orientation() == gtk::Orientation::Vertical || pages.len() == 1 || matches!(self.view.get(), View::Day) {
             let (p, _) = pages.last()?;
             return Some(Self::one(p));
         }

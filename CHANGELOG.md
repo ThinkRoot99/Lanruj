@@ -6,6 +6,15 @@ Lanruj has not had a release yet; everything below belongs to the first version.
 
 ## [Unreleased]
 
+### 2026-11-27
+
+#### Added
+- **Text size in the journal**: a piece of text or a line can be Small, Normal, Large, Larger or Huge (the A↕ button, Ctrl+] and Ctrl+[), saved as `<span style="font-size:…%">`; the whole journal has its own size (Ctrl+plus, Ctrl+minus, Ctrl+0), remembered in the settings. The rest of the app keeps the size from Preferences.
+- **The journal in the Index**: a Journal section lists the months with journal days, each opening that day's journal; a day page has a button to its journal.
+
+#### Changed
+- **Printing a day** (Ctrl+P, PDF) takes only the open day, not yesterday's page next to it.
+
 ### 2026-11-21 (afternoon)
 
 #### Added

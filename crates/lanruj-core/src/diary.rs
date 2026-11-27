@@ -20,7 +20,7 @@
 //! legături `[text](adresă)`. Rândurile: `### 08:30` (ora unei scrieri), `## Titlu`, `> citat`,
 //! liste `- `, `1. `, `- [ ] ` / `- [x] `.
 //!
-//! Fontul unei bucăți: `<span style="font-family:Caveat">…</span>`.
+//! Fontul unei bucăți: `<span style="font-family:Caveat">…</span>`; mărimea: `<span style="font-size:125%">…</span>`.
 //!
 //! Legăturile spre restul jurnalului încep cu `lanruj:` (vezi [`Target`]).
 
@@ -42,6 +42,8 @@ pub struct Style {
     pub link: Option<String>,
     /// Fontul bucății (familia), dacă e altul decât cel din setări.
     pub font: Option<String>,
+    /// Mărimea bucății, în procente din mărimea jurnalului (125 = mai mare), dacă nu e cea obișnuită.
+    pub size: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,10 +107,19 @@ fn font_tag(s: &str) -> Option<(String, usize)> {
     ok.then(|| (name.to_string(), "<span style=\"font-family:".len() + end + 2))
 }
 
-/// O etichetă `<span>` deschisă: culoare sau font (`</span>` o închide pe ultima).
+/// `<span style="font-size:125%">` → (125, lungimea etichetei).
+fn size_tag(s: &str) -> Option<(u32, usize)> {
+    let rest = s.strip_prefix("<span style=\"font-size:")?;
+    let end = rest.find("\">")?;
+    let v: u32 = rest[..end].trim().trim_end_matches(';').trim().strip_suffix('%')?.trim().parse().ok()?;
+    (40..=400).contains(&v).then_some((v, "<span style=\"font-size:".len() + end + 2))
+}
+
+/// O etichetă `<span>` deschisă: culoare, font sau mărime (`</span>` o închide pe ultima).
 enum Open {
     Color(String),
     Font(String),
+    Size(u32),
 }
 
 fn parse_into(text: &str, base: Style, out: &mut Vec<Span>) {
@@ -120,6 +131,7 @@ fn parse_into(text: &str, base: Style, out: &mut Vec<Span>) {
     let set_paint = |st: &mut Style, spans: &[Open], marks: &[String], eq: bool| {
         st.color = spans.iter().rev().find_map(|o| if let Open::Color(c) = o { Some(c.clone()) } else { None }).or_else(|| base.color.clone());
         st.font = spans.iter().rev().find_map(|o| if let Open::Font(f) = o { Some(f.clone()) } else { None }).or_else(|| base.font.clone());
+        st.size = spans.iter().rev().find_map(|o| if let Open::Size(z) = o { Some(*z) } else { None }).or(base.size);
         st.marker = marks.last().cloned().or_else(|| eq.then(|| crate::colors::YELLOW_MARKER.to_string())).or_else(|| base.marker.clone());
     };
     while i < text.len() {
@@ -162,6 +174,10 @@ fn parse_into(text: &str, base: Style, out: &mut Vec<Span>) {
             marks.pop();
             set_paint(&mut st, &spans, &marks, eq);
             i += 7;
+        } else if let Some((z, len)) = size_tag(rest) {
+            spans.push(Open::Size(z));
+            set_paint(&mut st, &spans, &marks, eq);
+            i += len;
         } else if let Some((name, len)) = font_tag(rest) {
             spans.push(Open::Font(name));
             set_paint(&mut st, &spans, &marks, eq);
@@ -280,27 +296,36 @@ pub fn to_inline(spans: &[Span]) -> String {
     out
 }
 
-/// Bucățile vecine cu același font stau sub o singură etichetă de font.
+/// Bucățile vecine cu același font și aceeași mărime stau sub o singură pereche de etichete.
 fn write_run(spans: &[Span], cur: &mut Style) -> String {
     let mut out = String::new();
     let mut k = 0;
     while k < spans.len() {
-        let font = spans[k].style.font.clone();
+        let key = (spans[k].style.font.clone(), spans[k].style.size);
         let mut j = k;
-        while j < spans.len() && spans[j].style.font == font {
+        while j < spans.len() && (spans[j].style.font.clone(), spans[j].style.size) == key {
             j += 1;
         }
-        match &font {
-            Some(f) => {
-                out.push_str(&toggles(cur, &Style::default()));
-                *cur = Style::default();
-                out.push_str(&format!("<span style=\"font-family:{f}\">"));
-                out.push_str(&write_plain(&spans[k..j], cur));
-                out.push_str(&toggles(cur, &Style::default()));
-                *cur = Style::default();
-                out.push_str("</span>");
+        if key == (None, None) {
+            out.push_str(&write_plain(&spans[k..j], cur));
+        } else {
+            out.push_str(&toggles(cur, &Style::default()));
+            *cur = Style::default();
+            let mut open = String::new();
+            let mut close = String::new();
+            if let Some(f) = &key.0 {
+                open.push_str(&format!("<span style=\"font-family:{f}\">"));
+                close.push_str("</span>");
             }
-            None => out.push_str(&write_plain(&spans[k..j], cur)),
+            if let Some(z) = key.1 {
+                open.push_str(&format!("<span style=\"font-size:{z}%\">"));
+                close.push_str("</span>");
+            }
+            out.push_str(&open);
+            out.push_str(&write_plain(&spans[k..j], cur));
+            out.push_str(&toggles(cur, &Style::default()));
+            *cur = Style::default();
+            out.push_str(&close);
         }
         k = j;
     }
@@ -643,6 +668,7 @@ mod tests {
             "### 08:30\nText\n\n## Titlu\n> citat\n- unu\n  - doi\n- [ ] de făcut\n- [x] gata\n1. primul",
             "5 \\* 3 = 15, a \\== b, \\[nu e legătură\\]",
             "**bold *bold italic* bold**",
+            "Un cuvânt <span style=\"font-size:150%\">mare</span> și <span style=\"font-family:Lora\"><span style=\"font-size:85%\">mic cu Lora</span></span>",
             "<span style=\"font-family:Caveat\">Primul rând, de mână</span>\n## <span style=\"font-family:Patrick Hand\">Un **titlu** <span style=\"color:#c01c28\">roșu</span></span>",
         ] {
             assert_eq!(round(md), md, "{md}");
